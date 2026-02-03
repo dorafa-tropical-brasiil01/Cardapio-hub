@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv/
+venv/
+.env.*
+instance/
+*.log
+.DS_Store
+Thumbs.db
+
+# Dados locais (não versionar)
+produtos.json
+catalogo_publicado.json
+mesas.json
+solicitacoes.json
+assets/

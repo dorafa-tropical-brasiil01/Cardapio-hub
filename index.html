@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <title>DORAFA Tropical Brasil - Cardápio</title>
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        html, body {
+            color-scheme: light;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: linear-gradient(#d9f3a2, #f6e27f);
+            background-color: #d9f3a2;
+            color: #0a5c2f;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                color-scheme: light;
+            }
+
+            html, body {
+                color-scheme: light;
+            }
+
+            body {
+                background: linear-gradient(#d9f3a2, #f6e27f);
+                background-color: #d9f3a2;
+                color: #0a5c2f;
+            }
+        }
+
+        :root {
+            --verde: #0a5c2f;
+            --amarelo: #fefecf;
+            --price-w: 96px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            color: #0a5c2f;
+            font-weight: bold;
+        }
+
+        #pdvLabel {
+            display: none;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            min-height: 48px;
+        }
+
+        .brand img {
+            height: 48px;
+            max-width: 180px;
+            object-fit: contain;
+            display: none;
+        }
+
+        .search-bar {
+            margin: 10px auto;
+            width: 92%;
+        }
+
+        .search-bar input {
+            width: 94%;
+            padding: 10px;
+            font-size: 14px;
+            border-radius: 20px;
+            border: none;
+        }
+
+        .banner {
+            margin: 20px auto;
+            width: 92%;
+            height: 200px;
+            background: #fefecf;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            overflow: hidden;
+        }
+
+        .banner img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .section-title {
+            background: #0a5c2f;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            width: 87%;
+            border-radius: 20px;
+            margin: 0 auto;
+        }
+
+        .cards {
+            display: flex;
+            justify-content: space-around;
+            padding: 20px 0;
+            width: 88%;
+            margin: 0 auto;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: #fefecf;
+            border-radius: 20px;
+            width: 220px;
+            height: 220px;
+            padding: 15px;
+            text-align: center;
+            margin: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .card img {
+            width: 100%;
+            border-radius: 15px;
+        }
+
+        .price-btn {
+            margin-top: 10px;
+            background: #0a5c2f;
+            color: white;
+            padding: 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .price-btn[aria-disabled="true"],
+        .add-btn[aria-disabled="true"] {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .product-list {
+            width: 92%;
+            margin: 0 auto;
+        }
+
+        .product {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background: #fefecf;
+            border-radius: 20px;
+            padding: 15px;
+            margin-bottom: 15px;
+            position: relative;
+        }
+
+        .product img {
+            width: 80px;
+            border-radius: 10px;
+            align-self: center;
+        }
+
+        .product-info {
+            flex: 1;
+            margin-left: 15px;
+            min-width: 0;
+            padding-right: calc(var(--price-w) + 12px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .product-title {
+            font-weight: bold;
+            display: block;
+            margin-top: -2px;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+            margin-right: calc(-1 * (var(--price-w) + 12px));
+        }
+
+        .product-desc {
+            margin-top: 12px;
+            opacity: 0.9;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .product-desc-btn {
+            margin-top: 10px;
+            margin-right: 10px;
+            background: rgba(10, 92, 47, 0.08);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            color: var(--verde);
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: bold;
+            white-space: nowrap;
+            cursor: pointer;
+            align-self: flex-start;
+        }
+
+        .product-desc.product-desc-clamp {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            overflow: hidden;
+        }
+
+        .card-title {
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .add-btn {
+            background: #0a5c2f;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            width: var(--price-w);
+            text-align: center;
+            flex: 0 0 auto;
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        button {
+            background: #0a5c2f;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #comprovanteFile::file-selector-button {
+            background: #f0b429;
+            color: #1d1d1d;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-weight: 900;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #comprovanteFile::-webkit-file-upload-button {
+            background: #f0b429;
+            color: #1d1d1d;
+            border: none;
+            border-radius: 12px;
+            padding: 12px 14px;
+            font-weight: 900;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        #comprovanteFile {
+            width: 100%;
+            font-size: 15px;
+            padding: 6px 0;
+        }
+
+        .btn-comprovante {
+            width: 100%;
+            padding: 16px 18px;
+            border-radius: 18px;
+            font-size: 18px;
+            font-weight: 900;
+            background: #2f9e44;
+            color: white;
+        }
+
+        .pill {
+            background: var(--amarelo);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            color: var(--verde);
+            border-radius: 999px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .pill.active {
+            background: var(--verde);
+            color: white;
+        }
+
+        .toolbar {
+            width: 90%;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .category-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        #categoriasRow {
+            display: flex;
+        }
+
+        #categoriasRow button:not(:first-child) {
+            display: none;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 999;
+        }
+
+        .modal {
+            width: min(720px, 100%);
+            background: var(--amarelo);
+            border-radius: 18px;
+            border: 2px solid rgba(10, 92, 47, 0.35);
+            padding: 16px;
+        }
+
+        .modal.status-pendente {
+            background: #cfe2ff;
+            border-color: #0d6efd;
+        }
+
+        .modal.status-em-atendimento {
+            background: #fff3cd;
+            border-color: #f0b429;
+        }
+
+        .modal.status-respondida {
+            background: #d4edda;
+            border-color: #2f9e44;
+        }
+
+        .modal.status-rejeitada {
+            background: #f8d7da;
+            border-color: #e03131;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .modal-title {
+            font-weight: bold;
+            color: var(--verde);
+            font-size: 18px;
+        }
+
+        .modal-close {
+            background: transparent;
+            color: var(--verde);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            border-radius: 12px;
+            padding: 8px 10px;
+        }
+
+        .cart-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(10, 92, 47, 0.2);
+        }
+
+        .qty {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .qty button {
+            padding: 8px 12px;
+            border-radius: 12px;
+        }
+
+        .muted {
+            opacity: 0.75;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        @media (max-width: 480px) {
+            header {
+                padding: 12px 16px;
+            }
+
+            :root {
+                --price-w: 92px;
+            }
+
+            .product-info {
+                padding-right: calc(var(--price-w) + 22px);
+            }
+
+            .search-bar {
+                width: 92%;
+            }
+
+            .search-bar input {
+                padding: 12px;
+                font-size: 16px;
+            }
+
+            .banner {
+                width: 92%;
+                height: 160px;
+                font-size: 28px;
+            }
+
+            .cards {
+                padding: 12px;
+                gap: 4px;
+                justify-content: center;
+                flex-wrap: nowrap;
+                overflow-x: hidden;
+            }
+
+            .card {
+                width: calc((100% - 10px) / 3);
+                height: calc((100vw - 10px) / 3);
+                flex: 0 0 auto;
+                margin: 0;
+                padding: 3px;
+                border-radius: 13px;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+            }
+
+            .card img {
+                width: 100%;
+                flex: 1 1 auto;
+                min-height: 0;
+                object-fit: cover;
+                border-radius: 9px;
+            }
+
+            .card p {
+                margin: 2px 0 0;
+                font-size: 8px;
+                line-height: 1;
+            }
+
+            .price-btn {
+                margin-top: 2px;
+                padding: 4px 4px;
+                border-radius: 9px;
+                font-size: 8px;
+                width: 100%;
+                box-sizing: border-box;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            footer {
+                padding: 14px;
+                gap: 10px;
+            }
+
+            button {
+                padding: 12px 14px;
+                font-size: 14px;
+                flex: 1;
+            }
+
+            .product-list {
+                width: 92%;
+            }
+
+            .product {
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <div id="pdvLabel">PDV: 001</div>
+    <div class="brand">
+        <img id="logoImg" alt="Logo">
+        <div id="brandText">DORAFÁ Tropical Brasil</div>
+    </div>
+    <div style="cursor:pointer" onclick="abrirCarrinho()">🛒 <span id="cartCount">0</span></div>
+</header>
+
+<div class="search-bar">
+    <input type="text" id="search" placeholder="Busque pelo seu produto favorito" onkeyup="filtrarProdutos()">
+</div>
+
+<div class="banner" id="banner">
+    <img id="bannerImg" alt="Banner">
+    <div id="bannerFallback">BANNER INTERATIVO</div>
+</div>
+
+<div class="section-title">QUERIDINHOS</div>
+
+<div class="cards" id="queridinhos"></div>
+
+<div class="toolbar">
+    <div class="category-row" id="categoriasRow"></div>
+    <div class="muted" id="adminHint" style="display:none">Modo gestão: você pode alterar status do pedido.</div>
+</div>
+
+<div class="product-list" id="listaProdutos">
+</div>
+
+<footer>
+    <button onclick="abrirCarrinho()">Ver Pedido</button>
+    <button onclick="abrirCategorias()">Categorias</button>
+</footer>
+
+<div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" id="modalBox">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Carrinho</div>
+            <button class="modal-close" onclick="fecharModal()">Fechar</button>
+        </div>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+    const STORAGE_KEYS = {
+        carrinho: "cardapio.cart.v1",
+        pedido: "cardapio.lastPedido.v1",
+        payMethod: "cardapio.payMethod.v1",
+        clientName: "cardapio.clientName.v1",
+        clientWhatsapp: "cardapio.clientWhatsapp.v1",
+        deliveryType: "cardapio.deliveryType.v1",
+        deliveryRua: "cardapio.deliveryRua.v1",
+        deliveryNumero: "cardapio.deliveryNumero.v1",
+        deliveryBairro: "cardapio.deliveryBairro.v1",
+        deliveryCidade: "cardapio.deliveryCidade.v1",
+        deliveryRef: "cardapio.deliveryRef.v1",
+        deliveryTroco: "cardapio.deliveryTroco.v1",
+        deliveryObs: "cardapio.deliveryObs.v1",
+        mesa: "cardapio.mesa.v1",
+        token: "cardapio.token.v1"
+    };
+
+    const state = {
+        busca: "",
+        categoriaId: "__todas__",
+        carrinho: [],
+        admin: false,
+        bannerIndex: 0,
+        bannerTimer: null,
+        bannerSig: null,
+        refreshTimer: null,
+        mesa: null,
+        token: null,
+        solicitacaoTimer: null,
+        data: null,
+        sending: false,
+        payMethod: "DINHEIRO",
+        clientName: "",
+        clientWhatsapp: "",
+        deliveryType: "DELIVERY",
+        deliveryRua: "",
+        deliveryNumero: "",
+        deliveryBairro: "",
+        deliveryCidade: "",
+        deliveryRef: "",
+        deliveryTroco: "",
+        deliveryObs: "",
+        modalLockUntil: 0
+    };
+
+    function humanStatus(status) {
+        const s = String(status || "").toUpperCase();
+        if (s === "ENVIADO") return "Aguardando confirmação do pedido";
+        if (s === "PENDENTE") return "Aguardando confirmação do pedido";
+        if (s === "EM_ATENDIMENTO") return "PEDIDO EM ANDAMENTO, CASO QUEIRA EDITAR OU ADICIONAR MAIS ITENS AO SEU PEDIDO DIRIJA-SE AO CAIXA";
+        if (s === "RESPONDIDA") return "Pedido respondido";
+        if (s === "CANCELADA" || s === "CANCELADO") return "Pedido cancelado";
+        return s || "-";
+    }
+
+    function getMesaTokenFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const mesaRaw = params.get("mesa");
+        const tokenRaw = params.get("token");
+        const mesa = mesaRaw ? Number(mesaRaw) : null;
+        const token = tokenRaw ? String(tokenRaw) : null;
+        if (!mesa || !Number.isFinite(mesa) || mesa <= 0) return { mesa: null, token: null };
+        if (!token || token.length < 10) return { mesa, token: null };
+        return { mesa, token };
+    }
+
+    function getMesaTokenFromLocal() {
+        try {
+            const mesaRaw = localStorage.getItem(STORAGE_KEYS.mesa);
+            const tokenRaw = localStorage.getItem(STORAGE_KEYS.token);
+            const mesa = mesaRaw ? Number(mesaRaw) : null;
+            const token = tokenRaw ? String(tokenRaw) : null;
+            if (!mesa || !Number.isFinite(mesa) || mesa <= 0) return { mesa: null, token: null };
+            if (!token || token.length < 10) return { mesa, token: null };
+            return { mesa, token };
+        } catch {
+            return { mesa: null, token: null };
+        }
+    }
+
+    function saveMesaTokenToLocal(mesa, token) {
+        try {
+            if (mesa && token) {
+                localStorage.setItem(STORAGE_KEYS.mesa, String(mesa));
+                localStorage.setItem(STORAGE_KEYS.token, String(token));
+            }
+        } catch {
+        }
+    }
+
+    function clearMesaTokenFromUrl() {
+        try {
+            const u = new URL(window.location.href);
+            if (u.searchParams.has("mesa") || u.searchParams.has("token")) {
+                u.searchParams.delete("mesa");
+                u.searchParams.delete("token");
+                history.replaceState(null, "", u.pathname + u.search + u.hash);
+            }
+        } catch {
+        }
+    }
+
+    function formatBRL(valor) {
+        return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    function loadLocal() {
+        try {
+            const cartRaw = localStorage.getItem(STORAGE_KEYS.carrinho);
+            state.carrinho = cartRaw ? JSON.parse(cartRaw) : [];
+        } catch {
+            state.carrinho = [];
+        }
+
+        try {
+            const pm = localStorage.getItem(STORAGE_KEYS.payMethod);
+            const v = String(pm || "").toUpperCase();
+            if (v) state.payMethod = v;
+        } catch {
+        }
+
+        try {
+            const cn = localStorage.getItem(STORAGE_KEYS.clientName);
+            state.clientName = String(cn || "").trim();
+        } catch {
+            state.clientName = "";
+        }
+
+        try {
+            const cw = localStorage.getItem(STORAGE_KEYS.clientWhatsapp);
+            state.clientWhatsapp = String(cw || "").trim();
+        } catch {
+            state.clientWhatsapp = "";
+        }
+
+        try {
+            const dt = localStorage.getItem(STORAGE_KEYS.deliveryType);
+            const v = String(dt || "").trim().toUpperCase();
+            if (v === "DELIVERY" || v === "RETIRADA") state.deliveryType = v;
+        } catch {
+        }
+
+        try { state.deliveryRua = String(localStorage.getItem(STORAGE_KEYS.deliveryRua) || "").trim(); } catch { state.deliveryRua = ""; }
+        try { state.deliveryNumero = String(localStorage.getItem(STORAGE_KEYS.deliveryNumero) || "").trim(); } catch { state.deliveryNumero = ""; }
+        try { state.deliveryBairro = String(localStorage.getItem(STORAGE_KEYS.deliveryBairro) || "").trim(); } catch { state.deliveryBairro = ""; }
+        try { state.deliveryCidade = String(localStorage.getItem(STORAGE_KEYS.deliveryCidade) || "").trim(); } catch { state.deliveryCidade = ""; }
+        try { state.deliveryRef = String(localStorage.getItem(STORAGE_KEYS.deliveryRef) || "").trim(); } catch { state.deliveryRef = ""; }
+        try { state.deliveryTroco = String(localStorage.getItem(STORAGE_KEYS.deliveryTroco) || "").trim(); } catch { state.deliveryTroco = ""; }
+        try { state.deliveryObs = String(localStorage.getItem(STORAGE_KEYS.deliveryObs) || "").trim(); } catch { state.deliveryObs = ""; }
+    }
+
+    function saveClientName() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.clientName, String(state.clientName || ""));
+        } catch {
+        }
+    }
+
+    function saveClientWhatsapp() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.clientWhatsapp, String(state.clientWhatsapp || ""));
+        } catch {
+        }
+    }
+
+    function onClientNameChange(val) {
+        state.clientName = String(val || "").trim();
+        saveClientName();
+        lockModalRender(6000);
+    }
+
+    function onClientWhatsappChange(val) {
+        state.clientWhatsapp = String(val || "").trim();
+        saveClientWhatsapp();
+        lockModalRender(6000);
+    }
+
+    function saveDeliveryFields() {
+        try { localStorage.setItem(STORAGE_KEYS.deliveryType, String(state.deliveryType || "DELIVERY")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryRua, String(state.deliveryRua || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryNumero, String(state.deliveryNumero || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryBairro, String(state.deliveryBairro || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryCidade, String(state.deliveryCidade || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryRef, String(state.deliveryRef || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryTroco, String(state.deliveryTroco || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryObs, String(state.deliveryObs || "")); } catch {}
+    }
+
+    function onDeliveryTypeChange(val) {
+        const v = String(val || "").trim().toUpperCase();
+        state.deliveryType = (v === "RETIRADA") ? "RETIRADA" : "DELIVERY";
+        saveDeliveryFields();
+        abrirCarrinho();
+        lockModalRender(6000);
+    }
+
+    function onDeliveryFieldChange(key, val) {
+        state[key] = String(val || "").trim();
+        saveDeliveryFields();
+        lockModalRender(6000);
+    }
+
+    function savePayMethod() {
+        try {
+            localStorage.setItem(STORAGE_KEYS.payMethod, String(state.payMethod || "DINHEIRO"));
+        } catch {
+        }
+    }
+
+    function onPayMethodChange(val) {
+        state.payMethod = String(val || "DINHEIRO").toUpperCase();
+        savePayMethod();
+        lockModalRender(1500);
+    }
+
+    function capturePayMethodFromDom() {
+        const el = document.getElementById("payMethod");
+        if (!el) return;
+        const v = String(el.value || "").toUpperCase();
+        if (!v) return;
+        state.payMethod = v;
+        savePayMethod();
+    }
+
+    async function uploadComprovante() {
+        const pedido = getPedidoAtual();
+        if (!pedido || !pedido.id) return;
+        if (!state.mesa || !state.token) return;
+
+        const inputFile = document.getElementById("comprovanteFile");
+        const file = (inputFile && inputFile.files && inputFile.files.length > 0) ? inputFile.files[0] : null;
+
+        if (!file) {
+            setModal("Comprovante", `<div><strong>Selecione o PRINT (captura de tela) do comprovante (ou um PDF).</strong></div><div class="muted" style="margin-top:8px">No app do banco: abra o comprovante, faça um print (captura de tela) e depois volte aqui para selecionar o print na galeria. Se preferir, você também pode enviar o comprovante em PDF.</div>`);
+            abrirModal();
+            return;
+        }
+
+        const form = new FormData();
+        form.append("file", file);
+
+        try {
+            const url = `/api/solicitacoes/${encodeURIComponent(pedido.id)}/comprovante?mesa=${encodeURIComponent(state.mesa)}&token=${encodeURIComponent(state.token)}`;
+            const res = await fetch(url, { method: "POST", body: form });
+            if (!res.ok) {
+                let j = {};
+                try { j = await res.json(); } catch {}
+
+                const err = String(j.error || res.status || "");
+                let msg = err;
+                if (err === "extensao_nao_permitida") {
+                    msg = "Formato não permitido. Envie PDF ou foto (JPG/PNG).";
+                } else if (err === "arquivo_invalido" || err === "arquivo_nao_enviado") {
+                    msg = "Arquivo inválido. Tente tirar uma foto do comprovante.";
+                } else if (err === "comprovante_indisponivel") {
+                    msg = "Comprovante disponível apenas quando o pedido for respondido como PIX.";
+                }
+
+                setModal("Comprovante", `<div><strong>Falha ao enviar comprovante:</strong> ${msg}</div>`);
+                abrirModal();
+                return;
+            }
+        } catch {
+            setModal("Comprovante", `<div><strong>Falha ao enviar comprovante.</strong></div>`);
+            abrirModal();
+            return;
+        }
+
+        setModal("Comprovante", `<div><strong>Comprovante enviado com sucesso.</strong></div><div class="muted" style="margin-top:8px">Aguarde o operador confirmar o pagamento.</div>`);
+        abrirModal();
+        await refreshSolicitacao();
+    }
+
+    function saveLocal() {
+        localStorage.setItem(STORAGE_KEYS.carrinho, JSON.stringify(state.carrinho));
+    }
+
+    function getCartCount() {
+        return state.carrinho.reduce((acc, it) => acc + it.qtd, 0);
+    }
+
+    function getCartTotal() {
+        return state.carrinho.reduce((acc, it) => acc + it.qtd * it.preco, 0);
+    }
+
+    function updateCartBadge() {
+        document.getElementById("cartCount").innerText = String(getCartCount());
+    }
+
+    function setModal(title, bodyHtml) {
+        document.getElementById("modalTitle").innerText = title;
+        document.getElementById("modalBody").innerHTML = bodyHtml;
+    }
+
+    function lockModalRender(ms) {
+        const dur = Number(ms || 0);
+        if (!Number.isFinite(dur) || dur <= 0) return;
+        state.modalLockUntil = Date.now() + dur;
+    }
+
+    function isModalOpen() {
+        const backdrop = document.getElementById("modalBackdrop");
+        return Boolean(backdrop && backdrop.style.display === "flex");
+    }
+
+    function applyModalStatus(status) {
+        const box = document.getElementById("modalBox");
+        if (!box) return;
+
+        const s = String(status || "").trim().toUpperCase();
+        box.classList.remove("status-pendente", "status-em-atendimento", "status-respondida", "status-rejeitada");
+
+        if (s === "EM_ATENDIMENTO") {
+            box.classList.add("status-em-atendimento");
+        } else if (s === "RESPONDIDA" || s === "ACEITA" || s === "ACEITO") {
+            box.classList.add("status-respondida");
+        } else if (s === "REJEITADA" || s === "REJEITADO" || s === "CANCELADA" || s === "CANCELADO") {
+            box.classList.add("status-rejeitada");
+        } else if (s === "PENDENTE" || s === "ENVIADO") {
+            box.classList.add("status-pendente");
+        } else {
+            box.classList.add("status-pendente");
+        }
+    }
+
+    function abrirModal() {
+        const backdrop = document.getElementById("modalBackdrop");
+        backdrop.style.display = "flex";
+        backdrop.setAttribute("aria-hidden", "false");
+    }
+
+    function fecharModal() {
+        const backdrop = document.getElementById("modalBackdrop");
+        backdrop.style.display = "none";
+        backdrop.setAttribute("aria-hidden", "true");
+    }
+
+    function abrirCategorias() {
+        const cats = state.data?.categorias || [];
+        const html = `
+            <div class="category-row">
+                <button class="pill ${state.categoriaId === "__todas__" ? "active" : ""}" onclick="selecionarCategoria('__todas__')">Todas</button>
+                ${cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${c.nome}</button>`).join("")}
+            </div>
+        `;
+        setModal("Categorias", html);
+        abrirModal();
+    }
+
+    function selecionarCategoria(categoriaId) {
+        state.categoriaId = categoriaId;
+        render();
+        fecharModal();
+    }
+
+    function renderCategoriasRow() {
+        const row = document.getElementById("categoriasRow");
+        if (!row) return;
+
+        const cats = state.data?.categorias || [];
+        if (!Array.isArray(cats)) {
+            row.innerHTML = "";
+            return;
+        }
+
+        const selectedId = String(state.categoriaId || "__todas__");
+        let selectedName = "Todas";
+        if (selectedId !== "__todas__") {
+            const found = cats.find(c => String(c.id) === selectedId);
+            if (found && found.nome) selectedName = String(found.nome);
+        }
+
+        row.innerHTML = `<button class="pill active" onclick="abrirCategorias()">${escapeHtml(selectedName)}</button>`;
+    }
+
+    function addCarrinho(produtoId) {
+        const p = state.data.produtos.find(x => x.id === produtoId);
+        if (!p || !p.ativo) return;
+
+        const idx = state.carrinho.findIndex(x => x.produtoId === produtoId);
+        if (idx >= 0) {
+            state.carrinho[idx].qtd += 1;
+        } else {
+            state.carrinho.push({
+                produtoId,
+                nome: p.nome,
+                preco: p.preco,
+                qtd: 1
+            });
+        }
+        saveLocal();
+        updateCartBadge();
+    }
+
+    function alterarQtd(produtoId, delta) {
+        const idx = state.carrinho.findIndex(x => x.produtoId === produtoId);
+        if (idx < 0) return;
+        state.carrinho[idx].qtd += delta;
+        if (state.carrinho[idx].qtd <= 0) state.carrinho.splice(idx, 1);
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    function limparCarrinho() {
+        state.carrinho = [];
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    function getPedidoAtual() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.pedido);
+            const p = raw ? JSON.parse(raw) : null;
+            if (!p || !p.id) return null;
+            const kind = String(p.kind || "").toUpperCase();
+            // Evita reaproveitar pedido antigo de outra mesa/token
+            if (kind !== "DELIVERY") {
+                if (state.mesa && String(p.mesa || "") !== String(state.mesa)) return null;
+                if (state.token && String(p.token || "") !== String(state.token)) return null;
+            }
+            // Compatibilidade: versões antigas salvavam status "ENVIADO"
+            if (String(p.status || "").toUpperCase() === "ENVIADO") {
+                p.status = "PENDENTE";
+            }
+
+            // Expira pedidos muito antigos para não aparecerem como "pedido atual" para sempre
+            // (o carrinho é um dispositivo de mesa; pedido antigo não deve ficar meses visível).
+            try {
+                const created = Date.parse(String(p.criadoEm || p.criado_em || ""));
+                if (Number.isFinite(created)) {
+                    const ageMs = Date.now() - created;
+                    if (ageMs > 12 * 60 * 60 * 1000) {
+                        return null;
+                    }
+                }
+            } catch {
+            }
+
+            return p;
+        } catch {
+            return null;
+        }
+    }
+
+    function savePedidoAtual(pedido) {
+        localStorage.setItem(STORAGE_KEYS.pedido, JSON.stringify(pedido));
+    }
+
+    function clearPedidoAtual() {
+        try {
+            localStorage.removeItem(STORAGE_KEYS.pedido);
+        } catch {
+        }
+    }
+
+    function safeClearPedidoAtual() {
+        const p = getPedidoAtual();
+        if (!p) {
+            clearPedidoAtual();
+            abrirCarrinho();
+            return;
+        }
+
+        const st = String(p.status || "").toUpperCase();
+        if (st === "PENDENTE" || st === "EM_ATENDIMENTO") {
+            setModal(
+                "Pedido em andamento",
+                `<div><strong>Este pedido já foi enviado e está em andamento.</strong></div>
+                 <div class="muted" style="margin-top:8px">Para evitar perda de atualização de status, não é possível limpar o pedido agora.</div>
+                 <div style="margin-top:14px"><button onclick="fecharModal()">OK</button></div>`
+            );
+            abrirModal();
+            return;
+        }
+
+        const ok = confirm("Deseja realmente limpar o pedido deste dispositivo?\n\nIsso não cancela no PDV, apenas remove desta tela.");
+        if (!ok) return;
+        clearPedidoAtual();
+        abrirCarrinho();
+    }
+
+    async function enviarPedido() {
+        if (state.carrinho.length === 0) return;
+
+        if (state.sending) return;
+
+        const pagamento_preferido = String(state.payMethod || "DINHEIRO").toUpperCase();
+
+        const produtosMap = new Map((state.data?.produtos || []).map(p => [p.id, p]));
+        const itens = state.carrinho.map(it => {
+            const p = produtosMap.get(it.produtoId);
+            const pdvCode = p && p.pdvCode ? String(p.pdvCode) : "";
+            return {
+                product_code: pdvCode || String(it.produtoId),
+                nome: it.nome,
+                qty: it.qtd
+            };
+        });
+
+        const isSalao = Boolean(state.mesa && state.token);
+
+        let payload;
+        let url;
+        if (isSalao) {
+            payload = {
+                mesa: state.mesa,
+                token: state.token,
+                cliente_nome: String(state.clientName || "").trim(),
+                pagamento_preferido,
+                itens,
+                total_estimado: getCartTotal()
+            };
+            url = "/api/solicitacoes";
+        } else {
+            const nome = String(state.clientName || "").trim();
+            const whatsapp = String(state.clientWhatsapp || "").trim();
+            if (!nome) {
+                setModal("Delivery / Retirada", `<div><strong>Informe o nome do cliente.</strong></div>`);
+                abrirModal();
+                return;
+            }
+            if (!whatsapp) {
+                setModal("Delivery / Retirada", `<div><strong>Informe o WhatsApp do cliente.</strong></div>`);
+                abrirModal();
+                return;
+            }
+
+            const tipo_entrega = String(state.deliveryType || "DELIVERY").toUpperCase();
+            let endereco = null;
+            if (tipo_entrega === "DELIVERY") {
+                const rua = String(state.deliveryRua || "").trim();
+                const numero = String(state.deliveryNumero || "").trim();
+                const bairro = String(state.deliveryBairro || "").trim();
+                const cidade = String(state.deliveryCidade || "").trim();
+                if (!rua || !numero || !bairro || !cidade) {
+                    setModal("Delivery / Retirada", `<div><strong>Preencha endereço completo (rua, número, bairro e cidade).</strong></div>`);
+                    abrirModal();
+                    return;
+                }
+                endereco = {
+                    rua,
+                    numero,
+                    bairro,
+                    cidade,
+                    referencia: String(state.deliveryRef || "").trim() || null
+                };
+            }
+
+            let troco_para = null;
+            if (pagamento_preferido === "DINHEIRO") {
+                const trocoRaw = String(state.deliveryTroco || "").trim();
+                if (trocoRaw) {
+                    const n = Number(trocoRaw.replace(",", "."));
+                    if (!Number.isFinite(n) || n < 0) {
+                        setModal("Delivery / Retirada", `<div><strong>Troco inválido.</strong></div>`);
+                        abrirModal();
+                        return;
+                    }
+                    troco_para = n;
+                }
+            }
+
+            payload = {
+                cliente_nome: nome,
+                cliente_whatsapp: whatsapp,
+                tipo_entrega: (tipo_entrega === "RETIRADA" ? "RETIRADA" : "DELIVERY"),
+                endereco,
+                troco_para,
+                observacoes: String(state.deliveryObs || "").trim() || null,
+                pagamento_preferido,
+                itens,
+                total_estimado: getCartTotal()
+            };
+            url = "/api/public/pedidos";
+        }
+
+        let res;
+        try {
+            state.sending = true;
+            abrirCarrinho();
+            res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+        } catch {
+            state.sending = false;
+            setModal("Erro", `<div><strong>Não foi possível enviar o pedido.</strong></div>`);
+            abrirModal();
+            return;
+        }
+
+        if (!res.ok) {
+            state.sending = false;
+            let j = {};
+            try { j = await res.json(); } catch {}
+            setModal("Erro", `<div><strong>Falha ao enviar:</strong> ${(j.error || "desconhecido")}</div>`);
+            abrirModal();
+            return;
+        }
+
+        const out = await res.json();
+        const kind = isSalao ? "SALAO" : "DELIVERY";
+        const pedido = {
+            id: out.id,
+            kind,
+            mesa: isSalao ? state.mesa : null,
+            token: isSalao ? state.token : null,
+            access_token: (!isSalao && out.token) ? out.token : null,
+            criadoEm: new Date().toISOString(),
+            status: "PENDENTE",
+            cliente_nome: String(state.clientName || "").trim(),
+            cliente_whatsapp: !isSalao ? String(state.clientWhatsapp || "").trim() : null,
+            tipo_entrega: !isSalao ? String(state.deliveryType || "DELIVERY").toUpperCase() : null,
+            endereco: !isSalao ? {
+                rua: String(state.deliveryRua || "").trim(),
+                numero: String(state.deliveryNumero || "").trim(),
+                bairro: String(state.deliveryBairro || "").trim(),
+                cidade: String(state.deliveryCidade || "").trim(),
+                referencia: String(state.deliveryRef || "").trim() || null
+            } : null,
+            troco_para: !isSalao ? (String(state.deliveryTroco || "").trim() || null) : null,
+            observacoes: !isSalao ? (String(state.deliveryObs || "").trim() || null) : null,
+            pagamento_preferido,
+            itens: state.carrinho.map(it => ({
+                produtoId: it.produtoId,
+                nome: it.nome,
+                qtd: it.qtd,
+                preco: it.preco
+            })),
+            total: getCartTotal()
+        };
+
+        savePedidoAtual(pedido);
+        state.sending = false;
+        state.carrinho = [];
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    async function refreshSolicitacao() {
+        const pedido = getPedidoAtual();
+        if (!pedido || !pedido.id) return;
+
+        const kind = String(pedido.kind || "").toUpperCase();
+        if (kind !== "DELIVERY") {
+            if (!state.mesa || !state.token) return;
+        }
+
+        try {
+            const url = (kind === "DELIVERY")
+                ? `/api/public/pedidos/${encodeURIComponent(pedido.id)}?token=${encodeURIComponent(String(pedido.access_token || ""))}`
+                : `/api/solicitacoes/${encodeURIComponent(pedido.id)}?mesa=${encodeURIComponent(state.mesa)}&token=${encodeURIComponent(state.token)}`;
+            const res = await fetch(url, { cache: "no-store" });
+            if (!res.ok) {
+                // Se o pedido não existe mais (ou token inválido), limpa o estado local
+                if (res.status === 404 || res.status === 401 || res.status === 403) {
+                    clearPedidoAtual();
+                    const backdrop = document.getElementById("modalBackdrop");
+                    if (backdrop && backdrop.style.display === "flex") {
+                        abrirCarrinho();
+                    }
+                }
+                return;
+            }
+            const s = await res.json();
+            pedido.status = s.status || pedido.status;
+            pedido.pdv_id = s.pdv_id || pedido.pdv_id || null;
+            pedido.sale_id = s.sale_id || pedido.sale_id || null;
+            if (s.total_estimado !== undefined) pedido.total_estimado = s.total_estimado;
+            pedido.atualizadoEm = new Date().toISOString();
+            pedido.resposta = s.resposta || null;
+            pedido.comprovante = s.comprovante || null;
+            pedido.pdv_status = s.pdv_status || null;
+            pedido.pdv_status_em = s.pdv_status_em || null;
+            savePedidoAtual(pedido);
+
+            const pdvStatus = String(pedido.pdv_status || "").toUpperCase();
+            if (pdvStatus === "FINALIZADA") {
+                clearPedidoAtual();
+                if (isModalOpen()) {
+                    setModal(
+                        "Pedido encerrado",
+                        `<div><strong>Seu pedido foi finalizado no PDV.</strong></div>`
+                        + `<div class="muted" style="margin-top:8px">Você já pode fazer um novo pedido.</div>`
+                        + `<div style="margin-top:14px"><button onclick="fecharModal()">OK</button></div>`
+                    );
+                    abrirModal();
+                }
+                return;
+            }
+
+            if (isModalOpen()) {
+                // Evita re-render enquanto o cliente está escolhendo a forma de pagamento
+                // (o select pode "fechar sozinho" se o modal for recriado pelo refresh)
+                if (Date.now() < (state.modalLockUntil || 0)) return;
+                const title = String(document.getElementById("modalTitle")?.innerText || "");
+                if (title === "Carrinho / Pedido") {
+                    abrirCarrinho();
+                }
+            }
+        } catch {
+        }
+    }
+
+    function atualizarStatusPedido(novoStatus) {
+    }
+
+    function abrirCarrinho() {
+        // Se o modal já está aberto, preservar a seleção atual antes de recriar o HTML
+        // (evita voltar para o primeiro option em alguns navegadores/mobile)
+        if (isModalOpen()) {
+            capturePayMethodFromDom();
+        }
+
+        const isSalao = Boolean(state.mesa && state.token);
+
+        const pedido = getPedidoAtual();
+        const total = getCartTotal();
+
+        const cartHtml = state.carrinho.length === 0
+            ? `<div class="muted">Carrinho vazio.</div>`
+            : state.carrinho.map(it => `
+                <div class="cart-row">
+                    <div>
+                        <div><strong>${it.nome}</strong></div>
+                        <div class="muted">${formatBRL(it.preco)} cada</div>
+                    </div>
+                    <div class="qty">
+                        <button onclick="alterarQtd('${it.produtoId}', -1)">-</button>
+                        <strong>${it.qtd}</strong>
+                        <button onclick="alterarQtd('${it.produtoId}', 1)">+</button>
+                    </div>
+                    <div><strong>${formatBRL(it.preco * it.qtd)}</strong></div>
+                </div>
+            `).join("");
+
+        const respostaHtml = pedido && pedido.resposta
+            ? (() => {
+                if (pedido.resposta.tipo === "IR_CAIXA") {
+                    return `<div style="margin-top:10px"><strong>Resposta:</strong> Dirija-se ao caixa para realizar o PAGAMENTO.</div>`;
+                }
+                if (pedido.resposta.tipo === "ENVIAR_PIX") {
+                    const chave = pedido.resposta.pix && pedido.resposta.pix.chave ? pedido.resposta.pix.chave : "";
+                    return `<div style="margin-top:10px"><strong>Resposta:</strong> PIX</div><div class="muted">Chave: ${chave || "(não informada)"}</div>`;
+                }
+                if (pedido.resposta.tipo === "PAGAMENTO_CONFIRMADO") {
+                    return `<div style="margin-top:10px"><strong>Pagamento confirmado.</strong></div><div class="muted">Seu pedido está a caminho.</div>`;
+                }
+                return "";
+            })()
+            : "";
+
+        const comprovanteUi = isSalao && pedido && pedido.resposta && pedido.resposta.tipo === "ENVIAR_PIX"
+            ? (pedido.comprovante
+                ? `<div style="margin-top:12px" class="muted">Comprovante enviado.</div>`
+                : `
+                    <div style="margin-top:12px">
+                        <div class="muted" style="margin-bottom:6px">Enviar comprovante (PRINT do app do banco ou PDF):</div>
+                        <div class="muted" style="margin-bottom:10px">Preferência: PRINT. Abra o comprovante no app do banco, faça um print (captura de tela) e selecione o print aqui. Alternativa: enviar PDF.</div>
+                        <input id="comprovanteFile" type="file" accept="image/*,application/pdf" style="width:100%" />
+                        <div style="margin-top:10px"><button class="btn-comprovante" onclick="uploadComprovante()">Enviar comprovante</button></div>
+                    </div>
+                  `)
+            : "";
+
+        const pedidoLocked = Boolean(pedido) && state.carrinho.length === 0;
+        const shouldShowPedido = pedidoLocked;
+        let pedidoIdText = "";
+        if (pedido) {
+            const st = String(pedido.status || "").toUpperCase();
+            if ((st === "EM_ATENDIMENTO" || st === "RESPONDIDA") && (pedido.sale_id || pedido.pdv_id)) {
+                pedidoIdText = String(pedido.sale_id || pedido.pdv_id);
+            } else {
+                // Não exibe o ID gerado antes do PDV aceitar
+                pedidoIdText = "Aguardando confirmação do PDV";
+            }
+        }
+
+        const pedidoTotal = pedido && pedido.total_estimado !== undefined && pedido.total_estimado !== null
+            ? Number(pedido.total_estimado)
+            : (pedido ? Number(pedido.total || 0) : 0);
+
+        const pedidoConfirmadoNoPDV = Boolean(pedido && (pedido.sale_id || pedido.pdv_id));
+
+        const pedidoHtml = shouldShowPedido
+            ? `
+                <div style="margin-top:16px">
+                    <div><strong>Pedido:</strong> ${pedidoIdText}</div>
+                    <div><strong>Status:</strong> <span class="status">${humanStatus(pedido.status)}</span></div>
+                    <div style="margin-top:8px; font-size:18px"><strong>Total:</strong> ${pedidoConfirmadoNoPDV ? formatBRL(pedidoTotal) : "(aguardando confirmação do PDV)"}</div>
+                    ${respostaHtml}
+                    ${comprovanteUi}
+                </div>
+            `
+            : (state.carrinho.length === 0
+                ? `<div style="margin-top:16px" class="muted">Nenhum pedido enviado ainda neste dispositivo.</div>`
+                : "");
+
+        const pedidoPay = pedido ? String(pedido.pagamento_preferido || state.payMethod || "DINHEIRO").toUpperCase() : "";
+
+        const deliveryUi = isSalao ? "" : (
+            `<div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">WhatsApp do cliente (obrigatório):</div>
+                <input id="clientWhatsapp" value="${String(state.clientWhatsapp || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientWhatsappChange(this.value)" placeholder="(99) 99999-9999" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+            </div>
+
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Entrega:</div>
+                <select id="deliveryType" onclick="lockModalRender(6000)" onfocus="lockModalRender(6000)" onchange="onDeliveryTypeChange(this.value)" style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)">
+                    <option value="DELIVERY" ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "selected" : ""}>Delivery</option>
+                    <option value="RETIRADA" ${String(state.deliveryType||"").toUpperCase()==="RETIRADA" ? "selected" : ""}>Retirada</option>
+                </select>
+            </div>
+
+            ${String(state.deliveryType||"").toUpperCase() === "DELIVERY" ?
+            `<div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Endereço (obrigatório):</div>
+                <div style="display:grid; grid-template-columns: 1fr 140px; gap:10px">
+                    <input value="${String(state.deliveryRua||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRua', this.value)" placeholder="Rua" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                    <input value="${String(state.deliveryNumero||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryNumero', this.value)" placeholder="Número" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+            </div>
+            <div style="margin-top:10px">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+                    <input value="${String(state.deliveryBairro||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryBairro', this.value)" placeholder="Bairro" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                    <input value="${String(state.deliveryCidade||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryCidade', this.value)" placeholder="Cidade" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+            </div>
+            <div style="margin-top:10px">
+                <div class="muted" style="margin-bottom:6px">Referência (opcional):</div>
+                <input value="${String(state.deliveryRef||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRef', this.value)" placeholder="Próximo a..." style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+            </div>`
+            : ""}
+
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Observações (opcional):</div>
+                <input value="${String(state.deliveryObs||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryObs', this.value)" placeholder="Ex.: sem cebola" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+            </div>`
+        );
+
+        const trocoUi = (!isSalao && String(state.payMethod||"").toUpperCase()==="DINHEIRO")
+            ? `<div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Troco para (opcional):</div>
+                    <input value="${String(state.deliveryTroco||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryTroco', this.value)" placeholder="Ex.: 100" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+               </div>`
+            : "";
+
+        const paymentUi = pedidoLocked
+            ? `
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Forma de pagamento (preferência):</div>
+                    <div><strong>${pedidoPay || "-"}</strong></div>
+                </div>
+              `
+            : `
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Nome do cliente (${isSalao ? "opcional" : "obrigatório"}):</div>
+                    <input id="clientName" value="${String(state.clientName || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientNameChange(this.value)" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+
+                ${deliveryUi}
+
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Forma de pagamento (preferência):</div>
+                    <select id="payMethod" onclick="lockModalRender(6000)" onfocus="lockModalRender(6000)" onchange="onPayMethodChange(this.value)" style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)">
+                        <option value="DINHEIRO" ${String(state.payMethod||"").toUpperCase()==="DINHEIRO" ? "selected" : ""}>Dinheiro</option>
+                        <option value="PIX" ${String(state.payMethod||"").toUpperCase()==="PIX" ? "selected" : ""}>PIX</option>
+                        <option value="CARTAO" ${String(state.payMethod||"").toUpperCase()==="CARTAO" ? "selected" : ""}>Cartão</option>
+                        <option value="MISTO" ${String(state.payMethod||"").toUpperCase()==="MISTO" ? "selected" : ""}>Misto</option>
+                    </select>
+                </div>
+
+                ${trocoUi}
+              `;
+
+        const actions = `
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px">
+                ${state.carrinho.length > 0
+                    ? (pedidoLocked
+                        ? `<button onclick="enviarPedido()" ${state.sending ? "disabled" : ""}>${state.sending ? "Enviando..." : "Enviar pedido"}</button>`
+                        : `<button onclick="enviarPedido()" ${state.sending ? "disabled" : ""}>${state.sending ? "Enviando..." : "Enviar pedido"}</button>
+                           <button onclick="limparCarrinho()">Limpar</button>`)
+                    : (pedidoLocked ? `<button onclick="safeClearPedidoAtual()">Limpar pedido deste dispositivo</button>` : "")}
+            </div>
+            ${state.carrinho.length > 0 ? `<div style="margin-top:10px; font-size:18px"><strong>Total do carrinho:</strong> ${formatBRL(total)}</div>` : ""}
+        `;
+
+        setModal("Carrinho / Pedido", cartHtml + paymentUi + actions + pedidoHtml);
+        applyModalStatus(pedido ? pedido.status : null);
+        abrirModal();
+
+        // Após recriar o HTML, forçar o value do select para refletir o estado persistido
+        try {
+            const pm = document.getElementById("payMethod");
+            if (pm) pm.value = String(state.payMethod || "DINHEIRO").toUpperCase();
+        } catch {
+        }
+    }
+
+    function filtrarProdutos() {
+        state.busca = document.getElementById("search").value.toLowerCase();
+        render();
+    }
+
+    function produtoVisivel(p) {
+        if (!p.ativo) return false;
+        const nome = (p.nome || "").toLowerCase();
+        const desc = (p.descricao || "").toLowerCase();
+        const matchBusca = !state.busca || nome.includes(state.busca) || desc.includes(state.busca);
+        const matchCat = state.categoriaId === "__todas__" || p.categoriaId === state.categoriaId;
+        return matchBusca && matchCat;
+    }
+
+    function renderQueridinhos() {
+        const container = document.getElementById("queridinhos");
+        if (!container) return;
+        const queridinhos = (state.data.produtos || [])
+            .filter(p => p.ativo && p.queridinho)
+            .slice(0, 6);
+
+        container.innerHTML = queridinhos.map(p => `
+            <div class="card">
+                <img src="${p.imagem}" alt="${p.nome}">
+                <p class="card-title">${escapeHtml(p.nome || "")}</p>
+                <div class="price-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+            </div>
+        `).join("");
+    }
+
+    function renderLista() {
+        const lista = document.getElementById("listaProdutos");
+        if (!lista) return;
+        const renderProduto = (p) => `
+            <div class="product" data-nome="${(p.nome || "").toLowerCase()}">
+                <img src="${p.imagem}" alt="${p.nome}">
+                <div class="product-info">
+                    <div class="product-title">${escapeHtml(p.nome || "")}</div>
+                    ${(() => {
+                        const raw = String(p.descricao || "");
+                        const trimmed = raw.trim();
+                        if (!trimmed) return "";
+                        const nomeEnc = encodeURIComponent(String(p.nome || ""));
+                        const descEnc = encodeURIComponent(String(raw || ""));
+                        return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${nomeEnc}','${descEnc}')">Descrição</button>`;
+                    })()}
+                </div>
+                <div class="add-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+            </div>
+        `;
+
+        const produtosAll = (state.data.produtos || []).filter(p => {
+            if (!p.ativo) return false;
+            const nome = (p.nome || "").toLowerCase();
+            const desc = (p.descricao || "").toLowerCase();
+            const matchBusca = !state.busca || nome.includes(state.busca) || desc.includes(state.busca);
+            return matchBusca;
+        });
+
+        if (state.categoriaId !== "__todas__") {
+            const produtos = produtosAll.filter(p => p.categoriaId === state.categoriaId);
+            if (produtos.length === 0) {
+                lista.innerHTML = `<div class="product"><div class="product-info"><strong>Nenhum produto encontrado.</strong><div class="muted">Tente ajustar a busca ou a categoria.</div></div></div>`;
+                return;
+            }
+            lista.innerHTML = produtos.map(renderProduto).join("");
+            return;
+        }
+
+        if (produtosAll.length === 0) {
+            lista.innerHTML = `<div class="product"><div class="product-info"><strong>Nenhum produto encontrado.</strong><div class="muted">Tente ajustar a busca ou a categoria.</div></div></div>`;
+            return;
+        }
+
+        const cats = Array.isArray(state.data?.categorias) ? state.data.categorias : [];
+        const byCat = new Map();
+        for (const p of produtosAll) {
+            const cid = String(p.categoriaId || "");
+            if (!byCat.has(cid)) byCat.set(cid, []);
+            byCat.get(cid).push(p);
+        }
+
+        const seen = new Set();
+        const chunks = [];
+        for (const c of cats) {
+            const cid = String(c?.id || "");
+            const items = byCat.get(cid) || [];
+            if (!cid || items.length === 0) continue;
+            seen.add(cid);
+            chunks.push(`<div class="product" style="padding: 12px 14px"><div class="product-info"><div class="product-title">${escapeHtml(String(c.nome || ""))}</div></div></div>`);
+            chunks.push(items.map(renderProduto).join(""));
+        }
+
+        const leftovers = [];
+        for (const [cid, items] of byCat.entries()) {
+            if (!cid || seen.has(cid)) continue;
+            leftovers.push(...items);
+        }
+        if (leftovers.length > 0) {
+            chunks.push(`<div class="product" style="padding: 12px 14px"><div class="product-info"><div class="product-title">Produtos</div></div></div>`);
+            chunks.push(leftovers.map(renderProduto).join(""));
+        }
+
+        lista.innerHTML = chunks.join("");
+    }
+
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function abrirDescricaoProdutoEncoded(nomeEnc, descEnc) {
+        let nome = "";
+        let descricao = "";
+        try {
+            nome = decodeURIComponent(String(nomeEnc || ""));
+        } catch {
+            nome = String(nomeEnc || "");
+        }
+        try {
+            descricao = decodeURIComponent(String(descEnc || ""));
+        } catch {
+            descricao = String(descEnc || "");
+        }
+
+        const n = escapeHtml(String(nome || ""));
+        const raw = String(descricao || "").trim();
+        const normalized = raw.replace(/\\n/g, "\n");
+        const body = normalized
+            ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
+            : `<div class="muted">Sem descrição.</div>`;
+        setModal(n || "Descrição", body);
+        abrirModal();
+    }
+
+    function render() {
+        if (!state.data) return;
+        const cats = state.data?.categorias || [];
+        if (state.categoriaId !== "__todas__" && !cats.some(c => c.id === state.categoriaId)) {
+            state.categoriaId = "__todas__";
+        }
+        renderCategoriasRow();
+        renderQueridinhos();
+        renderLista();
+    }
+
+    function aplicarUI() {
+        const logo = state.data?.ui?.logo;
+        const logoImg = document.getElementById("logoImg");
+        const brandText = document.getElementById("brandText");
+
+        function normalizeAssetUrl(v) {
+            const s = String(v || "").trim();
+            if (!s) return "";
+            const low = s.toLowerCase();
+            if (low.startsWith("http://") || low.startsWith("https://")) return s;
+            if (s.startsWith("/assets/")) return s;
+            if (s.startsWith("assets/")) return "/" + s;
+            if (s.startsWith("/")) return s;
+            return "/assets/" + s;
+        }
+
+        if (logo) {
+            logoImg.src = normalizeAssetUrl(logo);
+            logoImg.style.display = "block";
+            logoImg.onerror = () => {
+                logoImg.style.display = "none";
+            };
+            brandText.style.display = "none";
+        } else {
+            logoImg.style.display = "none";
+            brandText.style.display = "block";
+        }
+    }
+
+    function iniciarBanner() {
+        const imagens = state.data?.ui?.banner?.imagens || [];
+        const intervaloMs = state.data?.ui?.banner?.intervaloMs || 3500;
+        const bannerImg = document.getElementById("bannerImg");
+        const bannerFallback = document.getElementById("bannerFallback");
+
+        function normalizeAssetUrl(v) {
+            const s = String(v || "").trim();
+            if (!s) return "";
+            const low = s.toLowerCase();
+            if (low.startsWith("http://") || low.startsWith("https://")) return s;
+            if (s.startsWith("/assets/")) return s;
+            if (s.startsWith("assets/")) return "/" + s;
+            if (s.startsWith("/")) return s;
+            return "/assets/" + s;
+        }
+
+        if (!Array.isArray(imagens) || imagens.length === 0) {
+            bannerImg.style.display = "none";
+            bannerFallback.style.display = "block";
+            return;
+        }
+
+        const normalized = imagens.map(normalizeAssetUrl).filter(Boolean);
+        if (normalized.length === 0) {
+            bannerImg.style.display = "none";
+            bannerFallback.style.display = "block";
+            return;
+        }
+
+        // Evita reiniciar o banner a cada refresh se nada mudou
+        const sig = `${intervaloMs}|${normalized.join("|")}`;
+        if (state.bannerSig === sig && state.bannerTimer) {
+            return;
+        }
+        state.bannerSig = sig;
+
+        function setBannerAt(i) {
+            const src = normalized[i % normalized.length];
+            bannerImg.onerror = () => {
+                // tenta próxima imagem; se todas falharem, mostra fallback
+                let tries = 0;
+                let j = (i + 1) % normalized.length;
+                while (tries < normalized.length) {
+                    const nextSrc = normalized[j % normalized.length];
+                    if (nextSrc && nextSrc !== bannerImg.src) {
+                        bannerImg.src = nextSrc;
+                        return;
+                    }
+                    tries += 1;
+                    j = (j + 1) % normalized.length;
+                }
+                bannerImg.style.display = "none";
+                bannerFallback.style.display = "block";
+            };
+            bannerImg.src = src;
+            bannerImg.style.display = "block";
+            bannerFallback.style.display = "none";
+        }
+
+        if (state.bannerTimer) {
+            clearInterval(state.bannerTimer);
+            state.bannerTimer = null;
+        }
+
+        state.bannerIndex = 0;
+        setBannerAt(state.bannerIndex);
+        state.bannerTimer = setInterval(() => {
+            state.bannerIndex = (state.bannerIndex + 1) % normalized.length;
+            setBannerAt(state.bannerIndex);
+        }, intervaloMs);
+    }
+
+    async function carregarDados() {
+        const res = await fetch("/api/data", { cache: "no-store" });
+        const status = res.status;
+        const ct = String(res.headers.get("content-type") || "");
+        let bodyText = "";
+        try {
+            bodyText = await res.text();
+        } catch {
+            bodyText = "";
+        }
+
+        if (!res.ok) {
+            const msg = (bodyText || "").slice(0, 500);
+            throw new Error(`api_data_http_${status}: ${msg}`);
+        }
+
+        if (ct.includes("application/json")) {
+            try {
+                return JSON.parse(bodyText || "{}");
+            } catch {
+                throw new Error("api_data_json_parse_error");
+            }
+        }
+
+        // fallback
+        try {
+            return JSON.parse(bodyText || "{}");
+        } catch {
+            throw new Error("api_data_not_json");
+        }
+    }
+
+    async function refreshCatalogo() {
+        try {
+            const novo = await carregarDados();
+            state.data = novo;
+            aplicarUI();
+            iniciarBanner();
+            render();
+        } catch {
+        }
+    }
+
+    async function init() {
+        const params = new URLSearchParams(window.location.search);
+        state.admin = params.get("admin") === "1";
+        document.getElementById("adminHint").style.display = state.admin ? "block" : "none";
+
+        const mtUrl = getMesaTokenFromUrl();
+        const mtLocal = getMesaTokenFromLocal();
+        const mt = (mtUrl && mtUrl.mesa && mtUrl.token) ? mtUrl : mtLocal;
+        state.mesa = mt.mesa;
+        state.token = mt.token;
+        if (mtUrl && mtUrl.mesa && mtUrl.token) {
+            saveMesaTokenToLocal(mtUrl.mesa, mtUrl.token);
+            clearMesaTokenFromUrl();
+        }
+
+        loadLocal();
+        updateCartBadge();
+
+        try {
+            state.data = await carregarDados();
+            aplicarUI();
+            iniciarBanner();
+            render();
+
+            if (state.solicitacaoTimer) {
+                clearInterval(state.solicitacaoTimer);
+                state.solicitacaoTimer = null;
+            }
+            state.solicitacaoTimer = setInterval(async () => {
+                await refreshSolicitacao();
+            }, 2500);
+
+            if (state.refreshTimer) {
+                clearInterval(state.refreshTimer);
+                state.refreshTimer = null;
+            }
+            state.refreshTimer = setInterval(refreshCatalogo, 5000);
+        } catch (e) {
+            try { console.error(e); } catch {}
+            const msg = (e && e.message) ? String(e.message) : String(e || "erro");
+            setModal(
+                "Erro ao carregar produtos",
+                `<div><strong>Não foi possível carregar os dados do cardápio.</strong></div>`
+                + `<div class="muted" style="margin-top:10px">Detalhe: ${escapeHtml(msg)}</div>`
+            );
+            abrirModal();
+        }
+    }
+
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") fecharModal();
+    });
+
+    init();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>DORAFÁ Tropical Brasil - Cardápio</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: linear-gradient(#d9f3a2, #f6e27f);
+        }
+
+        :root {
+            --verde: #0a5c2f;
+            --amarelo: #fefecf;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            color: #0a5c2f;
+            font-weight: bold;
+        }
+
+        .search-bar {
+            margin: 10px auto;
+            width: 90%;
+        }
+
+        .search-bar input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border-radius: 30px;
+            border: none;
+        }
+
+        .banner {
+            margin: 20px auto;
+            width: 90%;
+            height: 200px;
+            background: #fefecf;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+        }
+
+        .section-title {
+            background: #0a5c2f;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .cards {
+            display: flex;
+            justify-content: space-around;
+            padding: 20px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: #fefecf;
+            border-radius: 20px;
+            width: 220px;
+            padding: 15px;
+            text-align: center;
+            margin: 10px;
+        }
+
+        .card img {
+            width: 100%;
+            border-radius: 15px;
+        }
+
+        .price-btn {
+            margin-top: 10px;
+            background: #0a5c2f;
+            color: white;
+            padding: 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .price-btn[aria-disabled="true"],
+        .add-btn[aria-disabled="true"] {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .product-list {
+            width: 90%;
+            margin: auto;
+        }
+
+        .product {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fefecf;
+            border-radius: 20px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .product img {
+            width: 80px;
+            border-radius: 10px;
+        }
+
+        .product-info {
+            flex: 1;
+            margin-left: 15px;
+        }
+
+        .add-btn {
+            background: #0a5c2f;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        footer {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+        }
+
+        button {
+            background: #0a5c2f;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .pill {
+            background: var(--amarelo);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            color: var(--verde);
+            border-radius: 999px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .pill.active {
+            background: var(--verde);
+            color: white;
+        }
+
+        .toolbar {
+            width: 90%;
+            margin: 0 auto;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .category-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 999;
+        }
+
+        .modal {
+            width: min(720px, 100%);
+            background: var(--amarelo);
+            border-radius: 18px;
+            border: 2px solid rgba(10, 92, 47, 0.35);
+            padding: 16px;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .modal-title {
+            font-weight: bold;
+            color: var(--verde);
+            font-size: 18px;
+        }
+
+        .modal-close {
+            background: transparent;
+            color: var(--verde);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            border-radius: 12px;
+            padding: 8px 10px;
+        }
+
+        .cart-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(10, 92, 47, 0.2);
+        }
+
+        .qty {
+            display: inline-flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .qty button {
+            padding: 8px 12px;
+            border-radius: 12px;
+        }
+
+        .muted {
+            opacity: 0.75;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <div id="pdvLabel">PDV: 001</div>
+    <div>DORAFÁ Tropical Brasil</div>
+    <div style="cursor:pointer" onclick="abrirCarrinho()">🛒 <span id="cartCount">0</span></div>
+</header>
+
+<div class="search-bar">
+    <input type="text" id="search" placeholder="Busque pelo seu produto favorito" onkeyup="filtrarProdutos()">
+</div>
+
+<div class="banner">
+    BANNER INTERATIVO
+</div>
+
+<div class="section-title">QUERIDINHOS</div>
+
+<div class="cards" id="queridinhos"></div>
+
+<div class="toolbar">
+    <div class="category-row" id="categoriasRow"></div>
+    <div class="muted" id="adminHint" style="display:none">Modo gestão: você pode alterar status do pedido.</div>
+</div>
+
+<div class="product-list" id="listaProdutos">
+</div>
+
+<footer>
+    <button onclick="abrirCarrinho()">Ver Pedido</button>
+    <button onclick="abrirCategorias()">Categorias</button>
+</footer>
+
+<div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title" id="modalTitle">Carrinho</div>
+            <button class="modal-close" onclick="fecharModal()">Fechar</button>
+        </div>
+        <div id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+    const STORAGE_KEYS = {
+        carrinho: "cardapio.carrinho.v1",
+        pedido: "cardapio.pedidoAtual.v1"
+    };
+
+    const state = {
+        data: null,
+        busca: "",
+        categoriaId: "__todas__",
+        carrinho: [],
+        admin: false
+    };
+
+    function formatBRL(valor) {
+        return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    function loadLocal() {
+        try {
+            const cartRaw = localStorage.getItem(STORAGE_KEYS.carrinho);
+            state.carrinho = cartRaw ? JSON.parse(cartRaw) : [];
+        } catch {
+            state.carrinho = [];
+        }
+    }
+
+    function saveLocal() {
+        localStorage.setItem(STORAGE_KEYS.carrinho, JSON.stringify(state.carrinho));
+    }
+
+    function getCartCount() {
+        return state.carrinho.reduce((acc, it) => acc + it.qtd, 0);
+    }
+
+    function getCartTotal() {
+        return state.carrinho.reduce((acc, it) => acc + it.qtd * it.preco, 0);
+    }
+
+    function updateCartBadge() {
+        document.getElementById("cartCount").innerText = String(getCartCount());
+    }
+
+    function setModal(title, bodyHtml) {
+        document.getElementById("modalTitle").innerText = title;
+        document.getElementById("modalBody").innerHTML = bodyHtml;
+    }
+
+    function abrirModal() {
+        const backdrop = document.getElementById("modalBackdrop");
+        backdrop.style.display = "flex";
+        backdrop.setAttribute("aria-hidden", "false");
+    }
+
+    function fecharModal() {
+        const backdrop = document.getElementById("modalBackdrop");
+        backdrop.style.display = "none";
+        backdrop.setAttribute("aria-hidden", "true");
+    }
+
+    function abrirCategorias() {
+        const cats = state.data?.categorias || [];
+        const html = `
+            <div class="category-row">
+                <button class="pill ${state.categoriaId === "__todas__" ? "active" : ""}" onclick="selecionarCategoria('__todas__')">Todas</button>
+                ${cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${c.nome}</button>`).join("")}
+            </div>
+        `;
+        setModal("Categorias", html);
+        abrirModal();
+    }
+
+    function selecionarCategoria(categoriaId) {
+        state.categoriaId = categoriaId;
+        render();
+        fecharModal();
+    }
+
+    function addCarrinho(produtoId) {
+        const p = state.data.produtos.find(x => x.id === produtoId);
+        if (!p || !p.ativo) return;
+
+        const idx = state.carrinho.findIndex(x => x.produtoId === produtoId);
+        if (idx >= 0) {
+            state.carrinho[idx].qtd += 1;
+        } else {
+            state.carrinho.push({
+                produtoId,
+                nome: p.nome,
+                preco: p.preco,
+                qtd: 1
+            });
+        }
+        saveLocal();
+        updateCartBadge();
+    }
+
+    function alterarQtd(produtoId, delta) {
+        const idx = state.carrinho.findIndex(x => x.produtoId === produtoId);
+        if (idx < 0) return;
+        state.carrinho[idx].qtd += delta;
+        if (state.carrinho[idx].qtd <= 0) state.carrinho.splice(idx, 1);
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    function limparCarrinho() {
+        state.carrinho = [];
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    function getPedidoAtual() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.pedido);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function savePedidoAtual(pedido) {
+        localStorage.setItem(STORAGE_KEYS.pedido, JSON.stringify(pedido));
+    }
+
+    function gerarIdPedido() {
+        return "P" + Date.now().toString(36).toUpperCase();
+    }
+
+    function enviarPedido() {
+        if (state.carrinho.length === 0) return;
+        const pedido = {
+            id: gerarIdPedido(),
+            pdv: state.data.pdv || "001",
+            criadoEm: new Date().toISOString(),
+            status: "ENVIADO",
+            itens: state.carrinho.map(it => ({
+                produtoId: it.produtoId,
+                nome: it.nome,
+                qtd: it.qtd,
+                preco: it.preco
+            })),
+            total: getCartTotal()
+        };
+        savePedidoAtual(pedido);
+        state.carrinho = [];
+        saveLocal();
+        updateCartBadge();
+        abrirCarrinho();
+    }
+
+    function atualizarStatusPedido(novoStatus) {
+        const pedido = getPedidoAtual();
+        if (!pedido) return;
+        pedido.status = novoStatus;
+        pedido.atualizadoEm = new Date().toISOString();
+        savePedidoAtual(pedido);
+        abrirCarrinho();
+    }
+
+    function abrirCarrinho() {
+        const pedido = getPedidoAtual();
+        const total = getCartTotal();
+
+        const cartHtml = state.carrinho.length === 0
+            ? `<div class="muted">Carrinho vazio.</div>`
+            : state.carrinho.map(it => `
+                <div class="cart-row">
+                    <div>
+                        <div><strong>${it.nome}</strong></div>
+                        <div class="muted">${formatBRL(it.preco)} cada</div>
+                    </div>
+                    <div class="qty">
+                        <button onclick="alterarQtd('${it.produtoId}', -1)">-</button>
+                        <strong>${it.qtd}</strong>
+                        <button onclick="alterarQtd('${it.produtoId}', 1)">+</button>
+                    </div>
+                    <div><strong>${formatBRL(it.preco * it.qtd)}</strong></div>
+                </div>
+            `).join("");
+
+        const pedidoHtml = pedido
+            ? `
+                <div style="margin-top:16px">
+                    <div><strong>Pedido atual:</strong> ${pedido.id}</div>
+                    <div><strong>Status:</strong> <span class="status">${pedido.status}</span></div>
+                    <div class="muted">Total: ${formatBRL(pedido.total)}</div>
+                </div>
+            `
+            : `<div style="margin-top:16px" class="muted">Nenhum pedido enviado ainda neste dispositivo.</div>`;
+
+        const adminControls = state.admin && pedido
+            ? `
+                <div style="margin-top:12px">
+                    <div class="muted">Gestão (simulação de confirmação do PDV):</div>
+                    <div class="category-row" style="margin-top:8px">
+                        <button class="pill" onclick="atualizarStatusPedido('ACEITO')">Aceito</button>
+                        <button class="pill" onclick="atualizarStatusPedido('EM_PREPARO')">Em preparo</button>
+                        <button class="pill" onclick="atualizarStatusPedido('PRONTO')">Pronto</button>
+                        <button class="pill" onclick="atualizarStatusPedido('CANCELADO')">Cancelado</button>
+                    </div>
+                </div>
+            `
+            : "";
+
+        const actions = `
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px">
+                <button onclick="enviarPedido()" ${state.carrinho.length === 0 ? "disabled" : ""}>Enviar pedido</button>
+                <button onclick="limparCarrinho()" ${state.carrinho.length === 0 ? "disabled" : ""}>Limpar</button>
+            </div>
+            <div style="margin-top:10px"><strong>Total do carrinho:</strong> ${formatBRL(total)}</div>
+        `;
+
+        setModal("Carrinho / Pedido", cartHtml + actions + pedidoHtml + adminControls);
+        abrirModal();
+    }
+
+    function filtrarProdutos() {
+        state.busca = document.getElementById("search").value.toLowerCase();
+        render();
+    }
+
+    function produtoVisivel(p) {
+        if (!p.ativo) return false;
+        const nome = (p.nome || "").toLowerCase();
+        const desc = (p.descricao || "").toLowerCase();
+        const matchBusca = !state.busca || nome.includes(state.busca) || desc.includes(state.busca);
+        const matchCat = state.categoriaId === "__todas__" || p.categoriaId === state.categoriaId;
+        return matchBusca && matchCat;
+    }
+
+    function renderQueridinhos() {
+        const container = document.getElementById("queridinhos");
+        const queridinhos = (state.data.produtos || [])
+            .filter(p => p.ativo && p.queridinho)
+            .slice(0, 6);
+
+        container.innerHTML = queridinhos.map(p => `
+            <div class="card">
+                <img src="${p.imagem}" alt="${p.nome}">
+                <p>${(p.nome || "").toUpperCase()}</p>
+                <div class="price-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+            </div>
+        `).join("");
+    }
+
+    function renderCategoriasRow() {
+        const row = document.getElementById("categoriasRow");
+        const cats = state.data?.categorias || [];
+        row.innerHTML = `
+            <button class="pill ${state.categoriaId === "__todas__" ? "active" : ""}" onclick="selecionarCategoria('__todas__')">Todas</button>
+            ${cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${c.nome}</button>`).join("")}
+        `;
+    }
+
+    function renderLista() {
+        const lista = document.getElementById("listaProdutos");
+        const produtos = (state.data.produtos || []).filter(produtoVisivel);
+
+        if (produtos.length === 0) {
+            lista.innerHTML = `<div class="product"><div class="product-info"><strong>Nenhum produto encontrado.</strong><div class="muted">Tente ajustar a busca ou a categoria.</div></div></div>`;
+            return;
+        }
+
+        lista.innerHTML = produtos.map(p => `
+            <div class="product" data-nome="${(p.nome || "").toLowerCase()}">
+                <img src="${p.imagem}" alt="${p.nome}">
+                <div class="product-info">
+                    <strong>${(p.nome || "").toUpperCase()}</strong><br>
+                    Descrição: ${(p.descricao || "").toUpperCase()}
+                </div>
+                <div class="add-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+            </div>
+        `).join("");
+    }
+
+    function render() {
+        if (!state.data) return;
+        renderCategoriasRow();
+        renderQueridinhos();
+        renderLista();
+    }
+
+    async function init() {
+        const params = new URLSearchParams(window.location.search);
+        state.admin = params.get("admin") === "1";
+        document.getElementById("adminHint").style.display = state.admin ? "block" : "none";
+
+        loadLocal();
+        updateCartBadge();
+
+        try {
+            const res = await fetch("./produtos.json", { cache: "no-store" });
+            state.data = await res.json();
+            document.getElementById("pdvLabel").innerText = `PDV: ${state.data.pdv || "001"}`;
+            render();
+        } catch (e) {
+            setModal(
+                "Erro ao carregar produtos",
+                `<div><strong>Não foi possível carregar o arquivo produtos.json.</strong></div>
+                 <div class="muted" style="margin-top:8px">Isso geralmente acontece quando o HTML é aberto diretamente (file://) e o navegador bloqueia o fetch.</div>
+                 <div class="muted" style="margin-top:8px">Abra este projeto via servidor local (ex.: PowerShell: <strong>python -m http.server 5500</strong>) e acesse <strong>http://localhost:5500</strong>.</div>`
+            );
+            abrirModal();
+        }
+    }
+
+    window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") fecharModal();
+    });
+
+    init();
+</script>
+
+</body>
+</html>

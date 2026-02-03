@@ -1,0 +1,51 @@
+1. Interpretação funcional do layout (análise técnica)
+
+Opinião técnica (sinalizada):
+A imagem representa um PDV/cardápio digital híbrido, pensado para autoatendimento ou caixa, com foco em rapidez, clareza visual e conversão. Ela segue princípios clássicos de UX para food service.
+
+Funções implícitas identificadas:
+
+Campo de busca
+
+Filtra produtos em tempo real.
+
+Banner interativo
+
+Área para promoções, combos ou avisos.
+
+Sessão “Queridinhos”
+
+Produtos em destaque (mais vendidos).
+
+Categorias
+
+Filtro visual rápido.
+
+Cards de produtos
+
+Imagem
+
+Nome
+
+Descrição
+
+Preço
+
+Botão “+” (adicionar ao carrinho)
+
+Carrinho
+
+Soma automática
+
+Visualização do pedido
+
+PDV
+
+Identificação do ponto de venda (PDV: 001)
+
+Essa arquitetura é coerente com o que Nielsen (1994) chama de “reconhecimento em vez de memorização”, essencial em interfaces de venda rápida.
+
+2. Código HTML + CSS + JavaScript (funcional)
+
+⚠️ Observação:
+O código é 100% local, não depende de internet, banco de dados ou framework. Ideal para evoluir depois para Electron, PWA ou sistema desktop.

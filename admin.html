@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestão do Cardápio</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f6f1c2;
+      color: #0a5c2f;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      background: #0a5c2f;
+      color: white;
+    }
+
+    header a {
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .container {
+      padding: 16px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .row {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: #fff9d6;
+      border: 1px solid rgba(10, 92, 47, 0.25);
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .card h2 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(10, 92, 47, 0.35);
+      background: white;
+      box-sizing: border-box;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: bold;
+      display: block;
+      margin: 10px 0 6px;
+    }
+
+    button {
+      background: #0a5c2f;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button.secondary {
+      background: transparent;
+      border: 1px solid rgba(10, 92, 47, 0.5);
+      color: #0a5c2f;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .muted {
+      opacity: 0.75;
+      font-size: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid rgba(10, 92, 47, 0.2);
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    th {
+      text-align: left;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(10, 92, 47, 0.12);
+      font-weight: bold;
+    }
+
+    .img-preview {
+      width: 54px;
+      height: 54px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid rgba(10, 92, 47, 0.25);
+      background: white;
+    }
+
+    .inline {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .inline3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 700px) {
+      .inline, .inline3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .error {
+      color: #8a1f11;
+      font-weight: bold;
+    }
+
+    .ok {
+      color: #0a5c2f;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Gestão do Cardápio</strong> <span class="pill">local</span></div>
+    <div class="actions">
+      <a href="/" target="_blank">Abrir cardápio</a>
+      <button class="secondary" onclick="recarregar()">Recarregar</button>
+      <button onclick="salvarTudo()">Salvar</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="status" class="muted">Carregando...</div>
+    <div id="erro" class="error" style="margin-top:8px"></div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="card">
+        <h2>Identificação / UI</h2>
+
+        <label>PDV</label>
+        <input id="pdv" />
+
+        <label>Logo (caminho)</label>
+        <div class="inline">
+          <input id="logo" placeholder="ex.: Logo.png ou assets/logo.png" />
+          <div>
+            <input type="file" id="logoFile" accept="image/*" />
+            <div class="muted">Selecionar e fazer upload salva em <strong>assets/</strong></div>
+          </div>
+        </div>
+
+        <div class="actions" style="margin-top:10px">
+          <button class="secondary" onclick="uploadLogo()">Upload da Logo</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Banner rotativo (até 3 imagens)</h2>
+
+        <label>Intervalo (ms)</label>
+        <input id="bannerIntervalo" type="number" min="500" step="100" />
+
+        <label>Imagens (paths)</label>
+        <div class="inline3">
+          <input id="banner1" placeholder="ex.: assets/banner1.png" />
+          <input id="banner2" placeholder="ex.: assets/banner2.png" />
+          <input id="banner3" placeholder="ex.: assets/banner3.png" />
+        </div>
+
+        <label>Upload de imagem para banner</label>
+        <div class="inline">
+          <select id="bannerSlot">
+            <option value="1">Slot 1</option>
+            <option value="2">Slot 2</option>
+            <option value="3">Slot 3</option>
+          </select>
+          <input type="file" id="bannerFile" accept="image/*" />
+        </div>
+
+        <div class="actions" style="margin-top:10px">
+          <button class="secondary" onclick="uploadBanner()">Upload para banner</button>
+        </div>
+
+        <div class="muted" style="margin-top:10px">Dica: se os paths ficarem vazios, o cardápio mostra “BANNER INTERATIVO”.</div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <div class="card">
+        <h2>Categorias</h2>
+
+        <div class="actions" style="margin-bottom:10px">
+          <button class="secondary" onclick="addCategoria()">Adicionar categoria</button>
+        </div>
+
+        <table id="catsTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nome</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Novo produto</h2>
+
+        <label>ID (único)</label>
+        <input id="np_id" placeholder="ex.: suco_500" />
+
+        <div class="inline">
+          <div>
+            <label>Nome</label>
+            <input id="np_nome" />
+          </div>
+          <div>
+            <label>Preço</label>
+            <input id="np_preco" type="number" step="0.01" />
+          </div>
+        </div>
+
+        <label>Descrição</label>
+        <input id="np_desc" />
+
+        <div class="inline">
+          <div>
+            <label>Categoria</label>
+            <select id="np_cat"></select>
+          </div>
+          <div>
+            <label>Imagem (path)</label>
+            <input id="np_img" placeholder="ex.: assets/suco.png" />
+          </div>
+        </div>
+
+        <div class="inline">
+          <div>
+            <label>Ativo</label>
+            <select id="np_ativo">
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          </div>
+          <div>
+            <label>Queridinho</label>
+            <select id="np_queridinho">
+              <option value="true">Sim</option>
+              <option value="false">Não</option>
+            </select>
+          </div>
+        </div>
+
+        <label>Upload de imagem do produto</label>
+        <input type="file" id="np_file" accept="image/*" />
+
+        <div class="actions" style="margin-top:10px">
+          <button class="secondary" onclick="uploadNovoProdutoImagem()">Upload imagem</button>
+          <button class="secondary" onclick="criarProduto(false)">Criar</button>
+          <button onclick="criarProduto(true)">Criar e salvar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>Produtos</h2>
+      <div class="muted" style="margin-bottom:10px">Você pode editar direto na tabela e depois clicar em <strong>Salvar</strong>.</div>
+
+      <table id="prodTable">
+        <thead>
+          <tr>
+            <th>Imagem</th>
+            <th>ID</th>
+            <th>Nome</th>
+            <th>Descrição</th>
+            <th>Preço</th>
+            <th>Path imagem</th>
+            <th>Categoria</th>
+            <th>Ativo</th>
+            <th>Queridinho</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>Descrições (Cardápio impresso)</h2>
+      <div class="muted" style="margin-bottom:10px">Aqui você edita a <strong>descrição por produto</strong> (metadados). O PDF vai puxar nome/preço do PDV e a descrição daqui.</div>
+
+      <div class="inline" style="margin-bottom:10px">
+        <div>
+          <label>Buscar (nome ou código)</label>
+          <input id="descBusca" placeholder="ex.: COCA ou hamburguer" oninput="renderDescricoes()" />
+        </div>
+        <div>
+          <label>Mostrar somente ativos</label>
+          <select id="descSomenteAtivos" onchange="renderDescricoes()">
+            <option value="true" selected>Sim</option>
+            <option value="false">Não</option>
+          </select>
+        </div>
+      </div>
+
+      <table id="descTable">
+        <thead>
+          <tr>
+            <th style="width:120px">Código</th>
+            <th>Nome</th>
+            <th>Descrição</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let data = null;
+    const productUploadFiles = {};
+
+    function setStatus(msg, ok = true) {
+      const el = document.getElementById('status');
+      el.className = ok ? 'ok' : 'error';
+      el.textContent = msg;
+    }
+
+    function setErro(msg) {
+      document.getElementById('erro').textContent = msg || '';
+    }
+
+    async function recarregar() {
+      setErro('');
+      setStatus('Carregando...', true);
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      if (!res.ok) {
+        setStatus('Falha ao carregar', false);
+        setErro('API /api/data não respondeu. Verifique se o backend Flask está rodando.');
+        return;
+      }
+      data = await res.json();
+      preencherUI();
+      setStatus('Carregado.', true);
+    }
+
+    function preencherUI() {
+      document.getElementById('pdv').value = data.pdv || '';
+
+      data.ui = data.ui || { logo: '', banner: { imagens: [], intervaloMs: 3500 } };
+      data.ui.banner = data.ui.banner || { imagens: [], intervaloMs: 3500 };
+
+      document.getElementById('logo').value = data.ui.logo || '';
+      document.getElementById('bannerIntervalo').value = data.ui.banner.intervaloMs || 3500;
+
+      const imgs = Array.isArray(data.ui.banner.imagens) ? data.ui.banner.imagens : [];
+      document.getElementById('banner1').value = imgs[0] || '';
+      document.getElementById('banner2').value = imgs[1] || '';
+      document.getElementById('banner3').value = imgs[2] || '';
+
+      renderCategorias();
+      renderProdutos();
+      renderDescricoes();
+      preencherSelectCategorias();
+    }
+
+    function renderDescricoes() {
+      const tbody = document.querySelector('#descTable tbody');
+      if (!tbody) return;
+
+      const q = String(document.getElementById('descBusca')?.value || '').trim().toLowerCase();
+      const somenteAtivos = (document.getElementById('descSomenteAtivos')?.value || 'true') === 'true';
+
+      const arr = Array.isArray(data?.produtos) ? data.produtos : [];
+      const filtered = arr
+        .filter(p => p && typeof p === 'object')
+        .filter(p => {
+          if (!somenteAtivos) return true;
+          return Boolean(p.ativo);
+        })
+        .filter(p => {
+          if (!q) return true;
+          const code = String(p.pdvCode || p.id || '').toLowerCase();
+          const name = String(p.nome || '').toLowerCase();
+          return code.includes(q) || name.includes(q);
+        })
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+
+      tbody.innerHTML = '';
+      filtered.forEach((p) => {
+        const code = String(p.pdvCode || p.id || '').trim();
+        const idx = (data.produtos || []).findIndex(x => String(x.pdvCode || x.id || '').trim() === code);
+        if (idx < 0) return;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="muted">${escapeHtml(code)}</td>
+          <td>${escapeHtml(String(p.nome || ''))}</td>
+          <td>
+            <textarea style="width:100%; min-height:48px; padding:10px; border-radius:10px; border:1px solid rgba(10, 92, 47, 0.35); box-sizing:border-box"
+              oninput="data.produtos[${idx}].descricao=this.value">${escapeHtml(String(p.descricao || ''))}</textarea>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function preencherSelectCategorias() {
+      const sel = document.getElementById('np_cat');
+      sel.innerHTML = '';
+      (data.categorias || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.nome;
+        sel.appendChild(opt);
+      });
+    }
+
+    function renderCategorias() {
+      const tbody = document.querySelector('#catsTable tbody');
+      tbody.innerHTML = '';
+      (data.categorias || []).forEach((c, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input value="${escapeHtml(c.id)}" oninput="data.categorias[${idx}].id=this.value" /></td>
+          <td><input value="${escapeHtml(c.nome)}" oninput="data.categorias[${idx}].nome=this.value" /></td>
+          <td><button class="secondary" onclick="removerCategoria(${idx})">Remover</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function uploadImagemProdutoExistente(idx) {
+      try {
+        const file = productUploadFiles[idx];
+        if (!file) return;
+        const out = await uploadArquivo(file);
+        data.produtos[idx].imagem = out.path;
+        productUploadFiles[idx] = null;
+        renderProdutos();
+        setStatus('Imagem enviada (não esqueça de salvar).', true);
+      } catch (e) {
+        setStatus('Falha no upload', false);
+        setErro(String(e));
+      }
+    }
+
+    function addCategoria() {
+      data.categorias = data.categorias || [];
+      data.categorias.push({ id: 'nova_categoria', nome: 'Nova categoria' });
+      renderCategorias();
+      preencherSelectCategorias();
+    }
+
+    function removerCategoria(idx) {
+      data.categorias.splice(idx, 1);
+      renderCategorias();
+      preencherSelectCategorias();
+    }
+
+    function renderProdutos() {
+      const tbody = document.querySelector('#prodTable tbody');
+      tbody.innerHTML = '';
+      (data.produtos || []).forEach((p, idx) => {
+        const tr = document.createElement('tr');
+        const imgSrc = p.imagem || '';
+        tr.innerHTML = `
+          <td><img class="img-preview" src="${escapeAttr(imgSrc)}" onerror="this.style.opacity=0.2" /></td>
+          <td class="muted">${escapeHtml(p.id)}</td>
+          <td><input value="${escapeHtml(p.nome || '')}" oninput="data.produtos[${idx}].nome=this.value" /></td>
+          <td><input value="${escapeHtml(p.descricao || '')}" oninput="data.produtos[${idx}].descricao=this.value" /></td>
+          <td><input type="number" step="0.01" value="${Number(p.preco || 0)}" oninput="data.produtos[${idx}].preco=Number(this.value)" /></td>
+          <td>
+            <div style="display:grid; gap:6px">
+              <input value="${escapeHtml(p.imagem || '')}" oninput="data.produtos[${idx}].imagem=this.value" placeholder="ex.: assets/prod.png" />
+              <div style="display:grid; grid-template-columns: 1fr auto; gap:6px; align-items:center">
+                <input type="file" accept="image/*" onchange="productUploadFiles[${idx}]=this.files && this.files[0] ? this.files[0] : null" />
+                <button class="secondary" onclick="uploadImagemProdutoExistente(${idx})">Upload</button>
+              </div>
+            </div>
+          </td>
+          <td>
+            <select onchange="data.produtos[${idx}].categoriaId=this.value">
+              ${(data.categorias || []).map(c => `<option value="${escapeAttr(c.id)}" ${c.id === p.categoriaId ? 'selected' : ''}>${escapeHtml(c.nome)}</option>`).join('')}
+            </select>
+          </td>
+          <td>
+            <select onchange="data.produtos[${idx}].ativo=(this.value==='true')">
+              <option value="true" ${(p.ativo ? 'selected' : '')}>Sim</option>
+              <option value="false" ${(!p.ativo ? 'selected' : '')}>Não</option>
+            </select>
+          </td>
+          <td>
+            <select onchange="data.produtos[${idx}].queridinho=(this.value==='true')">
+              <option value="true" ${(p.queridinho ? 'selected' : '')}>Sim</option>
+              <option value="false" ${(!p.queridinho ? 'selected' : '')}>Não</option>
+            </select>
+          </td>
+          <td><button class="secondary" onclick="removerProduto(${idx})">Remover</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function removerProduto(idx) {
+      data.produtos.splice(idx, 1);
+      renderProdutos();
+    }
+
+    function atualizarBannerNoData() {
+      data.ui = data.ui || {};
+      data.ui.banner = data.ui.banner || {};
+      data.ui.banner.intervaloMs = Number(document.getElementById('bannerIntervalo').value || 3500);
+
+      const imgs = [
+        document.getElementById('banner1').value.trim(),
+        document.getElementById('banner2').value.trim(),
+        document.getElementById('banner3').value.trim(),
+      ].filter(Boolean);
+
+      data.ui.banner.imagens = imgs.slice(0, 3);
+    }
+
+    async function salvarTudo() {
+      setErro('');
+      data.pdv = document.getElementById('pdv').value.trim() || '001';
+      data.ui = data.ui || {};
+      data.ui.logo = document.getElementById('logo').value.trim();
+      atualizarBannerNoData();
+
+      const res = await fetch('/api/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setStatus('Falha ao salvar', false);
+        setErro('Erro: ' + (j.error || 'desconhecido'));
+        return;
+      }
+
+      setStatus('Salvo com sucesso.', true);
+      await recarregar();
+    }
+
+    async function uploadArquivo(file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || 'upload_falhou');
+      }
+      return await res.json();
+    }
+
+    async function uploadLogo() {
+      try {
+        const input = document.getElementById('logoFile');
+        if (!input.files || input.files.length === 0) return;
+        const out = await uploadArquivo(input.files[0]);
+        document.getElementById('logo').value = out.path;
+        setStatus('Logo enviada (não esqueça de salvar).', true);
+      } catch (e) {
+        setStatus('Falha no upload', false);
+        setErro(String(e));
+      }
+    }
+
+    async function uploadBanner() {
+      try {
+        const input = document.getElementById('bannerFile');
+        const slot = document.getElementById('bannerSlot').value;
+        if (!input.files || input.files.length === 0) return;
+        const out = await uploadArquivo(input.files[0]);
+        document.getElementById('banner' + slot).value = out.path;
+        setStatus('Banner enviado (não esqueça de salvar).', true);
+      } catch (e) {
+        setStatus('Falha no upload', false);
+        setErro(String(e));
+      }
+    }
+
+    async function uploadNovoProdutoImagem() {
+      try {
+        const input = document.getElementById('np_file');
+        if (!input.files || input.files.length === 0) return;
+        const out = await uploadArquivo(input.files[0]);
+        document.getElementById('np_img').value = out.path;
+        setStatus('Imagem enviada (agora você pode criar o produto).', true);
+      } catch (e) {
+        setStatus('Falha no upload', false);
+        setErro(String(e));
+      }
+    }
+
+    async function criarProduto(salvarDepois) {
+      setErro('');
+      const id = document.getElementById('np_id').value.trim();
+      if (!id) {
+        setErro('Informe um ID único para o produto.');
+        return;
+      }
+
+      const exists = (data.produtos || []).some(p => p.id === id);
+      if (exists) {
+        setErro('Já existe um produto com esse ID.');
+        return;
+      }
+
+      const novo = {
+        id,
+        nome: document.getElementById('np_nome').value.trim(),
+        descricao: document.getElementById('np_desc').value.trim(),
+        preco: Number(document.getElementById('np_preco').value || 0),
+        imagem: document.getElementById('np_img').value.trim(),
+        categoriaId: document.getElementById('np_cat').value,
+        ativo: document.getElementById('np_ativo').value === 'true',
+        queridinho: document.getElementById('np_queridinho').value === 'true',
+      };
+
+      data.produtos = data.produtos || [];
+      data.produtos.push(novo);
+      renderProdutos();
+
+      document.getElementById('np_id').value = '';
+      document.getElementById('np_nome').value = '';
+      document.getElementById('np_desc').value = '';
+      document.getElementById('np_preco').value = '';
+      document.getElementById('np_img').value = '';
+      document.getElementById('np_file').value = '';
+
+      if (salvarDepois) {
+        await salvarTudo();
+        setStatus('Produto criado e salvo.', true);
+      } else {
+        setStatus('Produto criado (não esqueça de salvar).', true);
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function escapeAttr(s) {
+      return escapeHtml(s);
+    }
+
+    recarregar();
+  </script>
+</body>
+</html>
