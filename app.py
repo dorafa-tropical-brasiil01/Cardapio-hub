@@ -1251,7 +1251,7 @@ def api_pdv_responder_solicitacao(solicitacao_id: str):
         return jsonify({"error": "json_invalido"}), 400
 
     tipo = str(body.get("tipo") or "").strip().upper()
-    if tipo not in ("ENVIAR_PIX", "IR_CAIXA", "PAGAMENTO_CONFIRMADO"):
+    if tipo not in ("ENVIAR_PIX", "IR_CAIXA", "PAGAMENTO_CONFIRMADO", "PAGAR_NA_ENTREGA"):
         return jsonify({"error": "tipo_invalido"}), 400
 
     data = _ensure_solicitacoes_file()

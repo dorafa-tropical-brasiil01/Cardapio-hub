@@ -546,6 +546,7 @@
         <img id="logoImg" alt="Logo">
         <div id="brandText">DORAFÁ Tropical Brasil</div>
     </div>
+    <a id="whatsBtn" href="#" target="_blank" rel="noopener" style="display:none; text-decoration:none; color:inherit; font-weight:bold">WhatsApp</a>
     <div style="cursor:pointer" onclick="abrirCarrinho()">🛒 <span id="cartCount">0</span></div>
 </header>
 
@@ -636,7 +637,7 @@
         const s = String(status || "").toUpperCase();
         if (s === "ENVIADO") return "Aguardando confirmação do pedido";
         if (s === "PENDENTE") return "Aguardando confirmação do pedido";
-        if (s === "EM_ATENDIMENTO") return "PEDIDO EM ANDAMENTO, CASO QUEIRA EDITAR OU ADICIONAR MAIS ITENS AO SEU PEDIDO DIRIJA-SE AO CAIXA";
+        if (s === "EM_ATENDIMENTO") return "Pedido em atendimento pelo PDV";
         if (s === "RESPONDIDA") return "Pedido respondido";
         if (s === "CANCELADA" || s === "CANCELADO") return "Pedido cancelado";
         return s || "-";
@@ -1336,6 +1337,10 @@
                     const chave = pedido.resposta.pix && pedido.resposta.pix.chave ? pedido.resposta.pix.chave : "";
                     return `<div style="margin-top:10px"><strong>Resposta:</strong> PIX</div><div class="muted">Chave: ${chave || "(não informada)"}</div>`;
                 }
+                if (pedido.resposta.tipo === "PAGAR_NA_ENTREGA") {
+                    const msg = String(pedido.resposta.mensagem || "Aguarde, um atentende vai te chamar no WhatsApp");
+                    return `<div style="margin-top:10px"><strong>Resposta:</strong> ${escapeHtml(msg)}</div>`;
+                }
                 if (pedido.resposta.tipo === "PAGAMENTO_CONFIRMADO") {
                     return `<div style="margin-top:10px"><strong>Pagamento confirmado.</strong></div><div class="muted">Seu pedido está a caminho.</div>`;
                 }
@@ -1642,8 +1647,10 @@
 
     function aplicarUI() {
         const logo = state.data?.ui?.logo;
+        const whatsapp = state.data?.ui?.whatsapp;
         const logoImg = document.getElementById("logoImg");
         const brandText = document.getElementById("brandText");
+        const whatsBtn = document.getElementById("whatsBtn");
 
         function normalizeAssetUrl(v) {
             const s = String(v || "").trim();
@@ -1666,6 +1673,20 @@
         } else {
             logoImg.style.display = "none";
             brandText.style.display = "block";
+        }
+
+        try {
+            const raw = String(whatsapp || "").trim();
+            const digits = raw.replace(/\D+/g, "");
+            if (whatsBtn && digits.length >= 12) {
+                const msg = encodeURIComponent("Olá! Vim pelo cardápio online.");
+                whatsBtn.href = `https://wa.me/${digits}?text=${msg}`;
+                whatsBtn.style.display = "inline-block";
+            } else if (whatsBtn) {
+                whatsBtn.style.display = "none";
+            }
+        } catch {
+            if (whatsBtn) whatsBtn.style.display = "none";
         }
     }
 
