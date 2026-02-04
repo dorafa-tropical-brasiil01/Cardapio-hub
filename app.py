@@ -1081,12 +1081,17 @@ def api_public_create_pedido():
 
     endereco = body.get("endereco")
     if tipo_entrega == "DELIVERY":
-        if not isinstance(endereco, dict):
-            return jsonify({"error": "endereco_obrigatorio"}), 400
-        required = ["rua", "numero", "bairro", "cidade"]
-        for k in required:
-            if not str(endereco.get(k) or "").strip():
-                return jsonify({"error": "endereco_incompleto"}), 400
+        # Endereço pode ser coletado posteriormente pelo operador via WhatsApp.
+        # Se vier no payload, valida para manter compatibilidade.
+        if endereco is None:
+            endereco = None
+        elif isinstance(endereco, dict):
+            required = ["rua", "numero", "bairro", "cidade"]
+            for k in required:
+                if not str(endereco.get(k) or "").strip():
+                    return jsonify({"error": "endereco_incompleto"}), 400
+        else:
+            return jsonify({"error": "endereco_invalido"}), 400
     else:
         endereco = None
 

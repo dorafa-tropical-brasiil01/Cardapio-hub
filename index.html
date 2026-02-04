@@ -361,6 +361,8 @@
             justify-content: center;
             padding: 16px;
             z-index: 999;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
 
         .modal {
@@ -369,6 +371,10 @@
             border-radius: 18px;
             border: 2px solid rgba(10, 92, 47, 0.35);
             padding: 16px;
+            max-height: calc(100vh - 32px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .modal.status-pendente {
@@ -397,6 +403,14 @@
             justify-content: space-between;
             gap: 12px;
             margin-bottom: 10px;
+        }
+
+        #modalBody {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            max-height: calc(100vh - 140px);
+            flex: 1;
+            min-height: 0;
         }
 
         .modal-title {
@@ -444,6 +458,10 @@
         @media (max-width: 480px) {
             header {
                 padding: 12px 16px;
+            }
+
+            .modal-backdrop {
+                align-items: flex-start;
             }
 
             :root {
@@ -1118,25 +1136,7 @@
             }
 
             const tipo_entrega = String(state.deliveryType || "DELIVERY").toUpperCase();
-            let endereco = null;
-            if (tipo_entrega === "DELIVERY") {
-                const rua = String(state.deliveryRua || "").trim();
-                const numero = String(state.deliveryNumero || "").trim();
-                const bairro = String(state.deliveryBairro || "").trim();
-                const cidade = String(state.deliveryCidade || "").trim();
-                if (!rua || !numero || !bairro || !cidade) {
-                    setModal("Delivery / Retirada", `<div><strong>Preencha endereço completo (rua, número, bairro e cidade).</strong></div>`);
-                    abrirModal();
-                    return;
-                }
-                endereco = {
-                    rua,
-                    numero,
-                    bairro,
-                    cidade,
-                    referencia: String(state.deliveryRef || "").trim() || null
-                };
-            }
+            const endereco = null;
 
             let troco_para = null;
             if (pagamento_preferido === "DINHEIRO") {
@@ -1158,7 +1158,7 @@
                 tipo_entrega: (tipo_entrega === "RETIRADA" ? "RETIRADA" : "DELIVERY"),
                 endereco,
                 troco_para,
-                observacoes: String(state.deliveryObs || "").trim() || null,
+                observacoes: null,
                 pagamento_preferido,
                 itens,
                 total_estimado: getCartTotal()
@@ -1204,15 +1204,9 @@
             cliente_nome: String(state.clientName || "").trim(),
             cliente_whatsapp: !isSalao ? String(state.clientWhatsapp || "").trim() : null,
             tipo_entrega: !isSalao ? String(state.deliveryType || "DELIVERY").toUpperCase() : null,
-            endereco: !isSalao ? {
-                rua: String(state.deliveryRua || "").trim(),
-                numero: String(state.deliveryNumero || "").trim(),
-                bairro: String(state.deliveryBairro || "").trim(),
-                cidade: String(state.deliveryCidade || "").trim(),
-                referencia: String(state.deliveryRef || "").trim() || null
-            } : null,
+            endereco: null,
             troco_para: !isSalao ? (String(state.deliveryTroco || "").trim() || null) : null,
-            observacoes: !isSalao ? (String(state.deliveryObs || "").trim() || null) : null,
+            observacoes: null,
             pagamento_preferido,
             itens: state.carrinho.map(it => ({
                 produtoId: it.produtoId,
@@ -1410,30 +1404,7 @@
                 </select>
             </div>
 
-            ${String(state.deliveryType||"").toUpperCase() === "DELIVERY" ?
-            `<div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Endereço (obrigatório):</div>
-                <div style="display:grid; grid-template-columns: 1fr 140px; gap:10px">
-                    <input value="${String(state.deliveryRua||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRua', this.value)" placeholder="Rua" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-                    <input value="${String(state.deliveryNumero||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryNumero', this.value)" placeholder="Número" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-                </div>
-            </div>
-            <div style="margin-top:10px">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
-                    <input value="${String(state.deliveryBairro||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryBairro', this.value)" placeholder="Bairro" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-                    <input value="${String(state.deliveryCidade||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryCidade', this.value)" placeholder="Cidade" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-                </div>
-            </div>
-            <div style="margin-top:10px">
-                <div class="muted" style="margin-bottom:6px">Referência (opcional):</div>
-                <input value="${String(state.deliveryRef||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRef', this.value)" placeholder="Próximo a..." style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-            </div>`
-            : ""}
-
-            <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Observações (opcional):</div>
-                <input value="${String(state.deliveryObs||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryObs', this.value)" placeholder="Ex.: sem cebola" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-            </div>`
+            <div class="muted" style="margin-top:10px">Endereço, referência e observações serão combinados com o atendente via WhatsApp.</div>`
         );
 
         const trocoUi = (!isSalao && String(state.payMethod||"").toUpperCase()==="DINHEIRO")
