@@ -706,7 +706,7 @@
         const raw = String(nome || "").trim();
         if (!raw) return "";
         const low = raw.toLowerCase();
-        if (low === "mocktails" || low === "mocktail") return "Coquetéis sem álcool";
+        if (low === "mocktails" || low === "mocktail") return "Sucos Tropicais";
         return raw;
     }
 
@@ -1502,7 +1502,7 @@
     function produtoVisivel(p) {
         if (!p.ativo) return false;
         const nome = (p.nome || "").toLowerCase();
-        const desc = (p.descricao || "").toLowerCase();
+        const desc = getProdutoDescricao(p).toLowerCase();
         const matchBusca = !state.busca || nome.includes(state.busca) || desc.includes(state.busca);
         const matchCat = state.categoriaId === "__todas__" || p.categoriaId === state.categoriaId;
         return matchBusca && matchCat;
@@ -1533,7 +1533,7 @@
                 <div class="product-info">
                     <div class="product-title">${escapeHtml(p.nome || "")}</div>
                     ${(() => {
-                        const raw = String(p.descricao || "");
+                        const raw = getProdutoDescricao(p);
                         const trimmed = raw.trim();
                         if (!trimmed) return "";
                         const nomeEnc = encodeURIComponent(String(p.nome || ""));
@@ -1548,7 +1548,7 @@
         const produtosAll = (state.data.produtos || []).filter(p => {
             if (!p.ativo) return false;
             const nome = (p.nome || "").toLowerCase();
-            const desc = (p.descricao || "").toLowerCase();
+            const desc = getProdutoDescricao(p).toLowerCase();
             const matchBusca = !state.busca || nome.includes(state.busca) || desc.includes(state.busca);
             return matchBusca;
         });
@@ -1607,6 +1607,24 @@
             .replace(/>/g, "&gt;")
             .replace(/\"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    function getProdutoDescricao(p) {
+        if (!p) return "";
+        const candidates = [
+            p.descricao,
+            p.descrição,
+            p.description,
+            p.desc,
+            p.obs,
+            p.observacoes,
+            p.observações
+        ];
+        for (const v of candidates) {
+            const s = String(v || "");
+            if (s.trim()) return s;
+        }
+        return "";
     }
 
     function abrirDescricaoProdutoEncoded(nomeEnc, descEnc) {
