@@ -637,6 +637,13 @@
 
 <div class="cards" id="queridinhos"></div>
 
+<div id="closedPanel" style="display:none; width:92%; margin: 14px auto; background: rgba(254, 254, 207, 0.92); border: 2px solid rgba(10, 92, 47, 0.35); border-radius: 20px; padding: 16px; box-sizing: border-box;">
+    <div style="font-weight:900; font-size:18px">Estamos fechados agora</div>
+    <div class="muted" id="closedMessage" style="margin-top:8px"></div>
+    <div class="muted" id="closedNext" style="margin-top:10px"></div>
+    <div class="muted" id="closedLocalTime" style="margin-top:10px"></div>
+</div>
+
 <div class="toolbar">
     <div class="category-row" id="categoriasRow"></div>
     <div class="muted" id="adminHint" style="display:none">Modo gestão: você pode alterar status do pedido.</div>
@@ -678,6 +685,147 @@
         mesa: "cardapio.mesa.v1",
         token: "cardapio.token.v1"
     };
+
+    function _safeJsonParse(s) {
+        try {
+            return JSON.parse(String(s || "") || "{}");
+        } catch {
+            return null;
+        }
+    }
+
+    function _parseHm(hm) {
+        const m = String(hm || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) return null;
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+        if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+        return hh * 60 + mm;
+    }
+
+    function _weekdayKeyInTz(tz) {
+        const d = new Date();
+        const parts = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: tz }).format(d);
+        const map = { Mon: "mon", Tue: "tue", Wed: "wed", Thu: "thu", Fri: "fri", Sat: "sat", Sun: "sun" };
+        return map[String(parts)] || "mon";
+    }
+
+    function _timeMinutesInTz(tz) {
+        const d = new Date();
+        const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz });
+        const out = fmt.format(d);
+        const m = String(out).match(/^(\d{2}):(\d{2})$/);
+        if (!m) return null;
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+        return hh * 60 + mm;
+    }
+
+    function _humanTzNow(tz) {
+        try {
+            return new Intl.DateTimeFormat("pt-BR", {
+                timeZone: tz,
+                weekday: "long",
+                hour: "2-digit",
+                minute: "2-digit",
+            }).format(new Date());
+        } catch {
+            return "";
+        }
+    }
+
+    function _calcOpenStateFromHorario(horario) {
+        const mode = String(horario?.mode || "AUTO").trim().toUpperCase();
+        const tz = String(horario?.tz || "America/Sao_Paulo").trim() || "America/Sao_Paulo";
+        const closedMessage = String(horario?.closedMessage || "Estamos fechados no momento.").trim();
+
+        if (mode === "ABERTO") {
+            return { isOpen: true, reason: "override_open", tz, closedMessage, nextOpen: null, nowLabel: _humanTzNow(tz) };
+        }
+        if (mode === "FECHADO") {
+            return { isOpen: false, reason: "override_closed", tz, closedMessage, nextOpen: null, nowLabel: _humanTzNow(tz) };
+        }
+
+        const hoursRaw = String(horario?.hours || "").trim();
+        const hours = hoursRaw ? _safeJsonParse(hoursRaw) : null;
+        if (!hours || typeof hours !== "object") {
+            return { isOpen: true, reason: "no_hours", tz, closedMessage, nextOpen: null, nowLabel: _humanTzNow(tz) };
+        }
+
+        const dayKey = _weekdayKeyInTz(tz);
+        const windows = Array.isArray(hours[dayKey]) ? hours[dayKey] : [];
+        const nowMin = _timeMinutesInTz(tz);
+        if (nowMin === null) {
+            return { isOpen: true, reason: "tz_parse_fail", tz, closedMessage, nextOpen: null, nowLabel: _humanTzNow(tz) };
+        }
+
+        let openNow = false;
+        let nextOpenMin = null;
+        for (const w of windows) {
+            const s = String(w || "").trim();
+            const mm = s.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+            if (!mm) continue;
+            const a = _parseHm(mm[1]);
+            const b = _parseHm(mm[2]);
+            if (a === null || b === null) continue;
+            if (nowMin >= a && nowMin <= b) {
+                openNow = true;
+            }
+            if (nowMin < a) {
+                if (nextOpenMin === null || a < nextOpenMin) nextOpenMin = a;
+            }
+        }
+
+        let nextOpen = null;
+        if (!openNow && nextOpenMin !== null) {
+            const hh = String(Math.floor(nextOpenMin / 60)).padStart(2, "0");
+            const mi = String(nextOpenMin % 60).padStart(2, "0");
+            nextOpen = `${hh}:${mi}`;
+        }
+
+        return {
+            isOpen: openNow,
+            reason: openNow ? "in_window" : "out_window",
+            tz,
+            closedMessage,
+            nextOpen,
+            nowLabel: _humanTzNow(tz)
+        };
+    }
+
+    function aplicarHorarioFuncionamento() {
+        const horario = state.data?.ui?.horario;
+        const info = _calcOpenStateFromHorario(horario);
+        const panel = document.getElementById("closedPanel");
+        const msg = document.getElementById("closedMessage");
+        const next = document.getElementById("closedNext");
+        const now = document.getElementById("closedLocalTime");
+
+        const shouldBlock = !info.isOpen;
+        if (panel) panel.style.display = shouldBlock ? "block" : "none";
+        if (msg) msg.innerText = info.closedMessage || "";
+        if (next) next.innerText = info.nextOpen ? `Próxima abertura hoje: ${info.nextOpen}` : "";
+        if (now) now.innerText = info.nowLabel ? `Horário local: ${info.nowLabel}` : "";
+
+        const hideIds = ["queridinhos", "categoriasRow", "listaProdutos"];
+        for (const id of hideIds) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.style.display = shouldBlock ? "none" : "";
+        }
+
+        const secTitles = Array.from(document.querySelectorAll(".section-title"));
+        for (const st of secTitles) {
+            const t = String(st?.innerText || "").trim().toUpperCase();
+            if (t === "QUERIDINHOS") {
+                st.style.display = shouldBlock ? "none" : "";
+            }
+        }
+
+        state.isOpenNow = !shouldBlock;
+    }
 
     const state = {
         busca: "",
@@ -1851,6 +1999,7 @@
             state.data = novo;
             aplicarUI();
             iniciarBanner();
+            aplicarHorarioFuncionamento();
             render();
         } catch {
         }
@@ -1878,6 +2027,7 @@
             state.data = await carregarDados();
             aplicarUI();
             iniciarBanner();
+            aplicarHorarioFuncionamento();
             render();
 
             if (state.solicitacaoTimer) {
@@ -1893,6 +2043,12 @@
                 state.refreshTimer = null;
             }
             state.refreshTimer = setInterval(refreshCatalogo, 5000);
+
+            if (state.horarioTimer) {
+                clearInterval(state.horarioTimer);
+                state.horarioTimer = null;
+            }
+            state.horarioTimer = setInterval(aplicarHorarioFuncionamento, 30000);
         } catch (e) {
             try { console.error(e); } catch {}
             const msg = (e && e.message) ? String(e.message) : String(e || "erro");
