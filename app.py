@@ -929,6 +929,14 @@ def api_upload():
 def assets(filename: str):
     # Primeiro tenta assets graváveis (DATA_DIR/assets). Se não existir, faz fallback para o bundle.
     try:
+        fn = str(filename or "")
+        fn = fn.replace("\\", "/")
+        if fn.startswith("assets/"):
+            fn = fn[len("assets/") :]
+        filename = fn
+    except Exception:
+        pass
+    try:
         p = (ASSETS_DIR / filename).resolve()
         if p.exists() and p.is_file():
             return send_from_directory(str(ASSETS_DIR), filename)
@@ -1081,8 +1089,6 @@ def api_public_create_pedido():
 
     endereco = body.get("endereco")
     if tipo_entrega == "DELIVERY":
-        # Endereço pode ser coletado posteriormente pelo operador via WhatsApp.
-        # Se vier no payload, valida para manter compatibilidade.
         if endereco is None:
             endereco = None
         elif isinstance(endereco, dict):
