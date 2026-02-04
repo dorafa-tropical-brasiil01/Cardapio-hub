@@ -455,6 +455,36 @@
             font-weight: bold;
         }
 
+        #whatsFloat {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 998;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 999px;
+            text-decoration: none;
+            color: white;
+            background: #25D366;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+            font-weight: 800;
+        }
+
+        #whatsFloat img {
+            width: 22px;
+            height: 22px;
+            display: block;
+        }
+
+        #whatsFloat small {
+            display: block;
+            font-weight: 700;
+            opacity: 0.95;
+            line-height: 1.1;
+        }
+
         @media (max-width: 480px) {
             header {
                 padding: 12px 16px;
@@ -560,13 +590,20 @@
 
 <header>
     <div id="pdvLabel">PDV: 001</div>
-    <div class="brand">
+    <div class="brand" onclick="location.reload()">
         <img id="logoImg" alt="Logo">
         <div id="brandText">DORAFÁ Tropical Brasil</div>
     </div>
     <a id="whatsBtn" href="#" target="_blank" rel="noopener" style="display:none; text-decoration:none; color:inherit; font-weight:bold">WhatsApp</a>
     <div style="cursor:pointer" onclick="abrirCarrinho()">🛒 <span id="cartCount">0</span></div>
 </header>
+
+<a id="whatsFloat" href="#" target="_blank" rel="noopener">
+    <img id="whatsFloatIcon" src="/assets/whatsapp.png" alt="WhatsApp" onerror="this.style.display='none'">
+    <div>
+        <small>Falar com atendente</small>
+    </div>
+</a>
 
 <div class="search-bar">
     <input type="text" id="search" placeholder="Busque pelo seu produto favorito" onkeyup="filtrarProdutos()">
@@ -1622,6 +1659,7 @@
         const logoImg = document.getElementById("logoImg");
         const brandText = document.getElementById("brandText");
         const whatsBtn = document.getElementById("whatsBtn");
+        const whatsFloat = document.getElementById("whatsFloat");
 
         function normalizeAssetUrl(v) {
             const s = String(v || "").trim();
@@ -1649,15 +1687,24 @@
         try {
             const raw = String(whatsapp || "").trim();
             const digits = raw.replace(/\D+/g, "");
-            if (whatsBtn && digits.length >= 12) {
+            if (digits.length >= 12) {
                 const msg = encodeURIComponent("Olá! Vim pelo cardápio online.");
-                whatsBtn.href = `https://wa.me/${digits}?text=${msg}`;
-                whatsBtn.style.display = "inline-block";
-            } else if (whatsBtn) {
-                whatsBtn.style.display = "none";
+                const url = `https://wa.me/${digits}?text=${msg}`;
+                if (whatsBtn) {
+                    whatsBtn.href = url;
+                    whatsBtn.style.display = "none";
+                }
+                if (whatsFloat) {
+                    whatsFloat.href = url;
+                    whatsFloat.style.display = "inline-flex";
+                }
+            } else {
+                if (whatsBtn) whatsBtn.style.display = "none";
+                if (whatsFloat) whatsFloat.style.display = "none";
             }
         } catch {
             if (whatsBtn) whatsBtn.style.display = "none";
+            if (whatsFloat) whatsFloat.style.display = "none";
         }
     }
 
