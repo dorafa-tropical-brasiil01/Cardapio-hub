@@ -227,6 +227,21 @@
             align-self: flex-start;
         }
 
+        button.product-desc-btn {
+            margin-top: 10px;
+            margin-right: 10px;
+            background: rgba(10, 92, 47, 0.08);
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            color: var(--verde);
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: bold;
+            white-space: nowrap;
+            cursor: pointer;
+            align-self: flex-start;
+        }
+
         .product-desc.product-desc-clamp {
             display: -webkit-box;
             -webkit-box-orient: vertical;
@@ -1519,6 +1534,14 @@
             <div class="card">
                 <img src="${p.imagem}" alt="${p.nome}">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
+                ${(() => {
+                    const raw = getProdutoDescricao(p);
+                    const trimmed = raw.trim();
+                    if (!trimmed) return "";
+                    const nomeEnc = encodeURIComponent(String(p.nome || ""));
+                    const descEnc = encodeURIComponent(String(raw || ""));
+                    return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${nomeEnc}','${descEnc}')">Descrição</button>`;
+                })()}
                 <div class="price-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
             </div>
         `).join("");
