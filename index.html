@@ -154,6 +154,13 @@
             font-weight: bold;
         }
 
+        .product-price {
+            margin-top: 8px;
+            font-weight: 900;
+            color: var(--verde);
+            opacity: 0.92;
+        }
+
         .price-btn[aria-disabled="true"],
         .add-btn[aria-disabled="true"] {
             opacity: 0.5;
@@ -273,10 +280,45 @@
             transform: translateY(-50%);
         }
 
+        .add-btn,
+        .price-btn {
+            border: none;
+            outline: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .add-btn:active,
+        .price-btn:active {
+            transform: translateY(-50%) scale(0.98);
+        }
+
         footer {
             display: flex;
             justify-content: space-between;
             padding: 20px;
+        }
+
+        .floating-actions {
+            position: fixed;
+            left: 14px;
+            right: 14px;
+            bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            z-index: 998;
+            pointer-events: none;
+        }
+
+        .floating-actions button {
+            pointer-events: auto;
+            flex: 1 1 0;
+            max-width: 240px;
+            padding: 14px 18px;
+            border-radius: 18px;
+            font-weight: 900;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.18);
         }
 
         button {
@@ -573,27 +615,15 @@
 
             .price-btn {
                 margin-top: 2px;
-                padding: 4px 4px;
-                border-radius: 9px;
-                font-size: 8px;
-                width: 100%;
-                box-sizing: border-box;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-
-            footer {
-                padding: 14px;
-                gap: 10px;
-            }
-
-            button {
-                padding: 12px 14px;
-                font-size: 14px;
                 flex: 1;
+                min-height: 0;
             }
 
+            .modal-title {
+                font-weight: bold;
+                color: var(--verde);
+                font-size: 18px;
+            }
             .product-list {
                 width: 92%;
             }
@@ -652,10 +682,10 @@
 <div class="product-list" id="listaProdutos">
 </div>
 
-<footer>
+<div class="floating-actions" id="floatingActions">
     <button onclick="abrirCarrinho()">Ver Pedido</button>
     <button onclick="abrirCategorias()">Categorias</button>
-</footer>
+</div>
 
 <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true" aria-hidden="true">
     <div class="modal" id="modalBox">
@@ -1191,6 +1221,30 @@
         row.innerHTML = pills;
     }
 
+    function addCarrinho(produtoId) {
+        const pid = String(produtoId || "").trim();
+        if (!pid) return;
+
+        const produtos = Array.isArray(state.data?.produtos) ? state.data.produtos : [];
+        const p = produtos.find(x => String(x?.id || "") === pid);
+        if (!p) return;
+
+        const idx = state.carrinho.findIndex(x => String(x.produtoId) === pid);
+        if (idx >= 0) {
+            state.carrinho[idx].qtd += 1;
+        } else {
+            state.carrinho.push({
+                produtoId: pid,
+                nome: String(p.nome || ""),
+                preco: Number(p.preco || 0),
+                qtd: 1,
+            });
+        }
+
+        saveLocal();
+        updateCartBadge();
+    }
+
     function alterarQtd(produtoId, delta) {
         const idx = state.carrinho.findIndex(x => x.produtoId === produtoId);
         if (idx < 0) return;
@@ -1688,9 +1742,10 @@
                     if (!trimmed) return "";
                     const nomeEnc = encodeURIComponent(String(p.nome || ""));
                     const descEnc = encodeURIComponent(String(raw || ""));
-                    return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${nomeEnc}','${descEnc}')">Descrição</button>`;
+                    return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
                 })()}
-                <div class="price-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
+                <div class="product-price">${formatBRL(p.preco)}</div>
             </div>
         `).join("");
     }
@@ -1709,10 +1764,11 @@
                         if (!trimmed) return "";
                         const nomeEnc = encodeURIComponent(String(p.nome || ""));
                         const descEnc = encodeURIComponent(String(raw || ""));
-                        return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${nomeEnc}','${descEnc}')">Descrição</button>`;
+                        return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
                     })()}
+                    <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
-                <div class="add-btn" role="button" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+ ${formatBRL(p.preco)}</div>
+                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
             </div>
         `;
 
@@ -1798,9 +1854,10 @@
         return "";
     }
 
-    function abrirDescricaoProdutoEncoded(nomeEnc, descEnc) {
+    function abrirDescricaoProdutoEncoded(produtoId, nomeEnc, descEnc, precoRaw) {
         let nome = "";
         let descricao = "";
+        let preco = 0;
         try {
             nome = decodeURIComponent(String(nomeEnc || ""));
         } catch {
@@ -1812,12 +1869,25 @@
             descricao = String(descEnc || "");
         }
 
+        try {
+            preco = Number(String(precoRaw || "").replace(",", "."));
+            if (!Number.isFinite(preco)) preco = 0;
+        } catch {
+            preco = 0;
+        }
+
         const n = escapeHtml(String(nome || ""));
         const raw = String(descricao || "").trim();
         const normalized = raw.replace(/\\n/g, "\n");
-        const body = normalized
-            ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
-            : `<div class="muted">Sem descrição.</div>`;
+        const body = `
+            ${normalized
+                ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
+                : `<div class="muted">Sem descrição.</div>`}
+            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+                <button onclick="addCarrinho('${String(produtoId || "")}'); fecharModal();">+1</button>
+                <div class="product-price" style="margin-top:0">${formatBRL(preco)}</div>
+            </div>
+        `;
         setModal(n || "Descrição", body);
         abrirModal();
     }
