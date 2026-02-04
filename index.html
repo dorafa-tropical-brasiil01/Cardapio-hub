@@ -702,6 +702,14 @@
         return s || "-";
     }
 
+    function humanCategoryName(nome) {
+        const raw = String(nome || "").trim();
+        if (!raw) return "";
+        const low = raw.toLowerCase();
+        if (low === "mocktails" || low === "mocktail") return "Coquetéis sem álcool";
+        return raw;
+    }
+
     function getMesaTokenFromUrl() {
         const params = new URLSearchParams(window.location.search);
         const mesaRaw = params.get("mesa");
