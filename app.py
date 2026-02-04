@@ -242,6 +242,12 @@ def _write_json_file(path: Path, data: Any) -> None:
     tmp_path.replace(path)
 
 
+def _is_allowed_image_upload_filename(filename: str) -> bool:
+    name = str(filename or "").strip().lower()
+    ext = Path(name).suffix
+    return bool(ext) and ext in ALLOWED_IMAGE_EXTENSIONS
+
+
 def _documents_dir() -> Path:
     userprofile = os.environ.get("USERPROFILE")
     home = Path(userprofile) if userprofile else Path.home()
@@ -706,6 +712,42 @@ def api_save_data():
 
     _write_json_file(DATA_FILE, data)
     return jsonify({"ok": True})
+
+
+@app.post("/api/pdv/assets/upload")
+def api_pdv_assets_upload():
+    denied = _require_pdv_key()
+    if denied is not None:
+        return denied
+
+    if "file" not in request.files:
+        return jsonify({"error": "arquivo_nao_enviado"}), 400
+
+    file = request.files["file"]
+    if not file or not file.filename:
+        return jsonify({"error": "arquivo_invalido"}), 400
+
+    filename = secure_filename(file.filename)
+    if not filename or not _is_allowed_image_upload_filename(filename):
+        return jsonify({"error": "extensao_nao_permitida"}), 400
+
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+    target = (ASSETS_DIR / filename).resolve()
+
+    # Evitar colisões
+    base = target.stem
+    ext = target.suffix
+    i = 1
+    while target.exists():
+        target = (ASSETS_DIR / f"{base}_{i}{ext}").resolve()
+        i += 1
+
+    try:
+        file.save(str(target))
+    except Exception:
+        return jsonify({"error": "falha_ao_salvar"}), 500
+
+    return jsonify({"ok": True, "path": f"assets/{target.name}"})
 
 
 @app.post("/api/pdv/catalogo/publicar")
