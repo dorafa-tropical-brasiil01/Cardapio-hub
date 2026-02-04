@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
+import io
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, make_response, request, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory, send_file
 from werkzeug.utils import secure_filename
 
 try:
@@ -747,6 +749,15 @@ def api_pdv_assets_upload():
     except Exception:
         return jsonify({"error": "falha_ao_salvar"}), 500
 
+    if _pg_enabled():
+        try:
+            raw = target.read_bytes()
+            ct, _ = mimetypes.guess_type(str(target.name))
+            pg_store.save_asset(path=f"assets/{target.name}", content=raw, content_type=ct)
+        except Exception:
+            # Não falha upload por conta do Postgres, mas pode perder persistência de assets.
+            pass
+
     return jsonify({"ok": True, "path": f"assets/{target.name}"})
 
 
@@ -936,6 +947,21 @@ def assets(filename: str):
         filename = fn
     except Exception:
         pass
+
+    if _pg_enabled():
+        try:
+            rec = pg_store.get_asset(path=f"assets/{filename}")
+            if rec is not None:
+                raw, ct = rec
+                return send_file(
+                    io.BytesIO(raw),
+                    mimetype=(ct or "application/octet-stream"),
+                    download_name=str(filename),
+                    max_age=3600,
+                )
+        except Exception:
+            pass
+
     try:
         p = (ASSETS_DIR / filename).resolve()
         if p.exists() and p.is_file():

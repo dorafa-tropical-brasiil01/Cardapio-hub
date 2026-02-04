@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import mimetypes
 import json
 import os
 import secrets
@@ -54,6 +55,18 @@ def init_db() -> None:
                 )
                 """
             )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS cardapio_assets (
+                    path TEXT PRIMARY KEY,
+                    content BYTEA NOT NULL,
+                    content_type TEXT,
+                    atualizado_em TIMESTAMPTZ
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_cardapio_assets_updated ON cardapio_assets(atualizado_em)")
 
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
@@ -140,6 +153,61 @@ def get_solicitacao(*, solicitacao_id: str) -> dict[str, Any] | None:
                 return None
             rec = row.get("record")
             return dict(rec) if isinstance(rec, dict) else None
+
+
+def save_asset(*, path: str, content: bytes, content_type: str | None = None) -> None:
+    if not is_enabled():
+        return
+    p = str(path or "").strip()
+    if not p:
+        return
+    if not isinstance(content, (bytes, bytearray)):
+        return
+
+    ct = str(content_type or "").strip() or None
+    if ct is None:
+        ct_guess, _ = mimetypes.guess_type(p)
+        ct = str(ct_guess).strip() if ct_guess else None
+
+    updated_em = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO cardapio_assets(path, content, content_type, atualizado_em)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (path) DO UPDATE SET
+                    content=EXCLUDED.content,
+                    content_type=EXCLUDED.content_type,
+                    atualizado_em=EXCLUDED.atualizado_em
+                """,
+                (
+                    p,
+                    psycopg2.Binary(bytes(content)),
+                    ct,
+                    updated_em,
+                ),
+            )
+
+
+def get_asset(*, path: str) -> tuple[bytes, str | None] | None:
+    if not is_enabled():
+        return None
+    p = str(path or "").strip()
+    if not p:
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT content, content_type FROM cardapio_assets WHERE path=%s", (p,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            content = row.get("content")
+            ct = row.get("content_type")
+            if content is None:
+                return None
+            return (bytes(content), (str(ct).strip() if ct else None))
 
 
 def list_by_status(*, status: str) -> list[dict[str, Any]]:
