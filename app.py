@@ -18,8 +18,11 @@ from werkzeug.utils import secure_filename
 
 try:
     import pg_store
-except Exception:
+except Exception as e:
+    _PG_STORE_IMPORT_ERROR = repr(e)
     pg_store = None
+else:
+    _PG_STORE_IMPORT_ERROR = ""
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,22 @@ def _pg_enabled() -> bool:
         return bool(pg_store.is_enabled())
     except Exception:
         return False
+
+
+def _database_url_configured() -> bool:
+    return bool(str(os.environ.get("DATABASE_URL") or "").strip())
+
+
+@app.get("/api/_diag")
+def api_diag():
+    return jsonify(
+        {
+            "database_url_configured": _database_url_configured(),
+            "pg_store_loaded": pg_store is not None,
+            "pg_enabled": _pg_enabled(),
+            "pg_store_import_error": _PG_STORE_IMPORT_ERROR or "",
+        }
+    )
 
 
 def _admin_enabled() -> bool:
@@ -722,6 +741,9 @@ def api_pdv_assets_upload():
     if denied is not None:
         return denied
 
+    if _database_url_configured() and not _pg_enabled():
+        return jsonify({"error": "postgres_indisponivel"}), 500
+
     if "file" not in request.files:
         return jsonify({"error": "arquivo_nao_enviado"}), 400
 
@@ -766,6 +788,9 @@ def api_pdv_publicar_catalogo():
     denied = _require_pdv_key()
     if denied is not None:
         return denied
+
+    if _database_url_configured() and not _pg_enabled():
+        return jsonify({"error": "postgres_indisponivel"}), 500
 
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
