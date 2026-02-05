@@ -755,8 +755,8 @@ def api_pdv_assets_upload():
             ct, _ = mimetypes.guess_type(str(target.name))
             pg_store.save_asset(path=f"assets/{target.name}", content=raw, content_type=ct)
         except Exception:
-            # Não falha upload por conta do Postgres, mas pode perder persistência de assets.
-            pass
+            logger.exception("Falha ao salvar asset no Postgres (path=%s)", f"assets/{target.name}")
+            return jsonify({"error": "falha_ao_salvar_postgres"}), 500
 
     return jsonify({"ok": True, "path": f"assets/{target.name}"})
 
