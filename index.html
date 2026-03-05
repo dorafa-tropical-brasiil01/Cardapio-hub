@@ -1481,12 +1481,24 @@
 
     function showMainScreen() {
         const post = document.getElementById("postOrderScreen");
+        const header = document.querySelector("header");
+        const search = document.querySelector(".search-bar");
+        const banner = document.getElementById("banner");
+        const sectionTitle = document.querySelector(".section-title");
+        const queridinhos = document.getElementById("queridinhos");
+        const closedPanel = document.getElementById("closedPanel");
         const toolbar = document.querySelector(".toolbar");
         const list = document.getElementById("listaProdutos");
         const floating = document.getElementById("floatingActions");
 
         state.postOrderActive = false;
         if (post) post.style.display = "none";
+        if (header) header.style.display = "flex";
+        if (search) search.style.display = "block";
+        if (banner) banner.style.display = "block";
+        if (sectionTitle) sectionTitle.style.display = "block";
+        if (queridinhos) queridinhos.style.display = "flex";
+        if (closedPanel) closedPanel.style.display = "none";
         if (toolbar) toolbar.style.display = "block";
         if (list) list.style.display = "block";
         if (floating) floating.style.display = "flex";
@@ -1505,6 +1517,12 @@
 
     function showPostOrderScreen() {
         const post = document.getElementById("postOrderScreen");
+        const header = document.querySelector("header");
+        const search = document.querySelector(".search-bar");
+        const banner = document.getElementById("banner");
+        const sectionTitle = document.querySelector(".section-title");
+        const queridinhos = document.getElementById("queridinhos");
+        const closedPanel = document.getElementById("closedPanel");
         const toolbar = document.querySelector(".toolbar");
         const list = document.getElementById("listaProdutos");
         const floating = document.getElementById("floatingActions");
@@ -1519,6 +1537,12 @@
         } catch {
         }
 
+        if (header) header.style.display = "none";
+        if (search) search.style.display = "none";
+        if (banner) banner.style.display = "none";
+        if (sectionTitle) sectionTitle.style.display = "none";
+        if (queridinhos) queridinhos.style.display = "none";
+        if (closedPanel) closedPanel.style.display = "none";
         if (toolbar) toolbar.style.display = "none";
         if (list) list.style.display = "none";
         if (floating) floating.style.display = "none";
