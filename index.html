@@ -843,23 +843,25 @@
         const now = document.getElementById("closedLocalTime");
 
         const shouldBlock = !info.isOpen;
-        if (panel) panel.style.display = shouldBlock ? "block" : "none";
+        if (panel) panel.style.display = (shouldBlock && !state.postOrderActive) ? "block" : "none";
         if (msg) msg.innerText = info.closedMessage || "";
         if (next) next.innerText = info.nextOpen ? `Próxima abertura hoje: ${info.nextOpen}` : "";
         if (now) now.innerText = info.nowLabel ? `Horário local: ${info.nowLabel}` : "";
 
-        const hideIds = ["queridinhos", "categoriasRow", "listaProdutos"];
-        for (const id of hideIds) {
-            const el = document.getElementById(id);
-            if (!el) continue;
-            el.style.display = shouldBlock ? "none" : "";
-        }
+        if (!state.postOrderActive) {
+            const hideIds = ["queridinhos", "categoriasRow", "listaProdutos"];
+            for (const id of hideIds) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                el.style.display = shouldBlock ? "none" : "";
+            }
 
-        const secTitles = Array.from(document.querySelectorAll(".section-title"));
-        for (const st of secTitles) {
-            const t = String(st?.innerText || "").trim().toUpperCase();
-            if (t === "QUERIDINHOS") {
-                st.style.display = shouldBlock ? "none" : "";
+            const secTitles = Array.from(document.querySelectorAll(".section-title"));
+            for (const st of secTitles) {
+                const t = String(st?.innerText || "").trim().toUpperCase();
+                if (t === "QUERIDINHOS") {
+                    st.style.display = shouldBlock ? "none" : "";
+                }
             }
         }
 
@@ -2170,6 +2172,10 @@
             iniciarBanner();
             aplicarHorarioFuncionamento();
             render();
+
+            if (state.postOrderActive) {
+                showPostOrderScreen();
+            }
         } catch {
         }
     }
