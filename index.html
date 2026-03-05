@@ -682,6 +682,15 @@
 <div class="product-list" id="listaProdutos">
 </div>
 
+<div id="postOrderScreen" style="display:none; padding:18px; max-width:900px; margin:0 auto">
+    <div style="display:flex; justify-content:flex-start; margin-bottom:14px">
+        <button type="button" onclick="voltarAoCardapio()">Voltar</button>
+    </div>
+    <div style="display:flex; justify-content:center">
+        <img id="postOrderImage" src="" alt="" style="max-width:100%; border-radius:16px; display:none" />
+    </div>
+</div>
+
 <div class="floating-actions" id="floatingActions">
     <button onclick="abrirCarrinho()">Ver Pedido</button>
     <button onclick="abrirCategorias()">Categorias</button>
@@ -1467,7 +1476,71 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        abrirCarrinho();
+        showPostOrderScreen();
+    }
+
+    function showMainScreen() {
+        const post = document.getElementById("postOrderScreen");
+        const toolbar = document.querySelector(".toolbar");
+        const list = document.getElementById("listaProdutos");
+        const floating = document.getElementById("floatingActions");
+
+        state.postOrderActive = false;
+        if (post) post.style.display = "none";
+        if (toolbar) toolbar.style.display = "block";
+        if (list) list.style.display = "block";
+        if (floating) floating.style.display = "flex";
+    }
+
+    function normalizeAnyAssetUrl(v) {
+        const s = String(v || "").trim();
+        if (!s) return "";
+        const low = s.toLowerCase();
+        if (low.startsWith("http://") || low.startsWith("https://")) return s;
+        if (s.startsWith("/assets/")) return s;
+        if (s.startsWith("assets/")) return "/" + s;
+        if (s.startsWith("/")) return s;
+        return "/assets/" + s;
+    }
+
+    function showPostOrderScreen() {
+        const post = document.getElementById("postOrderScreen");
+        const toolbar = document.querySelector(".toolbar");
+        const list = document.getElementById("listaProdutos");
+        const floating = document.getElementById("floatingActions");
+        const img = document.getElementById("postOrderImage");
+
+        state.postOrderActive = true;
+
+        try {
+            if (isModalOpen()) {
+                fecharModal();
+            }
+        } catch {
+        }
+
+        if (toolbar) toolbar.style.display = "none";
+        if (list) list.style.display = "none";
+        if (floating) floating.style.display = "none";
+        if (post) post.style.display = "block";
+
+        try {
+            const raw = state.data?.ui?.postOrderImage;
+            const src = normalizeAnyAssetUrl(raw);
+            if (img && src) {
+                img.src = src;
+                img.style.display = "block";
+                img.onerror = () => { img.style.display = "none"; };
+            } else if (img) {
+                img.style.display = "none";
+            }
+        } catch {
+            if (img) img.style.display = "none";
+        }
+    }
+
+    function voltarAoCardapio() {
+        showMainScreen();
     }
 
     async function refreshSolicitacao() {
@@ -1528,7 +1601,9 @@
                 if (Date.now() < (state.modalLockUntil || 0)) return;
                 const title = String(document.getElementById("modalTitle")?.innerText || "");
                 if (title === "Carrinho / Pedido") {
-                    abrirCarrinho();
+                    if (!state.postOrderActive) {
+                        abrirCarrinho();
+                    }
                 }
             }
         } catch {
@@ -2099,6 +2174,16 @@
             iniciarBanner();
             aplicarHorarioFuncionamento();
             render();
+
+            try {
+                const p = getPedidoAtual();
+                if (p && state.carrinho.length === 0) {
+                    showPostOrderScreen();
+                } else {
+                    showMainScreen();
+                }
+            } catch {
+            }
 
             if (state.solicitacaoTimer) {
                 clearInterval(state.solicitacaoTimer);
