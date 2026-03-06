@@ -10,12 +10,29 @@ import psycopg2
 import psycopg2.extras
 
 
+_DB_READY = False
+
+
 def is_enabled() -> bool:
     return bool(str(os.environ.get("DATABASE_URL") or "").strip())
 
 
 def _conn():
-    return psycopg2.connect(str(os.environ.get("DATABASE_URL") or "").strip())
+    dsn = str(os.environ.get("DATABASE_URL") or "").strip()
+    if not dsn:
+        return psycopg2.connect("")
+    low = dsn.lower()
+    if "sslmode=" not in low:
+        dsn = dsn + ("&" if "?" in dsn else "?") + "sslmode=require"
+    return psycopg2.connect(dsn)
+
+
+def _ensure_db_ready() -> None:
+    global _DB_READY
+    if _DB_READY:
+        return
+    init_db()
+    _DB_READY = True
 
 
 def init_db() -> None:
@@ -107,6 +124,8 @@ def save_solicitacao(*, record: dict[str, Any]) -> None:
     if not is_enabled():
         return
 
+    _ensure_db_ready()
+
     sid = str(record.get("id") or "").strip()
     status = str(record.get("status") or "").strip().upper() or "PENDENTE"
     mesa = record.get("mesa")
@@ -158,6 +177,8 @@ def get_solicitacao(*, solicitacao_id: str) -> dict[str, Any] | None:
 def save_asset(*, path: str, content: bytes, content_type: str | None = None) -> None:
     if not is_enabled():
         return
+
+    _ensure_db_ready()
     p = str(path or "").strip()
     if not p:
         return
@@ -234,6 +255,8 @@ def save_catalogo_publicado(*, record: dict[str, Any]) -> None:
         return
     if not isinstance(record, dict):
         return
+
+    _ensure_db_ready()
 
     updated_em = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     with _conn() as conn:
