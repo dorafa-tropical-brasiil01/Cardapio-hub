@@ -18,13 +18,31 @@ def is_enabled() -> bool:
 
 
 def _conn():
-    dsn = str(os.environ.get("DATABASE_URL") or "").strip()
-    if not dsn:
+    base_dsn = str(os.environ.get("DATABASE_URL") or "").strip()
+    if not base_dsn:
         return psycopg2.connect("")
-    low = dsn.lower()
-    if "sslmode=" not in low:
-        dsn = dsn + ("&" if "?" in dsn else "?") + "sslmode=require"
-    return psycopg2.connect(dsn)
+
+    # Railway pode fornecer URLs que aceitam SSL de forma diferente conforme o provedor.
+    # Tentamos alguns modos sem registrar o DSN (evita vazar credenciais em logs).
+    low = base_dsn.lower()
+    candidates: list[str] = []
+    if "sslmode=" in low:
+        candidates.append(base_dsn)
+    else:
+        sep = "&" if "?" in base_dsn else "?"
+        candidates.append(base_dsn + sep + "sslmode=require")
+        candidates.append(base_dsn + sep + "sslmode=prefer")
+        candidates.append(base_dsn + sep + "sslmode=disable")
+
+    last_err: Exception | None = None
+    for dsn in candidates:
+        try:
+            return psycopg2.connect(dsn)
+        except Exception as e:
+            last_err = e
+            continue
+    assert last_err is not None
+    raise last_err
 
 
 def _ensure_db_ready() -> None:

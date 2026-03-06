@@ -819,6 +819,7 @@ def api_pdv_publicar_catalogo():
     try:
         _save_catalogo_publicado(record=record)
     except Exception:
+        logger.exception("Falha ao salvar catalogo_publicado no backend")
         return jsonify({"error": "falha_ao_salvar"}), 500
 
     return jsonify({"ok": True})
