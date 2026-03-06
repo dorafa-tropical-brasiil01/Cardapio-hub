@@ -43,6 +43,7 @@
             --verde: #0a5c2f;
             --amarelo: #fefecf;
             --price-w: 96px;
+            --footer-h: 86px;
         }
 
         header {
@@ -171,6 +172,7 @@
         .product-list {
             width: 92%;
             margin: 0 auto;
+            padding-bottom: calc(var(--footer-h) + 110px);
         }
 
         .product {
@@ -295,15 +297,35 @@
 
         footer {
             display: flex;
-            justify-content: space-between;
-            padding: 20px;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            height: var(--footer-h);
+            padding: 14px 18px;
+            box-sizing: border-box;
+            width: 92%;
+            margin: 18px auto 0;
+            border-radius: 18px;
+            background: rgba(254, 254, 207, 0.88);
+            border: 2px solid rgba(10, 92, 47, 0.25);
+            color: var(--verde);
+            font-weight: 800;
+            text-align: center;
+        }
+
+        #appFooterLogo {
+            height: 36px;
+            width: auto;
+            max-width: 160px;
+            object-fit: contain;
+            display: none;
         }
 
         .floating-actions {
             position: fixed;
             left: 14px;
             right: 14px;
-            bottom: 14px;
+            bottom: calc(14px + var(--footer-h));
             display: flex;
             justify-content: space-between;
             gap: 12px;
@@ -515,7 +537,7 @@
         #whatsFloat {
             position: fixed;
             right: 16px;
-            bottom: calc(86px + env(safe-area-inset-bottom));
+            bottom: calc(86px + var(--footer-h) + env(safe-area-inset-bottom));
             z-index: 998;
             display: none;
             align-items: center;
@@ -548,7 +570,7 @@
             }
 
             #whatsFloat {
-                bottom: calc(76px + env(safe-area-inset-bottom));
+                bottom: calc(76px + var(--footer-h) + env(safe-area-inset-bottom));
             }
 
             .modal-backdrop {
@@ -681,6 +703,11 @@
 
 <div class="product-list" id="listaProdutos">
 </div>
+
+<footer id="appFooter">
+    <span>Criado e desenvolvido por Rafael Caixeta</span>
+    <img id="appFooterLogo" alt="Logo">
+</footer>
 
 <div id="postOrderScreen" style="display:none; padding:18px; max-width:900px; margin:0 auto">
     <div style="display:flex; justify-content:flex-start; margin-bottom:14px">
@@ -1491,6 +1518,7 @@
         const closedPanel = document.getElementById("closedPanel");
         const toolbar = document.querySelector(".toolbar");
         const list = document.getElementById("listaProdutos");
+        const footer = document.getElementById("appFooter");
         const floating = document.getElementById("floatingActions");
 
         state.postOrderActive = false;
@@ -1503,6 +1531,7 @@
         if (closedPanel) closedPanel.style.display = "none";
         if (toolbar) toolbar.style.display = "block";
         if (list) list.style.display = "block";
+        if (footer) footer.style.display = "flex";
         if (floating) floating.style.display = "flex";
     }
 
@@ -1527,6 +1556,7 @@
         const closedPanel = document.getElementById("closedPanel");
         const toolbar = document.querySelector(".toolbar");
         const list = document.getElementById("listaProdutos");
+        const footer = document.getElementById("appFooter");
         const floating = document.getElementById("floatingActions");
         const img = document.getElementById("postOrderImage");
 
@@ -1547,6 +1577,7 @@
         if (closedPanel) closedPanel.style.display = "none";
         if (toolbar) toolbar.style.display = "none";
         if (list) list.style.display = "none";
+        if (footer) footer.style.display = "none";
         if (floating) floating.style.display = "none";
         if (post) post.style.display = "block";
 
@@ -2011,6 +2042,7 @@
         const brandText = document.getElementById("brandText");
         const whatsBtn = document.getElementById("whatsBtn");
         const whatsFloat = document.getElementById("whatsFloat");
+        const footerLogo = document.getElementById("appFooterLogo");
 
         function normalizeAssetUrl(v) {
             const s = String(v || "").trim();
@@ -2033,6 +2065,18 @@
         } else {
             logoImg.style.display = "none";
             brandText.style.display = "block";
+        }
+
+        try {
+            if (footerLogo && logo) {
+                footerLogo.src = normalizeAssetUrl(logo);
+                footerLogo.style.display = "block";
+                footerLogo.onerror = () => { footerLogo.style.display = "none"; };
+            } else if (footerLogo) {
+                footerLogo.style.display = "none";
+            }
+        } catch {
+            if (footerLogo) footerLogo.style.display = "none";
         }
 
         try {
