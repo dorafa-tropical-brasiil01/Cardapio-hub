@@ -327,7 +327,7 @@
             display: flex;
             gap: 10px;
             align-items: center;
-            justify-content: space-between;
+            justify-content: stretch;
         }
 
         .bottom-action {
@@ -356,6 +356,12 @@
         #whatsFooter {
             display: none;
             text-decoration: none;
+            flex: 1.35 1 0;
+        }
+
+        #bottomHome {
+            flex: 0 0 auto;
+            padding: 0 8px;
         }
 
         #whatsFooterInner {
@@ -625,6 +631,10 @@
                 gap: 6px;
             }
 
+            #bottomHome {
+                padding: 0 7px;
+            }
+
             .bottom-action {
                 height: 42px;
                 font-size: 12.5px;
@@ -725,6 +735,10 @@
                 gap: 5px;
             }
 
+            #bottomHome {
+                padding: 0 6px;
+            }
+
             #whatsFooterInner {
                 gap: 5px;
                 padding: 0 6px;
@@ -784,7 +798,7 @@
 
 <div id="bottomBar">
     <div id="bottomBarInner">
-        <button class="bottom-action" onclick="irAoInicio()">Início</button>
+        <button id="bottomHome" class="bottom-action" onclick="irAoInicio()">Início</button>
         <button class="bottom-action" onclick="abrirCarrinho()">Ver Pedido</button>
         <button class="bottom-action" onclick="abrirCategorias()">Categorias</button>
         <a id="whatsFooter" class="bottom-action" href="#" target="_blank" rel="noopener">
@@ -1313,6 +1327,25 @@
     }
 
     function irAoInicio() {
+        state.categoriaId = "__todas__";
+        state.busca = "";
+        try {
+            const input = document.getElementById("search");
+            if (input) input.value = "";
+        } catch {
+        }
+
+        render();
+
+        const anchor = document.getElementById("listaProdutos");
+        if (anchor) {
+            try {
+                anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+                return;
+            } catch {
+            }
+        }
+
         try {
             window.scrollTo({ top: 0, behavior: "smooth" });
         } catch {
