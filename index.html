@@ -116,7 +116,7 @@
             text-align: center;
             width: 87%;
             border-radius: 20px;
-            margin: 0 auto;
+            margin: 0 auto 12px;
         }
 
         .cards {
@@ -325,7 +325,7 @@
             width: min(920px, 92%);
             margin: 0 auto;
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             justify-content: space-between;
         }
@@ -339,7 +339,7 @@
             border-radius: 999px;
             height: 56px;
             padding: 0 14px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 900;
             cursor: pointer;
             box-shadow: 0 10px 22px rgba(0,0,0,0.18);
@@ -368,12 +368,25 @@
         }
 
         #whatsFooter svg {
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             display: block;
             fill: currentColor;
             color: var(--verde);
             flex: 0 0 auto;
+        }
+
+        .category-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .category-list .pill {
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            border-radius: 16px;
         }
 
         .floating-actions {
@@ -622,14 +635,19 @@
 
             #bottomBarInner {
                 width: 92%;
-                gap: 10px;
+                gap: 8px;
             }
 
             .bottom-action {
                 height: 52px;
-                font-size: 16px;
-                padding: 0 10px;
-                gap: 8px;
+                font-size: 13px;
+                padding: 0 8px;
+                gap: 6px;
+            }
+
+            #whatsFooter svg {
+                width: 20px;
+                height: 20px;
             }
 
             .product-info {
@@ -759,6 +777,7 @@
 
 <div id="bottomBar">
     <div id="bottomBarInner">
+        <button class="bottom-action" onclick="irAoInicio()">Início</button>
         <button class="bottom-action" onclick="abrirCarrinho()">Ver Pedido</button>
         <button class="bottom-action" onclick="abrirCategorias()">Categorias</button>
         <a id="whatsFooter" class="bottom-action" href="#" target="_blank" rel="noopener">
@@ -1286,10 +1305,18 @@
         backdrop.setAttribute("aria-hidden", "true");
     }
 
+    function irAoInicio() {
+        try {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {
+            window.scrollTo(0, 0);
+        }
+    }
+
     function abrirCategorias() {
         const cats = state.data?.categorias || [];
         const html = `
-            <div class="category-row">
+            <div class="category-list">
                 <button class="pill ${state.categoriaId === "__todas__" ? "active" : ""}" onclick="selecionarCategoria('__todas__')">Todas</button>
                 ${cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${escapeHtml(humanCategoryName(c.nome))}</button>`).join("")}
             </div>
