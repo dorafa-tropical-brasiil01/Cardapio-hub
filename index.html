@@ -316,8 +316,8 @@
             z-index: 998;
             display: none;
             align-items: center;
-            padding: 12px 14px;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom));
+            padding: 10px 12px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom));
             box-sizing: border-box;
         }
 
@@ -337,8 +337,8 @@
             color: var(--verde);
             border: none;
             border-radius: 999px;
-            height: 56px;
-            padding: 0 14px;
+            height: 52px;
+            padding: 0 12px;
             font-size: 16px;
             font-weight: 900;
             cursor: pointer;
@@ -362,7 +362,7 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             width: auto;
             min-width: 0;
         }
@@ -609,18 +609,11 @@
             height: 22px;
             display: block;
             fill: currentColor;
-            color: white;
         }
 
-        #whatsFloat div { display: none; }
-
-        @media (max-width: 480px) {
-            header {
-                padding: 12px 16px;
-            }
-
+        @media (max-width: 768px) {
             :root {
-                --footer-h: 76px;
+                --footer-h: 66px;
                 --price-w: 92px;
             }
 
@@ -628,26 +621,25 @@
                 bottom: calc(76px + var(--footer-h) + env(safe-area-inset-bottom));
             }
 
-            .modal-backdrop {
-                align-items: flex-start;
-            }
-
-
             #bottomBarInner {
                 width: 92%;
-                gap: 8px;
+                gap: 6px;
             }
 
             .bottom-action {
-                height: 52px;
-                font-size: 13px;
-                padding: 0 8px;
+                height: 46px;
+                font-size: 12.5px;
+                padding: 0 6px;
+                gap: 6px;
+            }
+
+            #whatsFooterInner {
                 gap: 6px;
             }
 
             #whatsFooter svg {
-                width: 20px;
-                height: 20px;
+                width: 18px;
+                height: 18px;
             }
 
             .product-info {
@@ -715,12 +707,25 @@
                 color: var(--verde);
                 font-size: 18px;
             }
+
             .product-list {
                 width: 92%;
             }
 
             .product {
                 gap: 10px;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .bottom-action {
+                font-size: 12px;
+                padding: 0 5px;
+                gap: 5px;
+            }
+
+            #whatsFooterInner {
+                gap: 5px;
             }
         }
     </style>
@@ -1342,7 +1347,6 @@
         }
 
         const pills = [
-            `<button class="pill ${state.categoriaId === "__todas__" ? "active" : ""}" onclick="selecionarCategoria('__todas__')">Todas</button>`,
             ...cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${escapeHtml(humanCategoryName(c.nome))}</button>`)
         ].join("");
 
