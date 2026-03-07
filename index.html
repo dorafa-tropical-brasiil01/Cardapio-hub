@@ -336,9 +336,9 @@
             background: var(--amarelo);
             color: var(--verde);
             border: none;
-            border-radius: 999px;
-            height: 52px;
-            padding: 0 12px;
+            border-radius: 14px;
+            height: 46px;
+            padding: 0 10px;
             font-size: 16px;
             font-weight: 900;
             cursor: pointer;
@@ -365,6 +365,8 @@
             gap: 8px;
             width: auto;
             min-width: 0;
+            padding: 0 6px;
+            box-sizing: border-box;
         }
 
         #whatsFooter svg {
@@ -474,12 +476,9 @@
         }
 
         #categoriasRow {
-            display: flex;
-        }
-
-        #categoriasRow button:not(:first-child) {
             display: none;
         }
+
 
         .modal-backdrop {
             position: fixed;
@@ -627,14 +626,16 @@
             }
 
             .bottom-action {
-                height: 46px;
+                height: 42px;
                 font-size: 12.5px;
-                padding: 0 6px;
+                padding: 0 8px;
                 gap: 6px;
+                border-radius: 12px;
             }
 
             #whatsFooterInner {
                 gap: 6px;
+                padding: 0 6px;
             }
 
             #whatsFooter svg {
@@ -720,12 +721,13 @@
         @media (max-width: 360px) {
             .bottom-action {
                 font-size: 12px;
-                padding: 0 5px;
+                padding: 0 7px;
                 gap: 5px;
             }
 
             #whatsFooterInner {
                 gap: 5px;
+                padding: 0 6px;
             }
         }
     </style>
@@ -1340,17 +1342,7 @@
         const row = document.getElementById("categoriasRow");
         if (!row) return;
 
-        const cats = state.data?.categorias || [];
-        if (!Array.isArray(cats)) {
-            row.innerHTML = "";
-            return;
-        }
-
-        const pills = [
-            ...cats.map(c => `<button class="pill ${state.categoriaId === c.id ? "active" : ""}" onclick="selecionarCategoria('${c.id}')">${escapeHtml(humanCategoryName(c.nome))}</button>`)
-        ].join("");
-
-        row.innerHTML = pills;
+        row.innerHTML = "";
     }
 
     function addCarrinho(produtoId) {
