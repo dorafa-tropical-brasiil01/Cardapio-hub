@@ -1206,16 +1206,56 @@
         return "Não foi possível obter a localização.";
     }
 
+    function _mapsEmbedUrl(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return "";
+        const low = s.toLowerCase();
+        if (!low.includes("google.") || !low.includes("/maps")) return "";
+        if (low.includes("output=embed")) return s;
+        const joiner = s.includes("?") ? "&" : "?";
+        return s + joiner + "output=embed";
+    }
+
     function usarMinhaLocalizacao() {
+        const btn = (() => {
+            try {
+                return document.querySelector('button[onclick="usarMinhaLocalizacao()"]');
+            } catch {
+                return null;
+            }
+        })();
+        const oldBtnText = btn ? String(btn.textContent || "") : "";
+        if (btn) {
+            try {
+                btn.disabled = true;
+                btn.textContent = "Obtendo localização...";
+            } catch {
+            }
+        }
+
         try {
             if (!navigator || !navigator.geolocation) {
                 setModal("Localização", `<div><strong>Seu navegador não suporta localização.</strong></div>`);
                 abrirModal();
+                if (btn) {
+                    try {
+                        btn.disabled = false;
+                        btn.textContent = oldBtnText || "Usar minha localização";
+                    } catch {
+                    }
+                }
                 return;
             }
         } catch {
             setModal("Localização", `<div><strong>Seu navegador não suporta localização.</strong></div>`);
             abrirModal();
+            if (btn) {
+                try {
+                    btn.disabled = false;
+                    btn.textContent = oldBtnText || "Usar minha localização";
+                } catch {
+                }
+            }
             return;
         }
 
@@ -1232,19 +1272,46 @@
                     const url = `https://www.google.com/maps?q=${lat},${lng}`;
                     state.deliveryMaps = url;
                     saveDeliveryFields();
-                    abrirCarrinho();
+                    try {
+                        const el = document.getElementById("deliveryMaps");
+                        if (el) {
+                            el.value = url;
+                            el.focus();
+                            try { el.setSelectionRange(0, String(el.value || "").length); } catch {}
+                        } else {
+                            abrirCarrinho();
+                        }
+                    } catch {
+                        abrirCarrinho();
+                    }
                     lockModalRender(6000);
                 } catch {
                     setModal("Localização", `<div><strong>Não foi possível obter a localização.</strong></div>`);
                     abrirModal();
+                }
+
+                if (btn) {
+                    try {
+                        btn.disabled = false;
+                        btn.textContent = oldBtnText || "Usar minha localização";
+                    } catch {
+                    }
                 }
             },
             (err) => {
                 const msg = _geoErrorMessage(err);
                 setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div><div class="muted" style="margin-top:8px">Você pode colar manualmente o link do Google Maps no campo de localização.</div>`);
                 abrirModal();
+
+                if (btn) {
+                    try {
+                        btn.disabled = false;
+                        btn.textContent = oldBtnText || "Usar minha localização";
+                    } catch {
+                    }
+                }
             },
-            { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+            { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 }
         );
     }
 
@@ -1984,6 +2051,13 @@
             <div style="margin-top:14px">
                 <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
                 <input id="deliveryMaps" value="${String(state.deliveryMaps || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryMaps', this.value)" placeholder="Cole aqui o link do Google Maps" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                ${(() => {
+                    const embed = _mapsEmbedUrl(state.deliveryMaps);
+                    if (!embed) return "";
+                    return `<div style="margin-top:10px">
+                        <iframe title="Google Maps" src="${String(embed).replace(/"/g, "&quot;")}" style="width:100%; height:240px; border:0; border-radius:12px" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+                    </div>`;
+                })()}
                 <div style="margin-top:10px"><button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button></div>
             </div>
 
