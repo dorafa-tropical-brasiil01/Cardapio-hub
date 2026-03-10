@@ -849,8 +849,9 @@
         deliveryBairro: "cardapio.deliveryBairro.v1",
         deliveryCidade: "cardapio.deliveryCidade.v1",
         deliveryRef: "cardapio.deliveryRef.v1",
-        deliveryTroco: "cardapio.deliveryTroco.v1",
+        deliveryMaps: "cardapio.deliveryMaps.v1",
         deliveryObs: "cardapio.deliveryObs.v1",
+        deliveryTroco: "cardapio.deliveryTroco.v1",
         mesa: "cardapio.mesa.v1",
         token: "cardapio.token.v1"
     };
@@ -1021,8 +1022,9 @@
         deliveryBairro: "",
         deliveryCidade: "",
         deliveryRef: "",
-        deliveryTroco: "",
+        deliveryMaps: "",
         deliveryObs: "",
+        deliveryTroco: "",
         modalLockUntil: 0
     };
 
@@ -1136,8 +1138,9 @@
         try { state.deliveryBairro = String(localStorage.getItem(STORAGE_KEYS.deliveryBairro) || "").trim(); } catch { state.deliveryBairro = ""; }
         try { state.deliveryCidade = String(localStorage.getItem(STORAGE_KEYS.deliveryCidade) || "").trim(); } catch { state.deliveryCidade = ""; }
         try { state.deliveryRef = String(localStorage.getItem(STORAGE_KEYS.deliveryRef) || "").trim(); } catch { state.deliveryRef = ""; }
-        try { state.deliveryTroco = String(localStorage.getItem(STORAGE_KEYS.deliveryTroco) || "").trim(); } catch { state.deliveryTroco = ""; }
+        try { state.deliveryMaps = String(localStorage.getItem(STORAGE_KEYS.deliveryMaps) || "").trim(); } catch { state.deliveryMaps = ""; }
         try { state.deliveryObs = String(localStorage.getItem(STORAGE_KEYS.deliveryObs) || "").trim(); } catch { state.deliveryObs = ""; }
+        try { state.deliveryTroco = String(localStorage.getItem(STORAGE_KEYS.deliveryTroco) || "").trim(); } catch { state.deliveryTroco = ""; }
     }
 
     function saveClientName() {
@@ -1173,8 +1176,9 @@
         try { localStorage.setItem(STORAGE_KEYS.deliveryBairro, String(state.deliveryBairro || "")); } catch {}
         try { localStorage.setItem(STORAGE_KEYS.deliveryCidade, String(state.deliveryCidade || "")); } catch {}
         try { localStorage.setItem(STORAGE_KEYS.deliveryRef, String(state.deliveryRef || "")); } catch {}
-        try { localStorage.setItem(STORAGE_KEYS.deliveryTroco, String(state.deliveryTroco || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryMaps, String(state.deliveryMaps || "")); } catch {}
         try { localStorage.setItem(STORAGE_KEYS.deliveryObs, String(state.deliveryObs || "")); } catch {}
+        try { localStorage.setItem(STORAGE_KEYS.deliveryTroco, String(state.deliveryTroco || "")); } catch {}
     }
 
     function onDeliveryTypeChange(val) {
@@ -1189,6 +1193,59 @@
         state[key] = String(val || "").trim();
         saveDeliveryFields();
         lockModalRender(6000);
+    }
+
+    function _geoErrorMessage(err) {
+        try {
+            const code = Number(err && err.code);
+            if (code === 1) return "Permissão de localização negada.";
+            if (code === 2) return "Localização indisponível.";
+            if (code === 3) return "Tempo esgotado ao obter localização.";
+        } catch {
+        }
+        return "Não foi possível obter a localização.";
+    }
+
+    function usarMinhaLocalizacao() {
+        try {
+            if (!navigator || !navigator.geolocation) {
+                setModal("Localização", `<div><strong>Seu navegador não suporta localização.</strong></div>`);
+                abrirModal();
+                return;
+            }
+        } catch {
+            setModal("Localização", `<div><strong>Seu navegador não suporta localização.</strong></div>`);
+            abrirModal();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                try {
+                    const lat = Number(pos && pos.coords && pos.coords.latitude);
+                    const lng = Number(pos && pos.coords && pos.coords.longitude);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+                        setModal("Localização", `<div><strong>Não foi possível ler as coordenadas.</strong></div>`);
+                        abrirModal();
+                        return;
+                    }
+                    const url = `https://www.google.com/maps?q=${lat},${lng}`;
+                    state.deliveryMaps = url;
+                    saveDeliveryFields();
+                    abrirCarrinho();
+                    lockModalRender(6000);
+                } catch {
+                    setModal("Localização", `<div><strong>Não foi possível obter a localização.</strong></div>`);
+                    abrirModal();
+                }
+            },
+            (err) => {
+                const msg = _geoErrorMessage(err);
+                setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div><div class="muted" style="margin-top:8px">Você pode colar manualmente o link do Google Maps no campo de localização.</div>`);
+                abrirModal();
+            },
+            { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+        );
     }
 
     function savePayMethod() {
@@ -1538,7 +1595,23 @@
             }
 
             const tipo_entrega = String(state.deliveryType || "DELIVERY").toUpperCase();
-            const endereco = null;
+            const endereco = {
+                rua: String(state.deliveryRua || "").trim() || null,
+                numero: String(state.deliveryNumero || "").trim() || null,
+                bairro: String(state.deliveryBairro || "").trim() || null,
+                cidade: String(state.deliveryCidade || "").trim() || null,
+                referencia: String(state.deliveryRef || "").trim() || null,
+                maps_url: String(state.deliveryMaps || "").trim() || null,
+            };
+
+            if (tipo_entrega === "DELIVERY") {
+                const hasMaps = Boolean(String(endereco.maps_url || "").trim());
+                if (!hasMaps) {
+                    setModal("Delivery / Retirada", `<div><strong>Informe a localização (Google Maps) para Delivery.</strong></div>`);
+                    abrirModal();
+                    return;
+                }
+            }
 
             let troco_para = null;
             if (pagamento_preferido === "DINHEIRO") {
@@ -1560,7 +1633,7 @@
                 tipo_entrega: (tipo_entrega === "RETIRADA" ? "RETIRADA" : "DELIVERY"),
                 endereco,
                 troco_para,
-                observacoes: null,
+                observacoes: (String(state.deliveryObs || "").trim() || null),
                 pagamento_preferido,
                 itens,
                 total_estimado: getCartTotal()
@@ -1908,7 +1981,21 @@
                 </select>
             </div>
 
-            <div class="muted" style="margin-top:10px">Endereço, referência e observações serão combinados com o atendente via WhatsApp.</div>`
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
+                <input id="deliveryMaps" value="${String(state.deliveryMaps || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryMaps', this.value)" placeholder="Cole aqui o link do Google Maps" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                <div style="margin-top:10px"><button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button></div>
+            </div>
+
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Referência do local (opcional):</div>
+                <input id="deliveryRef" value="${String(state.deliveryRef || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRef', this.value)" placeholder="Ex.: perto do mercado, portão azul" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+            </div>
+
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Observações (opcional):</div>
+                <textarea id="deliveryObs" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryObs', this.value)" placeholder="Ex.: sem cebola, troco, instruções para entrega" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35); min-height: 86px; resize: vertical">${escapeHtml(String(state.deliveryObs || ""))}</textarea>
+            </div>`
         );
 
         const trocoUi = (!isSalao && String(state.payMethod||"").toUpperCase()==="DINHEIRO")

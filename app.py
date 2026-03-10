@@ -1147,14 +1147,16 @@ def api_public_create_pedido():
     endereco = body.get("endereco")
     if tipo_entrega == "DELIVERY":
         if endereco is None:
-            endereco = None
-        elif isinstance(endereco, dict):
+            return jsonify({"error": "endereco_obrigatorio"}), 400
+        if not isinstance(endereco, dict):
+            return jsonify({"error": "endereco_invalido"}), 400
+
+        maps_url = str(endereco.get("maps_url") or endereco.get("maps") or endereco.get("localizacao") or "").strip()
+        if not maps_url:
             required = ["rua", "numero", "bairro", "cidade"]
             for k in required:
                 if not str(endereco.get(k) or "").strip():
                     return jsonify({"error": "endereco_incompleto"}), 400
-        else:
-            return jsonify({"error": "endereco_invalido"}), 400
     else:
         endereco = None
 
