@@ -61,6 +61,7 @@ app = Flask(
     static_folder=str(BUNDLE_DIR),
     static_url_path="",
 )
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_CONTENT_LENGTH") or (12 * 1024 * 1024))
 
 
 def _pg_enabled() -> bool:
@@ -748,6 +749,17 @@ def api_pdv_assets_upload():
 
     if _database_url_configured() and not _pg_enabled():
         return jsonify({"error": "postgres_indisponivel"}), 500
+
+    ct = str(request.content_type or "").lower()
+    if "multipart/form-data" not in ct:
+        return jsonify({"error": "content_type_invalido"}), 400
+
+    try:
+        cl = int(request.content_length or 0)
+    except Exception:
+        cl = 0
+    if cl <= 0:
+        return jsonify({"error": "arquivo_nao_enviado"}), 400
 
     if "file" not in request.files:
         return jsonify({"error": "arquivo_nao_enviado"}), 400
