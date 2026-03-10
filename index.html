@@ -283,12 +283,10 @@
             transform: translateY(-50%);
         }
 
-        .add-btn,
-        .price-btn {
-            border: none;
-            outline: none;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
+        .add-btn.flash-added,
+        .price-btn.flash-added {
+            background: var(--amarelo) !important;
+            color: var(--verde) !important;
         }
 
         .add-btn:active,
@@ -1502,13 +1500,24 @@
         row.innerHTML = "";
     }
 
-    function addCarrinho(produtoId) {
+    function addCarrinho(produtoId, el) {
         const pid = String(produtoId || "").trim();
         if (!pid) return;
 
         const produtos = Array.isArray(state.data?.produtos) ? state.data.produtos : [];
         const p = produtos.find(x => String(x?.id || "") === pid);
         if (!p) return;
+
+        try {
+            const btn = el && el.classList ? el : null;
+            if (btn) {
+                btn.classList.add("flash-added");
+                window.setTimeout(() => {
+                    try { btn.classList.remove("flash-added"); } catch { }
+                }, 260);
+            }
+        } catch {
+        }
 
         const idx = state.carrinho.findIndex(x => String(x.produtoId) === pid);
         if (idx >= 0) {
@@ -2164,7 +2173,7 @@
                     const descEnc = encodeURIComponent(String(raw || ""));
                     return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
                 })()}
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
                 <div class="product-price">${formatBRL(p.preco)}</div>
             </div>
         `).join("");
@@ -2188,7 +2197,7 @@
                     })()}
                     <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
-                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
+                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
             </div>
         `;
 
@@ -2304,7 +2313,7 @@
                 ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
                 : `<div class="muted">Sem descrição.</div>`}
             <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-                <button onclick="addCarrinho('${String(produtoId || "")}'); fecharModal();">+1</button>
+                <button class="add-btn" style="position: static; transform: none" onclick="addCarrinho('${String(produtoId || "")}', this); fecharModal();">+1</button>
                 <div class="product-price" style="margin-top:0">${formatBRL(preco)}</div>
             </div>
         `;

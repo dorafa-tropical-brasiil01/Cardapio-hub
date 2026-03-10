@@ -9,6 +9,7 @@ import secrets
 import io
 import urllib.error
 import urllib.request
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,9 @@ ALLOWED_COMPROVANTE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".jfif", ".he
 
 PDV_KEY = os.environ.get("PDV_KEY", "")
 ALLOWED_PAYMENT_METHODS = {"PIX", "DINHEIRO", "CARTAO", "MISTO"}
+
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 PDV_PRODUCTS_URL = os.environ.get("PDV_PRODUCTS_URL", "http://127.0.0.1:5600/api/produtos?ativos=1")
 
@@ -320,6 +324,141 @@ def _require_localhost() -> Any:
     if not _is_localhost():
         return jsonify({"error": "forbidden"}), 403
     return None
+
+
+def _telegram_enabled() -> bool:
+    return bool(str(TELEGRAM_BOT_TOKEN or "").strip()) and bool(str(TELEGRAM_CHAT_ID or "").strip())
+
+
+def _telegram_send_message(*, text: str) -> None:
+    if not _telegram_enabled():
+        return
+    msg = str(text or "").strip()
+    if not msg:
+        return
+
+    url = f"https://api.telegram.org/bot{str(TELEGRAM_BOT_TOKEN).strip()}/sendMessage"
+    data = urllib.parse.urlencode(
+        {
+            "chat_id": str(TELEGRAM_CHAT_ID).strip(),
+            "text": msg,
+            "disable_web_page_preview": "true",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=data,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            try:
+                _ = resp.read()
+            except Exception:
+                pass
+    except Exception:
+        logger.exception("Falha ao enviar mensagem no Telegram")
+
+
+def _format_telegram_new_order_message(rec: dict[str, Any]) -> str:
+    solicitacao_id = str(rec.get("id") or "").strip()
+    mesa = str(rec.get("mesa") or "").strip()
+    kind = str(rec.get("kind") or "").strip().upper()
+    tipo_entrega = str(rec.get("tipo_entrega") or "").strip().upper()
+    cliente_nome = str(rec.get("cliente_nome") or "").strip()
+    cliente_whatsapp = str(rec.get("cliente_whatsapp") or "").strip()
+    pagamento = str(rec.get("pagamento_preferido") or "").strip().upper()
+
+    header = "🛎️ NOVO PEDIDO"
+    if mesa and mesa != "0":
+        header += f" | Mesa {mesa}"
+    elif kind == "DELIVERY" or tipo_entrega:
+        header += f" | {tipo_entrega or 'Delivery/Retirada'}"
+    else:
+        header += " | Delivery/Retirada"
+
+    lines: list[str] = [header]
+    if cliente_nome:
+        lines.append(f"Cliente: {cliente_nome}")
+    if cliente_whatsapp:
+        lines.append(f"WhatsApp: {cliente_whatsapp}")
+    if pagamento:
+        lines.append(f"Pagamento: {pagamento}")
+
+    endereco_txt = ""
+    try:
+        endereco = rec.get("endereco") if isinstance(rec.get("endereco"), dict) else None
+        if endereco:
+            rua = str(endereco.get("rua") or "").strip()
+            numero = str(endereco.get("numero") or "").strip()
+            bairro = str(endereco.get("bairro") or "").strip()
+            cidade = str(endereco.get("cidade") or "").strip()
+            ref = str(endereco.get("referencia") or "").strip()
+            maps_url = str(endereco.get("maps_url") or endereco.get("maps") or endereco.get("localizacao") or "").strip()
+            endereco_txt = ", ".join([x for x in [rua, numero, bairro, cidade] if x])
+            if ref:
+                endereco_txt = (endereco_txt + f" | Ref: {ref}").strip()
+            if maps_url:
+                endereco_txt = (endereco_txt + f" | Maps: {maps_url}").strip() if endereco_txt else f"Maps: {maps_url}"
+    except Exception:
+        endereco_txt = ""
+    if endereco_txt:
+        lines.append(f"Endereço: {endereco_txt}")
+
+    obs = str(rec.get("observacoes") or rec.get("observacao") or rec.get("obs") or "").strip()
+    if obs:
+        lines.append(f"Obs: {obs}")
+
+    itens = rec.get("itens") if isinstance(rec.get("itens"), list) else []
+    if itens:
+        lines.append("")
+        lines.append("Itens:")
+        for it in itens:
+            if not isinstance(it, dict):
+                continue
+            code = str(it.get("product_code") or it.get("codigo") or "").strip().upper()
+            nome = str(it.get("product_name") or it.get("descricao") or it.get("nome") or "").strip()
+            try:
+                qty = float(it.get("qty") or it.get("quantidade") or 0)
+            except Exception:
+                qty = 0.0
+            if qty <= 0:
+                continue
+            label = nome or code or "Item"
+            lines.append(f"- {qty:g}x {label}")
+
+    total_raw = rec.get("total")
+    if total_raw is None:
+        total_raw = rec.get("valor_total")
+    if total_raw is None:
+        total_raw = rec.get("total_geral")
+    if total_raw is None:
+        total_raw = rec.get("total_estimado")
+    try:
+        total_val = float(total_raw) if total_raw is not None else None
+    except Exception:
+        total_val = None
+    if total_val is not None:
+        lines.append("")
+        lines.append(f"Total: R$ {total_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    if solicitacao_id:
+        lines.append("")
+        lines.append(f"Pedido ID: {solicitacao_id}")
+
+    return "\n".join([str(x).rstrip() for x in lines]).strip()
+
+
+def _notify_telegram_new_order(*, record: dict[str, Any]) -> None:
+    try:
+        msg = _format_telegram_new_order_message(record)
+        _telegram_send_message(text=msg)
+    except Exception:
+        logger.exception("Falha ao notificar novo pedido no Telegram")
 
 
 def _require_pdv_key() -> Any:
@@ -1114,6 +1253,8 @@ def api_create_solicitacao():
     else:
         data["solicitacoes"].append(rec)
         _save_solicitacoes(data)
+
+    _notify_telegram_new_order(record=rec)
     return jsonify({"id": solicitacao_id, "status": "PENDENTE"})
 
 
@@ -1250,6 +1391,7 @@ def api_public_create_pedido():
         data["solicitacoes"].append(rec)
         _save_solicitacoes(data)
 
+    _notify_telegram_new_order(record=rec)
     return jsonify({"id": solicitacao_id, "token": access_token, "status": "PENDENTE"})
 
 
