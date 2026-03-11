@@ -9,6 +9,7 @@ import secrets
 import io
 import urllib.error
 import urllib.request
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,9 @@ ALLOWED_COMPROVANTE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".jfif", ".he
 PDV_KEY = os.environ.get("PDV_KEY", "")
 ALLOWED_PAYMENT_METHODS = {"PIX", "DINHEIRO", "CARTAO", "MISTO"}
 
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+
 PDV_PRODUCTS_URL = os.environ.get("PDV_PRODUCTS_URL", "http://127.0.0.1:5600/api/produtos?ativos=1")
 
 app = Flask(
@@ -61,6 +65,7 @@ app = Flask(
     static_folder=str(BUNDLE_DIR),
     static_url_path="",
 )
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_CONTENT_LENGTH") or (12 * 1024 * 1024))
 
 
 def _pg_enabled() -> bool:
@@ -729,6 +734,9 @@ def api_get_data():
         if "logo" in ui:
             ui = dict(ui)
             ui["logo"] = _normalize_asset_ref(ui.get("logo"))
+        if "postOrderImage" in ui:
+            ui = dict(ui)
+            ui["postOrderImage"] = _normalize_asset_ref(ui.get("postOrderImage"))
         banner = ui.get("banner") if isinstance(ui.get("banner"), dict) else {}
         imgs = banner.get("imagens") if isinstance(banner.get("imagens"), list) else []
         banner = dict(banner)
@@ -826,6 +834,8 @@ def api_get_data():
 
         if "logo" in merged_ui:
             merged_ui["logo"] = _normalize_asset_ref(merged_ui.get("logo"))
+        if "postOrderImage" in merged_ui:
+            merged_ui["postOrderImage"] = _normalize_asset_ref(merged_ui.get("postOrderImage"))
         banner = merged_ui.get("banner") if isinstance(merged_ui.get("banner"), dict) else {}
         imgs = banner.get("imagens") if isinstance(banner.get("imagens"), list) else []
         banner = dict(banner)
@@ -866,6 +876,17 @@ def api_pdv_assets_upload():
 
     if _database_url_configured() and not _pg_enabled():
         return jsonify({"error": "postgres_indisponivel"}), 500
+
+    ct = str(request.content_type or "").lower()
+    if "multipart/form-data" not in ct:
+        return jsonify({"error": "content_type_invalido"}), 400
+
+    try:
+        cl = int(request.content_length or 0)
+    except Exception:
+        cl = 0
+    if cl <= 0:
+        return jsonify({"error": "arquivo_nao_enviado"}), 400
 
     if "file" not in request.files:
         return jsonify({"error": "arquivo_nao_enviado"}), 400
@@ -937,6 +958,7 @@ def api_pdv_publicar_catalogo():
     try:
         _save_catalogo_publicado(record=record)
     except Exception:
+        logger.exception("Falha ao salvar catalogo_publicado no backend")
         return jsonify({"error": "falha_ao_salvar"}), 500
 
     return jsonify({"ok": True})
@@ -1266,14 +1288,16 @@ def api_public_create_pedido():
     endereco = body.get("endereco")
     if tipo_entrega == "DELIVERY":
         if endereco is None:
-            endereco = None
-        elif isinstance(endereco, dict):
+            return jsonify({"error": "endereco_obrigatorio"}), 400
+        if not isinstance(endereco, dict):
+            return jsonify({"error": "endereco_invalido"}), 400
+
+        maps_url = str(endereco.get("maps_url") or endereco.get("maps") or endereco.get("localizacao") or "").strip()
+        if not maps_url:
             required = ["rua", "numero", "bairro", "cidade"]
             for k in required:
                 if not str(endereco.get(k) or "").strip():
                     return jsonify({"error": "endereco_incompleto"}), 400
-        else:
-            return jsonify({"error": "endereco_invalido"}), 400
     else:
         endereco = None
 
