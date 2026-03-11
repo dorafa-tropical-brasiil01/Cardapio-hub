@@ -288,6 +288,11 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        .flash-added {
+            background: #f0b429 !important;
+            color: #1d1d1d !important;
+        }
+
         .add-btn:active,
         .price-btn:active {
             transform: translateY(-50%) scale(0.98);
@@ -1221,7 +1226,7 @@
         row.innerHTML = pills;
     }
 
-    function addCarrinho(produtoId) {
+    function addCarrinho(produtoId, el) {
         const pid = String(produtoId || "").trim();
         if (!pid) return;
 
@@ -1243,6 +1248,33 @@
 
         saveLocal();
         updateCartBadge();
+
+        try {
+            if (el && el.classList) {
+                el.classList.add("flash-added");
+                window.setTimeout(() => {
+                    try { el.classList.remove("flash-added"); } catch {}
+                }, 260);
+            }
+        } catch {
+        }
+    }
+
+    function abrirTelaPosEnvio(pedido) {
+        const img = String(state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem || "").trim();
+        const imgHtml = img
+            ? `<div style="margin-top:10px"><img src="${img}" alt="Pedido enviado" style="width:100%; max-height:320px; object-fit:cover; border-radius:16px"></div>`
+            : "";
+        const txt = "Seu pedido foi enviado. Aguarde a confirmação.";
+        setModal(
+            "Pedido enviado",
+            `<div><strong>${txt}</strong></div>`
+            + imgHtml
+            + `<div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap">`
+            + `<button onclick="fecharModal(); window.scrollTo({ top: 0, behavior: 'smooth' });">Voltar</button>`
+            + `</div>`
+        );
+        abrirModal();
     }
 
     function alterarQtd(produtoId, delta) {
@@ -1467,7 +1499,7 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        abrirCarrinho();
+        abrirTelaPosEnvio(pedido);
     }
 
     async function refreshSolicitacao() {
@@ -1744,7 +1776,7 @@
                     const descEnc = encodeURIComponent(String(raw || ""));
                     return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
                 })()}
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
                 <div class="product-price">${formatBRL(p.preco)}</div>
             </div>
         `).join("");
@@ -1768,7 +1800,7 @@
                     })()}
                     <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
-                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}')">+1</button>
+                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
             </div>
         `;
 
@@ -1884,7 +1916,7 @@
                 ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
                 : `<div class="muted">Sem descrição.</div>`}
             <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-                <button onclick="addCarrinho('${String(produtoId || "")}'); fecharModal();">+1</button>
+                <button onclick="addCarrinho('${String(produtoId || "")}', this); fecharModal();">+1</button>
                 <div class="product-price" style="margin-top:0">${formatBRL(preco)}</div>
             </div>
         `;

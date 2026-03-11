@@ -76,6 +76,129 @@ def _database_url_configured() -> bool:
     return bool(str(os.environ.get("DATABASE_URL") or "").strip())
 
 
+def _telegram_enabled() -> bool:
+    token = str(os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = str(os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+    return bool(token and chat_id)
+
+
+def _telegram_send_message(text: str) -> bool:
+    if not _telegram_enabled():
+        return False
+
+    token = str(os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    chat_id = str(os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
+    if not token or not chat_id:
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": str(text or "").strip()[:3900],
+        "disable_web_page_preview": True,
+    }
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=raw,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=6.0) as resp:
+            ok = int(getattr(resp, "status", 0) or 0) == 200
+            return ok
+    except Exception:
+        logger.exception("Falha ao enviar mensagem no Telegram")
+        return False
+
+
+def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
+    rid = str(record.get("id") or "").strip()
+    kind = str(record.get("kind") or "").strip().upper()
+    mesa = record.get("mesa")
+    status = str(record.get("status") or "PENDENTE").strip().upper()
+    pagamento = str(record.get("pagamento_preferido") or "").strip().upper()
+    created = str(record.get("criado_em") or "").strip()
+
+    lines: list[str] = []
+    lines.append("NOVO PEDIDO")
+    if rid:
+        lines.append(f"ID: {rid}")
+    if created:
+        lines.append(f"Criado: {created}")
+    lines.append(f"Status: {status}")
+
+    if kind == "DELIVERY" or record.get("tipo_entrega"):
+        tipo_entrega = str(record.get("tipo_entrega") or "DELIVERY").strip().upper()
+        lines.append(f"Tipo: {tipo_entrega}")
+        lines.append(f"Cliente: {str(record.get('cliente_nome') or '').strip()}")
+        cw = str(record.get("cliente_whatsapp") or "").strip()
+        if cw:
+            lines.append(f"WhatsApp: {cw}")
+        endereco = record.get("endereco") if isinstance(record.get("endereco"), dict) else None
+        if endereco:
+            rua = str(endereco.get("rua") or "").strip()
+            numero = str(endereco.get("numero") or "").strip()
+            bairro = str(endereco.get("bairro") or "").strip()
+            cidade = str(endereco.get("cidade") or "").strip()
+            parts = [p for p in [rua, numero, bairro, cidade] if p]
+            if parts:
+                lines.append("Endereço: " + ", ".join(parts))
+        obs = str(record.get("observacoes") or "").strip()
+        if obs:
+            lines.append(f"Obs: {obs}")
+    elif mesa is not None:
+        lines.append(f"Mesa: {mesa}")
+        cn = str(record.get("cliente_nome") or "").strip()
+        if cn:
+            lines.append(f"Cliente: {cn}")
+
+    if pagamento:
+        lines.append(f"Pagamento: {pagamento}")
+
+    itens = record.get("itens") if isinstance(record.get("itens"), list) else []
+    if itens:
+        lines.append("")
+        lines.append("Itens:")
+        for it in itens:
+            if not isinstance(it, dict):
+                continue
+            nome = str(it.get("nome") or "").strip()
+            code = str(it.get("product_code") or it.get("pdvCode") or "").strip()
+            try:
+                qty = float(it.get("qty") or it.get("quantidade") or 0)
+            except Exception:
+                qty = 0
+            label = nome or code or "(item)"
+            if qty:
+                lines.append(f"- {qty:g} x {label}")
+            else:
+                lines.append(f"- {label}")
+
+    total = record.get("total_estimado")
+    try:
+        total_f = float(total) if total is not None else None
+    except Exception:
+        total_f = None
+    if total_f is not None:
+        lines.append("")
+        lines.append(f"Total (estimado): R$ {total_f:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    return "\n".join([x for x in lines if x is not None]).strip()
+
+
+def _notify_telegram_new_order(record: dict[str, Any]) -> None:
+    if not _telegram_enabled():
+        return
+    try:
+        msg = _format_telegram_new_order_message(record)
+        if msg:
+            _telegram_send_message(msg)
+    except Exception:
+        logger.exception("Falha ao notificar Telegram (novo pedido)")
+
+
 @app.get("/api/_diag")
 def api_diag():
     return jsonify(
@@ -1096,6 +1219,8 @@ def api_create_solicitacao():
     else:
         data["solicitacoes"].append(rec)
         _save_solicitacoes(data)
+
+    _notify_telegram_new_order(rec)
     return jsonify({"id": solicitacao_id, "status": "PENDENTE"})
 
 
@@ -1230,6 +1355,7 @@ def api_public_create_pedido():
         data["solicitacoes"].append(rec)
         _save_solicitacoes(data)
 
+    _notify_telegram_new_order(rec)
     return jsonify({"id": solicitacao_id, "token": access_token, "status": "PENDENTE"})
 
 
