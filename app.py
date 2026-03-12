@@ -863,11 +863,9 @@ def api_get_data():
         mp["categoriaId"] = section_id_by_name[sec_name]
 
     out_categories: list[dict[str, Any]] = []
-    sec_names = [n for n in section_order if n != "Produtos"]
-    sec_names_sorted = sorted(sec_names, key=lambda x: x.lower())
-    if "Produtos" in section_order:
-        sec_names_sorted.append("Produtos")
-    for nm in sec_names_sorted:
+    # Preservar a ordem de primeira ocorrência das seções, que reflete a ordem de produtos
+    # recebida do PDV (centro da verdade).
+    for nm in section_order:
         out_categories.append({"id": section_id_by_name.get(nm) or _section_id_from_name(nm), "nome": nm})
 
     out2["categorias"] = out_categories
