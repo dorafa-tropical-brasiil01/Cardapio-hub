@@ -773,8 +773,54 @@ def api_get_data():
                 out_p["queridinho"] = bool(meta.get("queridinho"))
             merged_products.append(out_p)
 
+        def _code_sort_key(x: dict[str, Any]) -> tuple[str, int, str]:
+            code = str(x.get("pdvCode") or x.get("id") or x.get("code") or "").strip().upper()
+            prefix_chars: list[str] = []
+            num_chars: list[str] = []
+            seen_digit = False
+            for ch in code:
+                if not seen_digit and ch.isalpha():
+                    prefix_chars.append(ch)
+                    continue
+                if ch.isdigit():
+                    seen_digit = True
+                    num_chars.append(ch)
+                    continue
+            prefix = "".join(prefix_chars)
+            try:
+                n = int("".join(num_chars)) if num_chars else 0
+            except Exception:
+                n = 0
+            return (prefix, n, code)
+
+        # Garantir que o Cardápio online respeite a mesma ordem do PDV (por código)
+        merged_products = sorted(merged_products, key=_code_sort_key)
+
+        # Recalcular categorias na ordem de primeira ocorrência, usando o catálogo publicado
+        # como fonte de nomes/ids.
+        cat_list = published.get("categorias") if isinstance(published.get("categorias"), list) else []
+        cat_name_by_id: dict[str, str] = {}
+        for c in cat_list:
+            if not isinstance(c, dict):
+                continue
+            cid = str(c.get("id") or "").strip()
+            cnm = str(c.get("nome") or "").strip()
+            if cid and cnm:
+                cat_name_by_id[cid] = cnm
+
+        seen_cat_ids: set[str] = set()
+        ordered_cats: list[dict[str, Any]] = []
+        for mp in merged_products:
+            cid = str(mp.get("categoriaId") or "").strip()
+            if not cid or cid in seen_cat_ids:
+                continue
+            seen_cat_ids.add(cid)
+            ordered_cats.append({"id": cid, "nome": cat_name_by_id.get(cid) or cid})
+
         out = dict(published)
         out["produtos"] = merged_products
+        if ordered_cats:
+            out["categorias"] = ordered_cats
         ui = out.get("ui") if isinstance(out.get("ui"), dict) else {}
         if "logo" in ui:
             ui = dict(ui)
