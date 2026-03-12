@@ -1551,7 +1551,8 @@
     }
 
     function abrirTelaPosEnvio(pedido) {
-        const img = String(state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem || "").trim();
+        const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem;
+        const img = normalizeAnyAssetUrl(raw);
         const imgHtml = img
             ? `<div style="margin-top:10px"><img src="${img}" alt="Pedido enviado" style="width:100%; max-height:320px; object-fit:cover; border-radius:16px"></div>`
             : "";
