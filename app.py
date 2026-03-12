@@ -120,78 +120,109 @@ def _telegram_send_message(text: str) -> bool:
 
 
 def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
-    rid = str(record.get("id") or "").strip()
+    def _digits_only(raw: str) -> str:
+        return "".join([ch for ch in str(raw or "") if ch.isdigit()])
+
+    def _money_brl(v: float) -> str:
+        return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     kind = str(record.get("kind") or "").strip().upper()
     mesa = record.get("mesa")
-    status = str(record.get("status") or "PENDENTE").strip().upper()
     pagamento = str(record.get("pagamento_preferido") or "").strip().upper()
+    tipo_entrega = str(record.get("tipo_entrega") or "").strip().upper()
     created = str(record.get("criado_em") or "").strip()
+
+    data_br = ""
+    try:
+        if created:
+            # aceitando "YYYY-MM-DDTHH:MM:SS" / "YYYY-MM-DD HH:MM:SS" / com timezone
+            s = created.replace(" ", "T")
+            s = s.split("+")[0].split("Z")[0]
+            dt = __import__("datetime").datetime.fromisoformat(s)
+            data_br = dt.strftime("%d/%m/%Y")
+    except Exception:
+        data_br = ""
+
+    cliente_nome = str(record.get("cliente_nome") or "").strip()
+    whatsapp = _digits_only(str(record.get("cliente_whatsapp") or "").strip())
+    endereco = record.get("endereco") if isinstance(record.get("endereco"), dict) else None
+
+    localizacao = ""
+    referencia = ""
+    if mesa is not None:
+        localizacao = f"Mesa {mesa}"
+    elif endereco:
+        maps_url = str(endereco.get("maps_url") or endereco.get("maps") or endereco.get("localizacao") or "").strip()
+        if maps_url:
+            localizacao = maps_url
+        referencia = str(endereco.get("referencia") or "").strip()
 
     lines: list[str] = []
     lines.append("NOVO PEDIDO")
-    if rid:
-        lines.append(f"ID: {rid}")
-    if created:
-        lines.append(f"Criado: {created}")
-    lines.append(f"Status: {status}")
-
-    if kind == "DELIVERY" or record.get("tipo_entrega"):
-        tipo_entrega = str(record.get("tipo_entrega") or "DELIVERY").strip().upper()
-        lines.append(f"Tipo: {tipo_entrega}")
-        lines.append(f"Cliente: {str(record.get('cliente_nome') or '').strip()}")
-        cw = str(record.get("cliente_whatsapp") or "").strip()
-        if cw:
-            lines.append(f"WhatsApp: {cw}")
-        endereco = record.get("endereco") if isinstance(record.get("endereco"), dict) else None
-        if endereco:
-            rua = str(endereco.get("rua") or "").strip()
-            numero = str(endereco.get("numero") or "").strip()
-            bairro = str(endereco.get("bairro") or "").strip()
-            cidade = str(endereco.get("cidade") or "").strip()
-            parts = [p for p in [rua, numero, bairro, cidade] if p]
-            if parts:
-                lines.append("Endereço: " + ", ".join(parts))
-        obs = str(record.get("observacoes") or "").strip()
-        if obs:
-            lines.append(f"Obs: {obs}")
-    elif mesa is not None:
-        lines.append(f"Mesa: {mesa}")
-        cn = str(record.get("cliente_nome") or "").strip()
-        if cn:
-            lines.append(f"Cliente: {cn}")
-
-    if pagamento:
-        lines.append(f"Pagamento: {pagamento}")
+    lines.append(f"Data: {data_br}" if data_br else "Data: ")
+    lines.append("")
+    lines.append(f"Cliente: {cliente_nome}")
+    lines.append(f"WhatsApp: {whatsapp}")
+    lines.append("")
 
     itens = record.get("itens") if isinstance(record.get("itens"), list) else []
-    if itens:
-        lines.append("")
-        lines.append("Itens:")
-        for it in itens:
-            if not isinstance(it, dict):
-                continue
-            nome = str(it.get("nome") or "").strip()
-            code = str(it.get("product_code") or it.get("pdvCode") or "").strip()
-            try:
-                qty = float(it.get("qty") or it.get("quantidade") or 0)
-            except Exception:
-                qty = 0
-            label = nome or code or "(item)"
-            if qty:
-                lines.append(f"- {qty:g} x {label}")
-            else:
-                lines.append(f"- {label}")
+    lines.append("Itens:")
+    for it in itens:
+        if not isinstance(it, dict):
+            continue
+        nome = str(it.get("nome") or "").strip()
+        code = str(it.get("product_code") or it.get("pdvCode") or "").strip()
+        try:
+            qty = float(it.get("qty") or it.get("quantidade") or 0)
+        except Exception:
+            qty = 0
 
-    total = record.get("total_estimado")
+        unit_price_raw = it.get("unit_price")
+        if unit_price_raw is None:
+            unit_price_raw = it.get("preco")
+        try:
+            unit_price = float(unit_price_raw) if unit_price_raw is not None else None
+        except Exception:
+            unit_price = None
+
+        label = nome or code or "(item)"
+        if unit_price is not None and unit_price >= 0:
+            lines.append(f"- {qty:g} x {label} ({_money_brl(unit_price)})")
+        else:
+            lines.append(f"- {qty:g} x {label}")
+
+    total = record.get("total")
+    if total is None:
+        total = record.get("total_estimado")
     try:
         total_f = float(total) if total is not None else None
     except Exception:
         total_f = None
-    if total_f is not None:
+    lines.append("")
+    lines.append(f"Total: R$ {_money_brl(total_f)}" if total_f is not None else "Total: ")
+    lines.append("")
+    lines.append("")
+    lines.append("Tipo de Pagamento:")
+    lines.append(pagamento)
+    lines.append("")
+    lines.append("Tipo de entrega:")
+    if tipo_entrega:
+        lines.append(tipo_entrega)
+    elif kind == "DELIVERY":
+        lines.append("DELIVERY")
+    elif mesa is not None:
+        lines.append("SALAO")
+    else:
         lines.append("")
-        lines.append(f"Total (estimado): R$ {total_f:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
 
-    return "\n".join([x for x in lines if x is not None]).strip()
+    lines.append("")
+    lines.append("Localização:")
+    lines.append(localizacao)
+    lines.append("")
+    lines.append("Referencia:")
+    lines.append(referencia)
+
+    return "\n".join(lines).strip()
 
 
 def _notify_telegram_new_order(record: dict[str, Any]) -> None:
