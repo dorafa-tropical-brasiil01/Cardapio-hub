@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import urllib.parse
 import uuid
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -110,7 +111,7 @@ def _telegram_send_message(text: str) -> bool:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=6.0) as resp:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
             ok = int(getattr(resp, "status", 0) or 0) == 200
             return ok
     except Exception:
@@ -196,12 +197,20 @@ def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
 def _notify_telegram_new_order(record: dict[str, Any]) -> None:
     if not _telegram_enabled():
         return
+
+    def _worker() -> None:
+        try:
+            msg = _format_telegram_new_order_message(record)
+            if msg:
+                _telegram_send_message(msg)
+        except Exception:
+            logger.exception("Falha ao notificar Telegram (novo pedido)")
+
     try:
-        msg = _format_telegram_new_order_message(record)
-        if msg:
-            _telegram_send_message(msg)
+        threading.Thread(target=_worker, daemon=True).start()
     except Exception:
-        logger.exception("Falha ao notificar Telegram (novo pedido)")
+        # fallback síncrono (não deve ocorrer)
+        _worker()
 
 
 @app.get("/api/_diag")
