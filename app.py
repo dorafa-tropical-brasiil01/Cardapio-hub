@@ -127,6 +127,7 @@ def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
         return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     kind = str(record.get("kind") or "").strip().upper()
+    rid = str(record.get("id") or record.get("pedido_id") or record.get("order_id") or "").strip()
     mesa = record.get("mesa")
     pagamento = str(record.get("pagamento_preferido") or "").strip().upper()
     tipo_entrega = str(record.get("tipo_entrega") or "").strip().upper()
@@ -221,6 +222,10 @@ def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append("Referencia:")
     lines.append(referencia)
+
+    lines.append("")
+    lines.append("ID do pedido:")
+    lines.append(rid)
 
     return "\n".join(lines).strip()
 
