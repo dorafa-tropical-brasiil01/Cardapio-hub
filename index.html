@@ -188,9 +188,12 @@
         }
 
         .product img {
-            width: 80px;
-            border-radius: 10px;
+            width: 96px;
+            height: 96px;
+            border-radius: 12px;
             align-self: center;
+            object-fit: cover;
+            cursor: pointer;
         }
 
         .product-info {
@@ -281,6 +284,43 @@
             right: 15px;
             top: 50%;
             transform: translateY(-50%);
+        }
+
+        .detail-img {
+            width: 100%;
+            max-width: 420px;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 16px;
+            border: 2px solid rgba(10, 92, 47, 0.25);
+            background: rgba(10, 92, 47, 0.06);
+        }
+
+        .detail-actions {
+            margin-top: 14px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .detail-qty {
+            display: inline-flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .detail-qty button {
+            padding: 10px 14px;
+            border-radius: 12px;
+        }
+
+        .detail-qty .detail-qty-value {
+            min-width: 34px;
+            text-align: center;
+            font-weight: 900;
+            font-size: 18px;
         }
 
         .add-btn.flash-added,
@@ -833,7 +873,7 @@
     <div class="modal" id="modalBox">
         <div class="modal-header">
             <div class="modal-title" id="modalTitle">Carrinho</div>
-            <button class="modal-close" onclick="fecharModal()">Fechar</button>
+            <button class="modal-close" id="modalCloseBtn" onclick="fecharModal()">Fechar</button>
         </div>
         <div id="modalBody"></div>
     </div>
@@ -1410,6 +1450,14 @@
         document.getElementById("modalBody").innerHTML = bodyHtml;
     }
 
+    function setModalCloseLabel(label) {
+        try {
+            const btn = document.getElementById("modalCloseBtn");
+            if (btn) btn.textContent = String(label || "Fechar");
+        } catch {
+        }
+    }
+
     function lockModalRender(ms) {
         const dur = Number(ms || 0);
         if (!Number.isFinite(dur) || dur <= 0) return;
@@ -1481,6 +1529,7 @@
     }
 
     function abrirCategorias() {
+        setModalCloseLabel("Fechar");
         const cats = state.data?.categorias || [];
         const html = `
             <div class="category-list">
@@ -2196,17 +2245,9 @@
 
         container.innerHTML = queridinhos.map(p => `
             <div class="card">
-                <img src="${p.imagem}" alt="${p.nome}">
+                <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
-                ${(() => {
-                    const raw = getProdutoDescricao(p);
-                    const trimmed = raw.trim();
-                    if (!trimmed) return "";
-                    const nomeEnc = encodeURIComponent(String(p.nome || ""));
-                    const descEnc = encodeURIComponent(String(raw || ""));
-                    return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
-                })()}
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar agora</button>
                 <div class="product-price">${formatBRL(p.preco)}</div>
             </div>
         `).join("");
@@ -2217,20 +2258,12 @@
         if (!lista) return;
         const renderProduto = (p) => `
             <div class="product" data-nome="${(p.nome || "").toLowerCase()}">
-                <img src="${p.imagem}" alt="${p.nome}">
+                <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <div class="product-info">
                     <div class="product-title">${escapeHtml(p.nome || "")}</div>
-                    ${(() => {
-                        const raw = getProdutoDescricao(p);
-                        const trimmed = raw.trim();
-                        if (!trimmed) return "";
-                        const nomeEnc = encodeURIComponent(String(p.nome || ""));
-                        const descEnc = encodeURIComponent(String(raw || ""));
-                        return `<button type="button" class="product-desc-btn" onclick="abrirDescricaoProdutoEncoded('${p.id}','${nomeEnc}','${descEnc}','${String(p.preco ?? "")}')">Descrição</button>`;
-                    })()}
                     <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
-                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="addCarrinho('${p.id}', this)">+1</button>
+                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar agora</button>
             </div>
         `;
 
@@ -2317,45 +2350,94 @@
     }
 
     function abrirDescricaoProdutoEncoded(produtoId, nomeEnc, descEnc, precoRaw) {
-        let nome = "";
-        let descricao = "";
-        let preco = 0;
-        try {
-            nome = decodeURIComponent(String(nomeEnc || ""));
-        } catch {
-            nome = String(nomeEnc || "");
-        }
-        try {
-            descricao = decodeURIComponent(String(descEnc || ""));
-        } catch {
-            descricao = String(descEnc || "");
-        }
+        // Compatibilidade: versões antigas chamavam uma tela simples de descrição.
+        // Agora a descrição é a tela de detalhes.
+        openProductDetails(String(produtoId || "").trim());
+    }
 
-        try {
-            preco = Number(String(precoRaw || "").replace(",", "."));
-            if (!Number.isFinite(preco)) preco = 0;
-        } catch {
-            preco = 0;
-        }
+    function getProdutoById(produtoId) {
+        const pid = String(produtoId || "").trim();
+        if (!pid) return null;
+        const produtos = Array.isArray(state.data?.produtos) ? state.data.produtos : [];
+        return produtos.find(x => String(x?.id || "") === pid) || null;
+    }
 
-        const n = escapeHtml(String(nome || ""));
-        const raw = String(descricao || "").trim();
-        const normalized = raw.replace(/\\n/g, "\n");
+    function getCarrinhoQtd(produtoId) {
+        const pid = String(produtoId || "").trim();
+        if (!pid) return 0;
+        const idx = state.carrinho.findIndex(x => String(x.produtoId) === pid);
+        if (idx < 0) return 0;
+        const q = Number(state.carrinho[idx].qtd || 0);
+        return Number.isFinite(q) ? q : 0;
+    }
+
+    function openProductDetails(produtoId) {
+        const p = getProdutoById(produtoId);
+        if (!p) return;
+        setModalCloseLabel("Voltar");
+
+        const pid = String(p.id || "");
+        const nome = escapeHtml(String(p.nome || pid));
+        const rawDesc = String(getProdutoDescricao(p) || "").trim();
+        const desc = rawDesc ? escapeHtml(rawDesc.replace(/\\n/g, "\n")) : "";
+        const preco = Number(p.preco || 0);
+        const img = String(p.imagem || "").trim();
+        const qtd = getCarrinhoQtd(pid);
+
         const body = `
-            ${normalized
-                ? `<div style="white-space: pre-wrap; line-height: 1.35">${escapeHtml(normalized)}</div>`
-                : `<div class="muted">Sem descrição.</div>`}
-            <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-                <button class="add-btn" style="position: static; transform: none" onclick="addCarrinho('${String(produtoId || "")}', this); fecharModal();">+1</button>
-                <div class="product-price" style="margin-top:0">${formatBRL(preco)}</div>
+            <div style="display:flex; flex-direction:column; gap:12px">
+                ${img ? `<div style="display:flex; justify-content:center"><img class="detail-img" src="${img}" alt="${nome}"></div>` : ""}
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
+                    <div style="font-weight:900; font-size:18px; color: var(--verde)">${nome}</div>
+                    <div class="product-price" style="margin-top:0; font-size:18px">${formatBRL(preco)}</div>
+                </div>
+                ${desc ? `<div style="white-space: pre-wrap; line-height: 1.35">${desc}</div>` : `<div class="muted">Sem descrição.</div>`}
+
+                <div class="detail-actions">
+                    <div class="detail-qty">
+                        <button type="button" onclick="detailQtyDelta('${pid}', -1)">-</button>
+                        <div class="detail-qty-value" id="detailQtyValue">${qtd}</div>
+                        <button type="button" onclick="detailQtyDelta('${pid}', 1)">+</button>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap">
+                        <button type="button" onclick="detailAddToPedido('${pid}')">Adicionar ao pedido</button>
+                        <button type="button" onclick="fecharModal(); abrirCarrinho();">Ver pedido</button>
+                    </div>
+                </div>
             </div>
         `;
-        setModal(n || "Descrição", body);
+        setModal("Produto", body);
         abrirModal();
+    }
+
+    function detailQtyDelta(produtoId, delta) {
+        const pid = String(produtoId || "").trim();
+        if (!pid) return;
+        const cur = getCarrinhoQtd(pid);
+        let next = cur + Number(delta || 0);
+        if (!Number.isFinite(next)) next = cur;
+        if (next < 0) next = 0;
+        setCarrinhoQtd(pid, next);
+        try {
+            const el = document.getElementById("detailQtyValue");
+            if (el) el.textContent = String(next);
+        } catch {
+        }
+    }
+
+    function detailAddToPedido(produtoId) {
+        const pid = String(produtoId || "").trim();
+        if (!pid) return;
+        const cur = getCarrinhoQtd(pid);
+        if (cur <= 0) {
+            detailQtyDelta(pid, 1);
+        }
+        fecharModal();
     }
 
     function render() {
         if (!state.data) return;
+        setModalCloseLabel("Fechar");
         const cats = state.data?.categorias || [];
         if (state.categoriaId !== "__todas__" && !cats.some(c => c.id === state.categoriaId)) {
             state.categoriaId = "__todas__";
@@ -2573,15 +2655,7 @@
             aplicarHorarioFuncionamento();
             render();
 
-            try {
-                const p = getPedidoAtual();
-                if (p && state.carrinho.length === 0) {
-                    showPostOrderScreen();
-                } else {
-                    showMainScreen();
-                }
-            } catch {
-            }
+            showMainScreen();
 
             if (state.solicitacaoTimer) {
                 clearInterval(state.solicitacaoTimer);
