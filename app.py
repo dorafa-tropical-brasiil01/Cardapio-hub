@@ -1270,6 +1270,11 @@ def api_create_solicitacao():
     if len(cliente_nome) > 60:
         return jsonify({"error": "cliente_nome_invalido"}), 400
 
+    cliente_whatsapp = str(body.get("cliente_whatsapp") or "").strip()
+    if cliente_whatsapp:
+        if not _is_valid_whatsapp(cliente_whatsapp):
+            return jsonify({"error": "whatsapp_invalido"}), 400
+
     itens = body.get("itens")
     if not isinstance(itens, list) or len(itens) == 0:
         return jsonify({"error": "itens_obrigatorios"}), 400
@@ -1308,6 +1313,7 @@ def api_create_solicitacao():
         "status": "PENDENTE",
         "pagamento_preferido": pagamento,
         "cliente_nome": cliente_nome or None,
+        "cliente_whatsapp": cliente_whatsapp or None,
         "itens": norm_items,
         "total_estimado": total_estimado_f,
         "criado_em": __import__("datetime").datetime.now().isoformat(timespec="seconds"),

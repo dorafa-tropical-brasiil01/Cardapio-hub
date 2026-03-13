@@ -1852,6 +1852,7 @@
 
         const pagamento_preferido = String(state.payMethod || "DINHEIRO").toUpperCase();
 
+        const isSalao = Boolean(state.mesa && state.token);
         const produtosMap = new Map((state.data?.produtos || []).map(p => [p.id, p]));
         const itens = state.carrinho.map(it => {
             const p = produtosMap.get(it.produtoId);
@@ -1863,8 +1864,6 @@
             };
         });
 
-        const isSalao = Boolean(state.mesa && state.token);
-
         let payload;
         let url;
         if (isSalao) {
@@ -1872,6 +1871,7 @@
                 mesa: state.mesa,
                 token: state.token,
                 cliente_nome: String(state.clientName || "").trim(),
+                cliente_whatsapp: String(state.clientWhatsapp || "").trim() || null,
                 pagamento_preferido,
                 itens,
                 total_estimado: getCartTotal()
@@ -1974,7 +1974,7 @@
             criadoEm: new Date().toISOString(),
             status: "PENDENTE",
             cliente_nome: String(state.clientName || "").trim(),
-            cliente_whatsapp: !isSalao ? String(state.clientWhatsapp || "").trim() : null,
+            cliente_whatsapp: String(state.clientWhatsapp || "").trim() || null,
             tipo_entrega: !isSalao ? String(state.deliveryType || "DELIVERY").toUpperCase() : null,
             endereco: null,
             troco_para: !isSalao ? (String(state.deliveryTroco || "").trim() || null) : null,
@@ -2264,11 +2264,15 @@
 
         const pedidoPay = pedido ? String(pedido.pagamento_preferido || state.payMethod || "DINHEIRO").toUpperCase() : "";
 
-        const deliveryUi = isSalao ? "" : (
-            `<div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">WhatsApp do cliente (obrigatório):</div>
+        const whatsappUi = `
+            <div style="margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">WhatsApp do cliente (${isSalao ? "opcional" : "obrigatório"}):</div>
                 <input id="clientWhatsapp" value="${String(state.clientWhatsapp || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientWhatsappChange(this.value)" placeholder="(99) 99999-9999" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
             </div>
+        `;
+
+        const deliveryUi = isSalao ? "" : (
+            `${whatsappUi}
 
             <div style="margin-top:14px">
                 <div class="muted" style="margin-bottom:6px">Entrega:</div>
@@ -2321,6 +2325,8 @@
                     <div class="muted" style="margin-bottom:6px">Nome do cliente (${isSalao ? "opcional" : "obrigatório"}):</div>
                     <input id="clientName" value="${String(state.clientName || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientNameChange(this.value)" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
                 </div>
+
+                ${isSalao ? whatsappUi : ""}
 
                 ${deliveryUi}
 
