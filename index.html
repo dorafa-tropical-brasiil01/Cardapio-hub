@@ -184,7 +184,7 @@
 
         .product {
             display: grid;
-            grid-template-columns: 96px 1fr minmax(132px, var(--price-w));
+            grid-template-columns: 96px 1fr auto;
             align-items: center;
             background: #fefecf;
             border-radius: 20px;
@@ -215,28 +215,6 @@
             align-self: stretch;
         }
 
-        .price-pill {
-            background: #ffffff;
-            border-radius: 16px;
-            padding: 10px 12px;
-            width: 100%;
-            text-align: center;
-            border: 2px solid rgba(10, 92, 47, 0.18);
-            box-sizing: border-box;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        button.price-pill {
-            appearance: none;
-            -webkit-appearance: none;
-            border: 2px solid rgba(10, 92, 47, 0.18);
-            background: #ffffff;
-            font: inherit;
-        }
-
         .product-actions {
             display: flex;
             flex-direction: column;
@@ -244,13 +222,7 @@
             justify-content: flex-start;
             gap: 10px;
             margin-top: 6px;
-            width: var(--price-w);
-        }
-
-        .price-pill .price-pill-value {
-            font-weight: 900;
-            font-size: 20px;
-            color: #0a5c2f;
+            width: auto;
         }
 
         .product-title {
@@ -258,7 +230,9 @@
             display: block;
             margin-top: -2px;
             line-height: 1.15;
-            white-space: normal;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             color: var(--verde);
             font-size: 18px;
         }
@@ -326,8 +300,9 @@
             padding: 10px 10px;
             border-radius: 12px;
             cursor: pointer;
-            white-space: normal;
-            width: 100%;
+            white-space: nowrap;
+            width: auto;
+            min-width: 132px;
             text-align: center;
             flex: 0 0 auto;
             position: static;
@@ -353,14 +328,7 @@
                 height: auto;
                 min-height: 44px;
                 font-size: 14px;
-            }
-
-            .price-pill {
-                padding: 12px 12px;
-            }
-
-            .price-pill .price-pill-value {
-                font-size: 22px;
+                min-width: 140px;
             }
         }
 
@@ -781,10 +749,6 @@
             #whatsFooter svg {
                 width: 18px;
                 height: 18px;
-            }
-
-            .product-info {
-                padding-right: calc(var(--price-w) + 22px);
             }
 
             .search-bar {
@@ -1210,6 +1174,36 @@
             }
         } catch {
         }
+    }
+
+    function setCarrinhoQtd(produtoId, qtd) {
+        const pid = String(produtoId || "").trim();
+        const q = Number(qtd || 0);
+        if (!pid) return;
+        if (!Number.isFinite(q)) return;
+
+        const produtos = Array.isArray(state.data?.produtos) ? state.data.produtos : [];
+        const p = produtos.find(x => String(x?.id || "") === pid);
+        if (!p) return;
+
+        const idx = state.carrinho.findIndex(x => String(x.produtoId) === pid);
+        if (q <= 0) {
+            if (idx >= 0) state.carrinho.splice(idx, 1);
+        } else if (idx >= 0) {
+            state.carrinho[idx].qtd = q;
+            state.carrinho[idx].nome = String(p.nome || state.carrinho[idx].nome || "");
+            state.carrinho[idx].preco = Number(p.preco || state.carrinho[idx].preco || 0);
+        } else {
+            state.carrinho.push({
+                produtoId: pid,
+                nome: String(p.nome || ""),
+                preco: Number(p.preco || 0),
+                qtd: q,
+            });
+        }
+
+        saveLocal();
+        updateCartBadge();
     }
 
     function clearMesaTokenFromUrl() {
@@ -2337,10 +2331,8 @@
             <div class="card">
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
-                <button type="button" class="price-pill" style="margin-top:10px" onclick="openProductDetails('${p.id}')">
-                    <span class="price-pill-value">${formatBRL(p.preco)}</span>
-                </button>
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')"><span>Comprar Agora</span></button>
+                <div class="product-price" style="margin-top:8px">${formatBRL(p.preco)}</div>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
             </div>
         `).join("");
     }
@@ -2353,11 +2345,9 @@
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <div class="product-info">
                     <div class="product-title">${escapeHtml(p.nome || "")}</div>
+                    <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
                 <div class="product-actions">
-                    <button type="button" class="price-pill" onclick="openProductDetails('${p.id}')">
-                        <span class="price-pill-value">${formatBRL(p.preco)}</span>
-                    </button>
                     <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')"><span>Comprar Agora</span></button>
                 </div>
             </div>
