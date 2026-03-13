@@ -1851,18 +1851,6 @@
             return;
         }
 
-        const st = String(p.status || "").toUpperCase();
-        if (st === "PENDENTE" || st === "EM_ATENDIMENTO") {
-            setModal(
-                "Pedido em andamento",
-                `<div><strong>Este pedido já foi enviado e está em andamento.</strong></div>
-                 <div class="muted" style="margin-top:8px">Para evitar perda de atualização de status, não é possível limpar o pedido agora.</div>
-                 <div style="margin-top:14px"><button onclick="fecharModal()">OK</button></div>`
-            );
-            abrirModal();
-            return;
-        }
-
         const ok = confirm("Deseja realmente limpar o pedido deste dispositivo?\n\nIsso não cancela no PDV, apenas remove desta tela.");
         if (!ok) return;
         clearPedidoAtual();
@@ -2013,7 +2001,9 @@
             total: getCartTotal()
         };
 
-        savePedidoAtual(pedido);
+        // Fluxo simplificado: após enviar, permite novo pedido imediatamente.
+        // O pedido NÃO some do PDV; apenas não mantemos "pedido atual" nesta tela.
+        clearPedidoAtual();
         state.sending = false;
         state.carrinho = [];
         saveLocal();
@@ -2108,7 +2098,9 @@
         if (post) post.style.display = "block";
 
         try {
-            const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem;
+            const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem
+                || state.data?.ui?.banner?.imagens?.[0]
+                || state.data?.ui?.logo;
             const srcRaw = normalizeAnyAssetUrl(raw);
             const src = srcRaw
                 ? (srcRaw + (srcRaw.includes("?") ? "&" : "?") + "t=" + Date.now())
@@ -2336,40 +2328,7 @@
                   `)
             : "";
 
-        const pedidoLocked = Boolean(pedido) && state.carrinho.length === 0;
-        const shouldShowPedido = pedidoLocked;
-        let pedidoIdText = "";
-        if (pedido) {
-            const st = String(pedido.status || "").toUpperCase();
-            if ((st === "EM_ATENDIMENTO" || st === "RESPONDIDA") && (pedido.sale_id || pedido.pdv_id)) {
-                pedidoIdText = String(pedido.sale_id || pedido.pdv_id);
-            } else {
-                // Não exibe o ID gerado antes do PDV aceitar
-                pedidoIdText = "Aguardando confirmação do PDV";
-            }
-        }
-
-        const pedidoTotal = pedido && pedido.total_estimado !== undefined && pedido.total_estimado !== null
-            ? Number(pedido.total_estimado)
-            : (pedido ? Number(pedido.total || 0) : 0);
-
-        const pedidoConfirmadoNoPDV = Boolean(pedido && (pedido.sale_id || pedido.pdv_id));
-
-        const pedidoHtml = shouldShowPedido
-            ? `
-                <div style="margin-top:16px">
-                    <div><strong>Pedido:</strong> ${pedidoIdText}</div>
-                    <div><strong>Status:</strong> <span class="status">${humanStatus(pedido.status)}</span></div>
-                    <div style="margin-top:8px; font-size:18px"><strong>Total:</strong> ${pedidoConfirmadoNoPDV ? formatBRL(pedidoTotal) : "(aguardando confirmação do PDV)"}</div>
-                    ${respostaHtml}
-                    ${comprovanteUi}
-                </div>
-            `
-            : (state.carrinho.length === 0
-                ? `<div style="margin-top:16px" class="muted">Nenhum pedido enviado ainda neste dispositivo.</div>`
-                : "");
-
-        const pedidoPay = pedido ? String(pedido.pagamento_preferido || state.payMethod || "DINHEIRO").toUpperCase() : "";
+        const pedidoPay = "";
 
         const whatsappUi = isSalao
             ? `
@@ -2399,7 +2358,9 @@
             <div style="margin-top:14px">
                 <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
                 <div style="margin-top:10px">
-                    <div id="deliveryMap"></div>
+                    <div id="deliveryMap" style="width:100%; height:240px; border-radius:12px; overflow:hidden; border:1px solid rgba(10, 92, 47, 0.18); background: rgba(10, 92, 47, 0.06); display:flex; align-items:center; justify-content:center;">
+                        <div class="muted" style="padding:10px; text-align:center">Carregando mapa...</div>
+                    </div>
                 </div>
                 <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
                     <button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button>
@@ -2425,14 +2386,7 @@
                </div>`
             : "";
 
-        const paymentUi = pedidoLocked
-            ? `
-                <div style="margin-top:14px">
-                    <div class="muted" style="margin-bottom:6px">Forma de pagamento (preferência):</div>
-                    <div><strong>${pedidoPay || "-"}</strong></div>
-                </div>
-              `
-            : `
+        const paymentUi = `
                 <div style="margin-top:14px">
                     <div class="muted" style="margin-bottom:6px">Nome do cliente (${isSalao ? "opcional" : "obrigatório"}):</div>
                     <input id="clientName" value="${String(state.clientName || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientNameChange(this.value)" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
@@ -2458,16 +2412,14 @@
         const actions = `
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px">
                 ${state.carrinho.length > 0
-                    ? (pedidoLocked
-                        ? `<button onclick="enviarPedido()" ${state.sending ? "disabled" : ""}>${state.sending ? "Enviando..." : "Enviar pedido"}</button>`
-                        : `<button onclick="enviarPedido()" ${state.sending ? "disabled" : ""}>${state.sending ? "Enviando..." : "Enviar pedido"}</button>
-                           <button onclick="limparCarrinho()">Limpar</button>`)
-                    : (pedidoLocked ? `<button onclick="safeClearPedidoAtual()">Limpar pedido deste dispositivo</button>` : "")}
+                    ? `<button onclick="enviarPedido()" ${state.sending ? "disabled" : ""}>${state.sending ? "Enviando..." : "Enviar pedido"}</button>
+                       <button onclick="limparCarrinho()">Limpar</button>`
+                    : ""}
             </div>
             ${state.carrinho.length > 0 ? `<div style="margin-top:10px; font-size:18px"><strong>Total do carrinho:</strong> ${formatBRL(total)}</div>` : ""}
         `;
 
-        setModal("Carrinho / Pedido", cartHtml + paymentUi + actions + pedidoHtml);
+        setModal("Carrinho / Pedido", cartHtml + paymentUi + actions);
         applyModalStatus(pedido ? pedido.status : null);
         abrirModal();
 

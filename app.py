@@ -655,7 +655,11 @@ def _is_valid_whatsapp(value: Any) -> bool:
 
 @app.get("/")
 def home():
-    return send_from_directory(str(BUNDLE_DIR), "index.html")
+    resp = make_response(send_from_directory(str(BUNDLE_DIR), "index.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.get("/index")
@@ -664,7 +668,9 @@ def legacy_index_redirect():
     # lógica de fallback para ./produtos.json. Redirecionar para a home atual.
     resp = make_response("", 302)
     resp.headers["Location"] = "/"
-    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
     return resp
 
 
@@ -723,7 +729,11 @@ def admin_page():
     denied = _require_localhost()
     if denied is not None:
         return denied
-    return send_from_directory(str(BUNDLE_DIR), "admin.html")
+    resp = make_response(send_from_directory(str(BUNDLE_DIR), "admin.html"))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.get("/api/data")
