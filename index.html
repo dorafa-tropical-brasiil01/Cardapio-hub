@@ -43,8 +43,14 @@
         :root {
             --verde: #0a5c2f;
             --amarelo: #fefecf;
-            --price-w: 96px;
+            --price-w: 120px;
             --footer-h: 86px;
+        }
+
+        @media (max-width: 480px) {
+            :root {
+                --price-w: 140px;
+            }
         }
 
         header {
@@ -177,14 +183,15 @@
         }
 
         .product {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: 96px 1fr minmax(132px, var(--price-w));
             align-items: center;
             background: #fefecf;
             border-radius: 20px;
             padding: 15px;
             margin-bottom: 15px;
             position: relative;
+            gap: 12px;
         }
 
         .product img {
@@ -197,33 +204,47 @@
         }
 
         .product-info {
-            flex: 1;
-            margin-left: 15px;
+            flex: 1 1 auto;
+            margin-left: 0;
             min-width: 0;
             padding-right: 0;
             display: flex;
             flex-direction: column;
             justify-content: center;
-        }
-
-        .product-actions {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            flex: 0 0 auto;
-            min-width: var(--price-w);
+            gap: 6px;
+            align-self: stretch;
         }
 
         .price-pill {
             background: #ffffff;
             border-radius: 16px;
             padding: 10px 12px;
-            min-width: var(--price-w);
+            width: 100%;
             text-align: center;
             border: 2px solid rgba(10, 92, 47, 0.18);
             box-sizing: border-box;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button.price-pill {
+            appearance: none;
+            -webkit-appearance: none;
+            border: 2px solid rgba(10, 92, 47, 0.18);
+            background: #ffffff;
+            font: inherit;
+        }
+
+        .product-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            margin-top: 6px;
+            width: var(--price-w);
         }
 
         .price-pill .price-pill-value {
@@ -238,8 +259,12 @@
             margin-top: -2px;
             line-height: 1.15;
             white-space: normal;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            color: var(--verde);
+            font-size: 18px;
+        }
+
+        .product-title {
+            margin-bottom: 4px;
         }
 
         .product-desc {
@@ -298,18 +323,45 @@
         .add-btn {
             background: #0a5c2f;
             color: white;
-            padding: 8px 12px;
+            padding: 10px 10px;
             border-radius: 12px;
             cursor: pointer;
-            white-space: nowrap;
-            width: var(--price-w);
+            white-space: normal;
+            width: 100%;
             text-align: center;
             flex: 0 0 auto;
             position: static;
             transform: none;
             align-self: center;
-            height: 38px;
+            min-height: 44px;
             font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            line-height: 1.1;
+        }
+
+        .add-btn span {
+            display: block;
+            width: 100%;
+            text-align: center;
+        }
+
+        @media (max-width: 480px) {
+            .add-btn {
+                height: auto;
+                min-height: 44px;
+                font-size: 14px;
+            }
+
+            .price-pill {
+                padding: 12px 12px;
+            }
+
+            .price-pill .price-pill-value {
+                font-size: 22px;
+            }
         }
 
         .detail-img {
@@ -2285,10 +2337,10 @@
             <div class="card">
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
-                <div class="price-pill" style="margin-top:10px">
-                    <div class="price-pill-value">${formatBRL(p.preco)}</div>
-                </div>
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
+                <button type="button" class="price-pill" style="margin-top:10px" onclick="openProductDetails('${p.id}')">
+                    <span class="price-pill-value">${formatBRL(p.preco)}</span>
+                </button>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')"><span>Comprar Agora</span></button>
             </div>
         `).join("");
     }
@@ -2303,10 +2355,10 @@
                     <div class="product-title">${escapeHtml(p.nome || "")}</div>
                 </div>
                 <div class="product-actions">
-                    <div class="price-pill">
-                        <div class="price-pill-value">${formatBRL(p.preco)}</div>
-                    </div>
-                    <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
+                    <button type="button" class="price-pill" onclick="openProductDetails('${p.id}')">
+                        <span class="price-pill-value">${formatBRL(p.preco)}</span>
+                    </button>
+                    <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')"><span>Comprar Agora</span></button>
                 </div>
             </div>
         `;
