@@ -6,6 +6,8 @@
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
     <title>DORAFA Tropical Brasil - Cardápio</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <style>
         :root {
             color-scheme: light;
@@ -1472,8 +1474,14 @@
                         abrirModal();
                         return;
                     }
-                    const url = `https://www.google.com/maps?q=${lat},${lng}`;
-                    setDeliveryMapsUrl(url);
+                    _setDeliveryFromLatLng(lat, lng);
+                    try {
+                        if (_deliveryLeafletMap) {
+                            _deliveryLeafletMap.setView([lat, lng], 17);
+                            if (_deliveryLeafletMarker) _deliveryLeafletMarker.setLatLng([lat, lng]);
+                        }
+                    } catch {
+                    }
                 } catch {
                     setModal("Localização", `<div><strong>Não foi possível obter a localização.</strong></div>`);
                     abrirModal();
@@ -1489,7 +1497,7 @@
             },
             (err) => {
                 const msg = _geoErrorMessage(err);
-                setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div><div class="muted" style="margin-top:8px">Você pode colar manualmente o link do Google Maps clicando em \"Colar link do Maps\".</div>`);
+                setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div>`);
                 abrirModal();
 
                 if (btn) {
@@ -1753,7 +1761,10 @@
 
     function abrirTelaPosEnvio(pedido) {
         const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem;
-        const img = normalizeAnyAssetUrl(raw);
+        const imgRaw = normalizeAnyAssetUrl(raw);
+        const img = imgRaw
+            ? (imgRaw + (imgRaw.includes("?") ? "&" : "?") + "t=" + Date.now())
+            : "";
         const imgHtml = img
             ? `<div style="margin-top:10px"><img src="${img}" alt="Pedido enviado" style="width:100%; max-height:320px; object-fit:cover; border-radius:16px"></div>`
             : "";
@@ -2042,6 +2053,11 @@
     }
 
     function normalizeAnyAssetUrl(v) {
+        if (v && typeof v === "object") {
+            const any = v;
+            const candidate = any.path || any.url || any.src || any.href || "";
+            v = candidate;
+        }
         const s = String(v || "").trim();
         if (!s) return "";
         const low = s.toLowerCase();
@@ -2093,7 +2109,10 @@
 
         try {
             const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem;
-            const src = normalizeAnyAssetUrl(raw);
+            const srcRaw = normalizeAnyAssetUrl(raw);
+            const src = srcRaw
+                ? (srcRaw + (srcRaw.includes("?") ? "&" : "?") + "t=" + Date.now())
+                : "";
             if (img && src) {
                 img.src = src;
                 img.style.display = "block";
@@ -2103,6 +2122,75 @@
             }
         } catch {
             if (img) img.style.display = "none";
+        }
+    }
+
+    let _deliveryLeafletMap = null;
+    let _deliveryLeafletMarker = null;
+
+    function _parseLatLngFromMapsUrl(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return null;
+        const m1 = s.match(/\bq=\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
+        if (m1) return { lat: Number(m1[1]), lng: Number(m1[2]) };
+        const m2 = s.match(/@\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
+        if (m2) return { lat: Number(m2[1]), lng: Number(m2[2]) };
+        const m3 = s.match(/\b(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\b/);
+        if (m3) return { lat: Number(m3[1]), lng: Number(m3[2]) };
+        return null;
+    }
+
+    function _setDeliveryFromLatLng(lat, lng) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const url = `https://www.google.com/maps?q=${lat},${lng}`;
+        setDeliveryMapsUrl(url);
+    }
+
+    function ensureDeliveryMapInModal() {
+        try {
+            if (!isModalOpen()) return;
+            const title = String(document.getElementById("modalTitle")?.innerText || "");
+            if (title !== "Carrinho / Pedido") return;
+
+            const el = document.getElementById("deliveryMap");
+            if (!el) return;
+            if (typeof L === "undefined") return;
+
+            try {
+                if (_deliveryLeafletMap && _deliveryLeafletMap._container && _deliveryLeafletMap._container !== el) {
+                    try { _deliveryLeafletMap.remove(); } catch {}
+                    _deliveryLeafletMap = null;
+                    _deliveryLeafletMarker = null;
+                }
+            } catch {
+            }
+
+            const cur = _parseLatLngFromMapsUrl(state.deliveryMaps);
+            const center = cur && Number.isFinite(cur.lat) && Number.isFinite(cur.lng)
+                ? [cur.lat, cur.lng]
+                : [-23.55052, -46.633308];
+
+            if (!_deliveryLeafletMap) {
+                _deliveryLeafletMap = L.map(el, { zoomControl: true, attributionControl: false }).setView(center, cur ? 17 : 12);
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(_deliveryLeafletMap);
+
+                _deliveryLeafletMarker = L.marker(center, { draggable: true }).addTo(_deliveryLeafletMap);
+                _deliveryLeafletMarker.on("dragend", () => {
+                    try {
+                        const p = _deliveryLeafletMarker.getLatLng();
+                        _setDeliveryFromLatLng(Number(p.lat), Number(p.lng));
+                    } catch {
+                    }
+                });
+            } else {
+                _deliveryLeafletMap.setView(center, cur ? 17 : _deliveryLeafletMap.getZoom());
+                if (_deliveryLeafletMarker) {
+                    try { _deliveryLeafletMarker.setLatLng(center); } catch {}
+                }
+            }
+
+            try { _deliveryLeafletMap.invalidateSize(); } catch {}
+        } catch {
         }
     }
 
@@ -2304,17 +2392,13 @@
 
             <div style="margin-top:14px">
                 <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
-                ${(() => {
-                    const embed = _mapsEmbedUrl(state.deliveryMaps);
-                    if (!embed) return "";
-                    return `<div style="margin-top:10px">
-                        <iframe title="Google Maps" src="${String(embed).replace(/"/g, "&quot;")}" style="width:100%; height:240px; border:0; border-radius:12px" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-                    </div>`;
-                })()}
+                <div style="margin-top:10px">
+                    <div id="deliveryMap"></div>
+                </div>
                 <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
                     <button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button>
-                    <button type="button" onclick="promptDeliveryMaps()">Colar link do Maps</button>
                 </div>
+                <div class="muted" style="margin-top:8px">Você pode ajustar o pino arrastando no mapa.</div>
             </div>
 
             <div style="margin-top:14px">
@@ -2380,6 +2464,11 @@
         setModal("Carrinho / Pedido", cartHtml + paymentUi + actions + pedidoHtml);
         applyModalStatus(pedido ? pedido.status : null);
         abrirModal();
+
+        try {
+            setTimeout(() => ensureDeliveryMapInModal(), 0);
+        } catch {
+        }
 
         // Após recriar o HTML, forçar o value do select para refletir o estado persistido
         try {
