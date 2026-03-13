@@ -206,15 +206,40 @@
             justify-content: center;
         }
 
+        .product-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex: 0 0 auto;
+            min-width: var(--price-w);
+        }
+
+        .price-pill {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 10px 12px;
+            min-width: var(--price-w);
+            text-align: center;
+            border: 2px solid rgba(10, 92, 47, 0.18);
+            box-sizing: border-box;
+        }
+
+        .price-pill .price-pill-value {
+            font-weight: 900;
+            font-size: 20px;
+            color: #0a5c2f;
+        }
+
         .product-title {
             font-weight: bold;
             display: block;
             margin-top: -2px;
             line-height: 1.15;
-            white-space: nowrap;
-            overflow: visible;
-            text-overflow: clip;
-            margin-right: calc(-1 * (var(--price-w) + 12px));
+            white-space: normal;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .product-desc {
@@ -2260,8 +2285,10 @@
             <div class="card">
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
-                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar agora</button>
-                <div class="product-price">${formatBRL(p.preco)}</div>
+                <div class="price-pill" style="margin-top:10px">
+                    <div class="price-pill-value">${formatBRL(p.preco)}</div>
+                </div>
+                <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
             </div>
         `).join("");
     }
@@ -2274,9 +2301,13 @@
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <div class="product-info">
                     <div class="product-title">${escapeHtml(p.nome || "")}</div>
-                    <div class="product-price">${formatBRL(p.preco)}</div>
                 </div>
-                <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar agora</button>
+                <div class="product-actions">
+                    <div class="price-pill">
+                        <div class="price-pill-value">${formatBRL(p.preco)}</div>
+                    </div>
+                    <button type="button" class="add-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
+                </div>
             </div>
         `;
 
