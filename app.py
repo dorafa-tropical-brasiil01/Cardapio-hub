@@ -828,6 +828,12 @@ def api_get_data():
         if "postOrderImage" in ui:
             ui = dict(ui)
             ui["postOrderImage"] = _normalize_asset_ref(ui.get("postOrderImage"))
+        if "afterSendImage" in ui:
+            ui = dict(ui)
+            ui["afterSendImage"] = _normalize_asset_ref(ui.get("afterSendImage"))
+        if "posEnvioImagem" in ui:
+            ui = dict(ui)
+            ui["posEnvioImagem"] = _normalize_asset_ref(ui.get("posEnvioImagem"))
         banner = ui.get("banner") if isinstance(ui.get("banner"), dict) else {}
         imgs = banner.get("imagens") if isinstance(banner.get("imagens"), list) else []
         banner = dict(banner)
@@ -925,6 +931,10 @@ def api_get_data():
             merged_ui["logo"] = _normalize_asset_ref(merged_ui.get("logo"))
         if "postOrderImage" in merged_ui:
             merged_ui["postOrderImage"] = _normalize_asset_ref(merged_ui.get("postOrderImage"))
+        if "afterSendImage" in merged_ui:
+            merged_ui["afterSendImage"] = _normalize_asset_ref(merged_ui.get("afterSendImage"))
+        if "posEnvioImagem" in merged_ui:
+            merged_ui["posEnvioImagem"] = _normalize_asset_ref(merged_ui.get("posEnvioImagem"))
         banner = merged_ui.get("banner") if isinstance(merged_ui.get("banner"), dict) else {}
         imgs = banner.get("imagens") if isinstance(banner.get("imagens"), list) else []
         banner = dict(banner)

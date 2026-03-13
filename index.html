@@ -719,6 +719,13 @@
             border-bottom: 1px solid rgba(10, 92, 47, 0.2);
         }
 
+        .cart-row {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+            padding: 10px 10px;
+            margin: 8px 0;
+        }
+
         .qty {
             display: inline-flex;
             gap: 8px;
@@ -975,7 +982,7 @@
     <div class="modal" id="modalBox">
         <div class="modal-header">
             <div class="modal-title" id="modalTitle">Carrinho</div>
-            <button class="modal-close" id="modalCloseBtn" onclick="fecharModal()">Fechar</button>
+            <button class="modal-close" id="modalCloseBtn" onclick="fecharModal()">Voltar</button>
         </div>
         <div id="modalBody"></div>
     </div>
@@ -1171,7 +1178,7 @@
         deliveryObs: "",
         deliveryTroco: "",
         modalLockUntil: 0,
-        modalCloseLabel: "Fechar"
+        modalCloseLabel: "Voltar"
     };
 
     function humanStatus(status) {
@@ -1371,6 +1378,35 @@
         lockModalRender(6000);
     }
 
+    function _mapsEmbedUrl(raw) {
+        const s = String(raw || "").trim();
+        if (!s) return "";
+        const low = s.toLowerCase();
+        if (low.includes("output=embed")) return s;
+        const joiner = s.includes("?") ? "&" : "?";
+        return s + joiner + "output=embed";
+    }
+
+    function setDeliveryMapsUrl(val) {
+        state.deliveryMaps = String(val || "").trim();
+        saveDeliveryFields();
+        lockModalRender(6000);
+        try {
+            if (isModalOpen()) {
+                const title = String(document.getElementById("modalTitle")?.innerText || "");
+                if (title === "Carrinho / Pedido") abrirCarrinho();
+            }
+        } catch {
+        }
+    }
+
+    function promptDeliveryMaps() {
+        const cur = String(state.deliveryMaps || "").trim();
+        const next = prompt("Cole aqui o link do Google Maps:", cur);
+        if (next === null) return;
+        setDeliveryMapsUrl(next);
+    }
+
     function _geoErrorMessage(err) {
         try {
             const code = Number(err && err.code);
@@ -1382,16 +1418,6 @@
         return "Não foi possível obter a localização.";
     }
 
-    function _mapsEmbedUrl(raw) {
-        const s = String(raw || "").trim();
-        if (!s) return "";
-        const low = s.toLowerCase();
-        if (!low.includes("google.") || !low.includes("/maps")) return "";
-        if (low.includes("output=embed")) return s;
-        const joiner = s.includes("?") ? "&" : "?";
-        return s + joiner + "output=embed";
-    }
-
     function usarMinhaLocalizacao() {
         const btn = (() => {
             try {
@@ -1400,6 +1426,7 @@
                 return null;
             }
         })();
+
         const oldBtnText = btn ? String(btn.textContent || "") : "";
         if (btn) {
             try {
@@ -1446,21 +1473,7 @@
                         return;
                     }
                     const url = `https://www.google.com/maps?q=${lat},${lng}`;
-                    state.deliveryMaps = url;
-                    saveDeliveryFields();
-                    try {
-                        const el = document.getElementById("deliveryMaps");
-                        if (el) {
-                            el.value = url;
-                            el.focus();
-                            try { el.setSelectionRange(0, String(el.value || "").length); } catch {}
-                        } else {
-                            abrirCarrinho();
-                        }
-                    } catch {
-                        abrirCarrinho();
-                    }
-                    lockModalRender(6000);
+                    setDeliveryMapsUrl(url);
                 } catch {
                     setModal("Localização", `<div><strong>Não foi possível obter a localização.</strong></div>`);
                     abrirModal();
@@ -1476,7 +1489,7 @@
             },
             (err) => {
                 const msg = _geoErrorMessage(err);
-                setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div><div class="muted" style="margin-top:8px">Você pode colar manualmente o link do Google Maps no campo de localização.</div>`);
+                setModal("Localização", `<div><strong>${escapeHtml(msg)}</strong></div><div class="muted" style="margin-top:8px">Você pode colar manualmente o link do Google Maps clicando em \"Colar link do Maps\".</div>`);
                 abrirModal();
 
                 if (btn) {
@@ -1585,7 +1598,7 @@
 
     function setModalCloseLabel(label) {
         try {
-            state.modalCloseLabel = String(label || "Fechar");
+            state.modalCloseLabel = String(label || "Voltar");
             const btn = document.getElementById("modalCloseBtn");
             if (btn) {
                 btn.textContent = state.modalCloseLabel;
@@ -1634,7 +1647,7 @@
     }
 
     function fecharModal() {
-        setModalCloseLabel("Fechar");
+        setModalCloseLabel("Voltar");
         const backdrop = document.getElementById("modalBackdrop");
         backdrop.style.display = "none";
         backdrop.setAttribute("aria-hidden", "true");
@@ -1668,7 +1681,7 @@
     }
 
     function abrirCategorias() {
-        setModalCloseLabel("Fechar");
+        setModalCloseLabel("Voltar");
         const cats = state.data?.categorias || [];
         const html = `
             <div class="category-list">
@@ -2079,7 +2092,7 @@
         if (post) post.style.display = "block";
 
         try {
-            const raw = state.data?.ui?.postOrderImage;
+            const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem;
             const src = normalizeAnyAssetUrl(raw);
             if (img && src) {
                 img.src = src;
@@ -2264,12 +2277,19 @@
 
         const pedidoPay = pedido ? String(pedido.pagamento_preferido || state.payMethod || "DINHEIRO").toUpperCase() : "";
 
-        const whatsappUi = `
-            <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">WhatsApp do cliente (${isSalao ? "opcional" : "obrigatório"}):</div>
-                <input id="clientWhatsapp" value="${String(state.clientWhatsapp || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientWhatsappChange(this.value)" placeholder="(99) 99999-9999" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-            </div>
-        `;
+        const whatsappUi = isSalao
+            ? `
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Cadastre seu WhatsApp para receber nossas promoções.</div>
+                    <input id="clientWhatsapp" value="${String(state.clientWhatsapp || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientWhatsappChange(this.value)" placeholder="(99) 99999-9999" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+              `
+            : `
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">WhatsApp do cliente (obrigatório):</div>
+                    <input id="clientWhatsapp" value="${String(state.clientWhatsapp || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onClientWhatsappChange(this.value)" placeholder="(99) 99999-9999" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+              `;
 
         const deliveryUi = isSalao ? "" : (
             `${whatsappUi}
@@ -2284,7 +2304,6 @@
 
             <div style="margin-top:14px">
                 <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
-                <input id="deliveryMaps" value="${String(state.deliveryMaps || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryMaps', this.value)" placeholder="Cole aqui o link do Google Maps" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
                 ${(() => {
                     const embed = _mapsEmbedUrl(state.deliveryMaps);
                     if (!embed) return "";
@@ -2292,7 +2311,10 @@
                         <iframe title="Google Maps" src="${String(embed).replace(/"/g, "&quot;")}" style="width:100%; height:240px; border:0; border-radius:12px" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                     </div>`;
                 })()}
-                <div style="margin-top:10px"><button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button></div>
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
+                    <button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button>
+                    <button type="button" onclick="promptDeliveryMaps()">Colar link do Maps</button>
+                </div>
             </div>
 
             <div style="margin-top:14px">
