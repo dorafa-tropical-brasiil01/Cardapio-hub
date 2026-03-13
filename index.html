@@ -2154,7 +2154,13 @@
 
             const el = document.getElementById("deliveryMap");
             if (!el) return;
-            if (typeof L === "undefined") return;
+            if (typeof L === "undefined") {
+                try {
+                    el.innerHTML = `<div class="muted" style="padding:10px">Mapa indisponível neste dispositivo.</div>`;
+                } catch {
+                }
+                return;
+            }
 
             try {
                 if (_deliveryLeafletMap && _deliveryLeafletMap._container && _deliveryLeafletMap._container !== el) {
@@ -2466,7 +2472,8 @@
         abrirModal();
 
         try {
-            setTimeout(() => ensureDeliveryMapInModal(), 0);
+            setTimeout(() => ensureDeliveryMapInModal(), 120);
+            setTimeout(() => ensureDeliveryMapInModal(), 700);
         } catch {
         }
 

@@ -1047,6 +1047,45 @@ def api_pdv_publicar_catalogo():
     if ui is not None and not isinstance(ui, dict):
         return jsonify({"error": "ui_invalido"}), 400
 
+    if isinstance(ui, dict):
+        # Normalizar e compatibilizar nomes de chaves vindas do PDV.
+        # Objetivo: /api/data sempre expõe ui.postOrderImage quando existir.
+        ui = dict(ui)
+
+        def _ui_first(*keys: str) -> Any:
+            for k in keys:
+                if k in ui and str(ui.get(k) or "").strip():
+                    return ui.get(k)
+            return None
+
+        # Pós-pedido: aceitar vários aliases e manter as chaves canônicas.
+        post_img = _ui_first(
+            "postOrderImage",
+            "afterSendImage",
+            "posEnvioImagem",
+            "posPedidoImagem",
+            "postPedidoImagem",
+            "imagemPosPedido",
+            "imagem_pos_pedido",
+            "after_send_image",
+            "after_send_img",
+            "post_order_image",
+            "post_order_img",
+        )
+        if post_img is not None:
+            ui["postOrderImage"] = _normalize_asset_ref(post_img)
+            ui["afterSendImage"] = _normalize_asset_ref(post_img)
+            ui["posEnvioImagem"] = _normalize_asset_ref(post_img)
+
+        # Logo/banner
+        if "logo" in ui:
+            ui["logo"] = _normalize_asset_ref(ui.get("logo"))
+        banner = ui.get("banner") if isinstance(ui.get("banner"), dict) else {}
+        imgs = banner.get("imagens") if isinstance(banner.get("imagens"), list) else []
+        banner = dict(banner)
+        banner["imagens"] = [_normalize_asset_ref(x) for x in imgs if _normalize_asset_ref(x)]
+        ui["banner"] = banner
+
     record = {
         "categorias": categorias,
         "produtos": produtos,
