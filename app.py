@@ -256,6 +256,7 @@ def api_diag():
             "database_url_configured": _database_url_configured(),
             "pg_store_loaded": pg_store is not None,
             "pg_enabled": _pg_enabled(),
+            "telegram_enabled": _telegram_enabled(),
             "pg_store_import_error": _PG_STORE_IMPORT_ERROR or "",
         }
     )
