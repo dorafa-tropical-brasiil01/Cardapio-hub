@@ -2458,6 +2458,12 @@
         abrirModal();
 
         try {
+            updateNextStepHints();
+            setTimeout(() => updateNextStepHints(), 0);
+        } catch {
+        }
+
+        try {
             setTimeout(() => ensureDeliveryMapInModal(), 120);
             setTimeout(() => ensureDeliveryMapInModal(), 700);
         } catch {
