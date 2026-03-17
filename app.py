@@ -501,7 +501,20 @@ def _require_pdv_key() -> Any:
     key = (request.headers.get("X-PDV-KEY") or "").strip()
     if not key or key != PDV_KEY:
         return jsonify({"error": "unauthorized"}), 401
+    expected_id = str(os.environ.get("CARDAPIO_PDV_ID") or "").strip().upper()
+    if expected_id:
+        got_id = str(request.headers.get("X-PDV-ID") or "").strip().upper()
+        if not got_id or got_id != expected_id:
+            return jsonify({"error": "unauthorized"}), 401
     return None
+
+
+@app.get("/api/pdv/ping")
+def api_pdv_ping():
+    denied = _require_pdv_key()
+    if denied is not None:
+        return denied
+    return jsonify({"ok": True})
 
 
 def _ensure_mesas_file() -> dict[str, Any]:
