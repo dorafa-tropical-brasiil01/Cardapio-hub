@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 from typing import Any
+from datetime import datetime
 
 import psycopg2
 import psycopg2.extras
@@ -102,6 +103,24 @@ def init_db() -> None:
                 """
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_cardapio_assets_updated ON cardapio_assets(atualizado_em)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS promo_inscricoes (
+                    sale_id BIGINT PRIMARY KEY,
+                    cliente_nome TEXT NOT NULL,
+                    cliente_whatsapp TEXT NOT NULL,
+                    produtos TEXT NOT NULL,
+                    numero_sorteio TEXT NOT NULL,
+                    token TEXT NOT NULL,
+                    emitido_em TIMESTAMPTZ NOT NULL,
+                    confirmado_em TIMESTAMPTZ,
+                    pdv_installation_id TEXT
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_emitido_em ON promo_inscricoes(emitido_em)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_confirmado_em ON promo_inscricoes(confirmado_em)")
 
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
@@ -327,3 +346,140 @@ def update_solicitacao_status(*, solicitacao_id: str, pdv_status: str) -> None:
     rec["pdv_status"] = st
     rec["pdv_status_em"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     save_solicitacao(record=rec)
+
+
+def upsert_promo_inscricao_emitida(
+    *,
+    sale_id: int,
+    cliente_nome: str,
+    cliente_whatsapp: str,
+    produtos: str,
+    numero_sorteio: str,
+    token: str,
+    pdv_installation_id: str | None,
+    emitido_em_iso: str | None = None,
+) -> dict[str, Any]:
+    if not is_enabled():
+        raise RuntimeError("db_disabled")
+
+    _ensure_db_ready()
+
+    try:
+        sid = int(sale_id)
+    except Exception:
+        raise ValueError("sale_id_invalido")
+
+    nome = str(cliente_nome or "").strip()
+    whatsapp = str(cliente_whatsapp or "").strip()
+    prods = str(produtos or "").strip()
+    lucky = str(numero_sorteio or "").strip()
+    tok = str(token or "").strip()
+    inst = str(pdv_installation_id or "").strip() or None
+
+    if not nome or not whatsapp or not prods or not lucky or not tok:
+        raise ValueError("campos_obrigatorios")
+
+    emitido_em = emitido_em_iso
+    if not emitido_em:
+        emitido_em = datetime.now().isoformat(timespec="seconds")
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO promo_inscricoes(
+                    sale_id,
+                    cliente_nome,
+                    cliente_whatsapp,
+                    produtos,
+                    numero_sorteio,
+                    token,
+                    emitido_em,
+                    pdv_installation_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (sale_id) DO UPDATE SET
+                    cliente_nome=EXCLUDED.cliente_nome,
+                    cliente_whatsapp=EXCLUDED.cliente_whatsapp,
+                    produtos=EXCLUDED.produtos,
+                    numero_sorteio=EXCLUDED.numero_sorteio,
+                    token=EXCLUDED.token,
+                    pdv_installation_id=EXCLUDED.pdv_installation_id
+                RETURNING sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                """,
+                (sid, nome, whatsapp, prods, lucky, tok, emitido_em, inst),
+            )
+            row = cur.fetchone() or {}
+            return dict(row)
+
+
+def get_promo_inscricao_by_sale_id(*, sale_id: int) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    try:
+        sid = int(sale_id)
+    except Exception:
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                FROM promo_inscricoes
+                WHERE sale_id=%s
+                """,
+                (sid,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def confirm_promo_inscricao(*, sale_id: int) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    try:
+        sid = int(sale_id)
+    except Exception:
+        return None
+
+    confirmed_at = datetime.now().isoformat(timespec="seconds")
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE promo_inscricoes
+                SET confirmado_em = COALESCE(confirmado_em, %s)
+                WHERE sale_id=%s
+                RETURNING sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                """,
+                (confirmed_at, sid),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def list_promo_inscricoes_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+
+    ini_s = str(ini or "").strip()
+    fim_s = str(fim or "").strip()
+    if not ini_s or not fim_s:
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                FROM promo_inscricoes
+                WHERE emitido_em >= %s::timestamptz
+                  AND emitido_em < (%s::timestamptz + INTERVAL '1 day')
+                ORDER BY emitido_em DESC
+                """,
+                (ini_s, fim_s),
+            )
+            return [dict(r) for r in (cur.fetchall() or [])]

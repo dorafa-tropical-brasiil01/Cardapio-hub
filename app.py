@@ -7,6 +7,10 @@ import os
 import re
 import secrets
 import io
+import base64
+import hmac
+import hashlib
+from datetime import datetime
 import urllib.error
 import urllib.request
 import urllib.parse
@@ -55,6 +59,15 @@ ALLOWED_COMPROVANTE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".jfif", ".he
 
 PDV_KEY = os.environ.get("PDV_KEY", "")
 ALLOWED_PAYMENT_METHODS = {"PIX", "DINHEIRO", "CARTAO", "MISTO"}
+
+PROMO_HMAC_SECRET = str(os.environ.get("PROMO_HMAC_SECRET") or "").strip()
+PROMO_ENABLED = str(os.environ.get("PROMO_ENABLED") or "").strip().lower()
+PROMO_PUBLIC_BASE_URL = str(os.environ.get("CARDAPIO_PUBLIC_BASE_URL") or os.environ.get("PROMO_PUBLIC_BASE_URL") or "").strip()
+PROMO_PATH = str(os.environ.get("PROMO_PATH") or "/promocao").strip() or "/promocao"
+PROMO_CONSENT_TEXT = str(
+    os.environ.get("PROMO_CONSENT_TEXT")
+    or "AO CLICAR EM CONFIRMAR, VOCÊ AUTORIZA O ENVIO DE OFERTAS, PROMOÇÕES E COMUNICAÇÕES DA LANCHONETE DO’RAFA POR MEIO DE WHATSAPP OU OUTROS CANAIS. VOCÊ PODE CANCELAR O RECEBIMENTO A QUALQUER MOMENTO."
+).strip()
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
@@ -507,6 +520,237 @@ def _require_pdv_key() -> Any:
         if not got_id or got_id != expected_id:
             return jsonify({"error": "unauthorized"}), 401
     return None
+
+
+def _promo_enabled() -> bool:
+    if PROMO_ENABLED in ("1", "true", "yes", "y", "on"):
+        return True
+    if PROMO_ENABLED in ("0", "false", "no", "n", "off"):
+        return False
+    return bool(PROMO_HMAC_SECRET)
+
+
+def _promo_base_url() -> str:
+    if PROMO_PUBLIC_BASE_URL:
+        return PROMO_PUBLIC_BASE_URL.rstrip("/")
+    return str(request.host_url or "").rstrip("/")
+
+
+def _b64url_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+
+
+def _b64url_decode(txt: str) -> bytes:
+    s = str(txt or "").strip()
+    if not s:
+        return b""
+    pad = "=" * ((4 - (len(s) % 4)) % 4)
+    return base64.urlsafe_b64decode((s + pad).encode("utf-8"))
+
+
+def _promo_make_token(*, payload: dict[str, Any]) -> str:
+    if not PROMO_HMAC_SECRET:
+        raise RuntimeError("promo_secret_nao_configurado")
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    sig = hmac.new(PROMO_HMAC_SECRET.encode("utf-8"), payload_json, hashlib.sha256).digest()
+    return _b64url_encode(payload_json) + "." + _b64url_encode(sig)
+
+
+def _promo_parse_and_verify_token(*, token: str) -> dict[str, Any] | None:
+    if not PROMO_HMAC_SECRET:
+        return None
+    tok = str(token or "").strip()
+    if not tok or "." not in tok:
+        return None
+    p64, s64 = tok.split(".", 1)
+    try:
+        payload_raw = _b64url_decode(p64)
+        sig_raw = _b64url_decode(s64)
+    except Exception:
+        return None
+
+    expected_sig = hmac.new(PROMO_HMAC_SECRET.encode("utf-8"), payload_raw, hashlib.sha256).digest()
+    if not hmac.compare_digest(expected_sig, sig_raw):
+        return None
+
+    try:
+        obj = json.loads(payload_raw.decode("utf-8")) if payload_raw else None
+    except Exception:
+        obj = None
+    return dict(obj) if isinstance(obj, dict) else None
+
+
+@app.post("/api/pdv/promo/emitir")
+def api_pdv_promo_emitir():
+    denied = _require_pdv_key()
+    if denied is not None:
+        return denied
+    if not _promo_enabled():
+        return jsonify({"error": "promo_desabilitada"}), 404
+    if not _pg_enabled():
+        return jsonify({"error": "pg_disabled"}), 500
+    if not PROMO_HMAC_SECRET:
+        return jsonify({"error": "promo_secret_nao_configurado"}), 500
+
+    data = request.get_json(silent=True) or {}
+    try:
+        sale_id = int(data.get("sale_id"))
+    except Exception:
+        return jsonify({"error": "sale_id_invalido"}), 400
+
+    cliente_nome = str(data.get("cliente_nome") or "").strip()
+    cliente_whatsapp = str(data.get("cliente_whatsapp") or "").strip()
+    produtos = data.get("produtos")
+    if isinstance(produtos, list):
+        produtos_txt = ", ".join([str(x or "").strip() for x in produtos if str(x or "").strip()])
+    else:
+        produtos_txt = str(produtos or "").strip()
+    numero_sorteio = str(data.get("numero_sorteio") or "").strip()
+
+    if not cliente_nome or not cliente_whatsapp:
+        return jsonify({"error": "dados_cliente_obrigatorios"}), 400
+    if not _is_valid_whatsapp(cliente_whatsapp):
+        return jsonify({"error": "whatsapp_invalido"}), 400
+    if not produtos_txt:
+        return jsonify({"error": "produtos_obrigatorio"}), 400
+    if not numero_sorteio:
+        return jsonify({"error": "numero_sorteio_obrigatorio"}), 400
+
+    try:
+        existing = pg_store.get_promo_inscricao_by_sale_id(sale_id=sale_id)
+    except Exception:
+        existing = None
+
+    if isinstance(existing, dict) and str(existing.get("token") or "").strip():
+        tok = str(existing.get("token") or "").strip()
+        url = _promo_base_url() + PROMO_PATH + "?t=" + urllib.parse.quote(tok)
+        return jsonify({"ok": True, "token": tok, "url": url, "numero_sorteio": existing.get("numero_sorteio")})
+
+    payload = {
+        "sale_id": sale_id,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "lucky": numero_sorteio,
+    }
+    try:
+        tok = _promo_make_token(payload=payload)
+    except Exception:
+        return jsonify({"error": "falha_gerar_token"}), 500
+
+    installation_id = str(request.headers.get("X-PDV-ID") or "").strip() or None
+    try:
+        pg_store.upsert_promo_inscricao_emitida(
+            sale_id=sale_id,
+            cliente_nome=cliente_nome,
+            cliente_whatsapp=cliente_whatsapp,
+            produtos=produtos_txt,
+            numero_sorteio=numero_sorteio,
+            token=tok,
+            pdv_installation_id=installation_id,
+        )
+    except Exception:
+        return jsonify({"error": "falha_persistir"}), 500
+
+    url = _promo_base_url() + PROMO_PATH + "?t=" + urllib.parse.quote(tok)
+    return jsonify({"ok": True, "token": tok, "url": url, "numero_sorteio": numero_sorteio})
+
+
+@app.get("/promocao")
+def promocao_page():
+    if not _promo_enabled():
+        return make_response("not_found", 404)
+
+    consent = json.dumps(PROMO_CONSENT_TEXT, ensure_ascii=False)
+    html = (
+        "<!doctype html>"
+        "<html lang=\"pt-BR\">"
+        "<head>"
+        "<meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>Promoção</title>"
+        "<style>body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;}h1{font-size:22px;}button{font-size:16px;padding:12px 16px;border:0;border-radius:10px;background:#111;color:#fff;}button:disabled{opacity:.6;}#msg{margin-top:14px;white-space:pre-line;}</style>"
+        "</head>"
+        "<body>"
+        "<h1>Promoção</h1>"
+        "<p id=\"consent\"></p>"
+        "<button id=\"btn\">Confirmar participação</button>"
+        "<div id=\"msg\"></div>"
+        "<script>"
+        "const consentText=" + consent + ";"
+        "document.getElementById('consent').innerText=consentText;"
+        "const params=new URLSearchParams(window.location.search);"
+        "const t=params.get('t')||'';"
+        "const btn=document.getElementById('btn');"
+        "const msg=document.getElementById('msg');"
+        "if(!t){btn.disabled=true;msg.innerText='Token ausente.';}"
+        "btn.addEventListener('click', async ()=>{"
+        "  btn.disabled=true; msg.innerText='Confirmando...';"
+        "  try {"
+        "    const resp=await fetch('/api/promo/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});"
+        "    const j=await resp.json().catch(()=>({}));"
+        "    if(!resp.ok||!j||j.ok!==true){msg.innerText=(j&&j.error)?('Erro: '+j.error):'Falha ao confirmar.';btn.disabled=false;return;}"
+        "    let out='Participação confirmada.';"
+        "    if(j.numero_sorteio){out+='\\nNúmero do sorteio: '+j.numero_sorteio;}"
+        "    msg.innerText=out;"
+        "  } catch(e){ msg.innerText='Falha ao confirmar.'; btn.disabled=false; }"
+        "});"
+        "</script>"
+        "</body>"
+        "</html>"
+    )
+    resp = make_response(html, 200)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.post("/api/promo/confirmar")
+def api_promo_confirmar():
+    if not _promo_enabled():
+        return jsonify({"error": "promo_desabilitada"}), 404
+    if not _pg_enabled():
+        return jsonify({"error": "pg_disabled"}), 500
+    if not PROMO_HMAC_SECRET:
+        return jsonify({"error": "promo_secret_nao_configurado"}), 500
+
+    data = request.get_json(silent=True) or {}
+    tok = str(data.get("token") or "").strip()
+    if not tok:
+        return jsonify({"error": "token_ausente"}), 400
+
+    payload = _promo_parse_and_verify_token(token=tok)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "token_invalido"}), 400
+
+    try:
+        sale_id = int(payload.get("sale_id"))
+    except Exception:
+        return jsonify({"error": "token_invalido"}), 400
+
+    try:
+        rec = pg_store.confirm_promo_inscricao(sale_id=sale_id)
+    except Exception:
+        rec = None
+    if not isinstance(rec, dict):
+        return jsonify({"error": "nao_encontrado"}), 404
+
+    return jsonify({"ok": True, "numero_sorteio": rec.get("numero_sorteio")})
+
+
+@app.get("/api/pdv/promo/inscricoes")
+def api_pdv_promo_inscricoes():
+    denied = _require_pdv_key()
+    if denied is not None:
+        return denied
+    if not _pg_enabled():
+        return jsonify({"error": "pg_disabled"}), 500
+    ini = str(request.args.get("ini") or "").strip()
+    fim = str(request.args.get("fim") or "").strip()
+    if not ini or not fim:
+        return jsonify({"error": "periodo_invalido"}), 400
+    try:
+        arr = pg_store.list_promo_inscricoes_periodo(ini=ini, fim=fim)
+    except Exception:
+        arr = []
+    return jsonify({"ok": True, "inscricoes": arr})
 
 
 @app.get("/api/pdv/ping")
