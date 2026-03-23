@@ -684,7 +684,7 @@ def promocao_page():
         "<h1>Promoção</h1>"
         "<p id=\"consent\"></p>"
         + promo_html
-        "<button id=\"btn\">Confirmar participação</button>"
+        + "<button id=\"btn\">Confirmar participação</button>"
         "<div id=\"msg\"></div>"
         "<script>"
         "const consentText=" + consent + ";"
