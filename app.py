@@ -659,6 +659,17 @@ def promocao_page():
     if not _promo_enabled():
         return make_response("not_found", 404)
 
+    published = _read_catalogo_publicado()
+    ui = published.get("ui") if isinstance(published, dict) else {}
+    promo_img = _normalize_asset_ref(ui.get("promoImage")) if isinstance(ui, dict) else ""
+    promo_html = (
+        "<div style=\"margin:12px 0 16px 0;\">"
+        f"<img src=\"{promo_img}\" alt=\"Promoção\" style=\"max-width:100%;height:auto;border-radius:12px;\">"
+        "</div>"
+        if promo_img
+        else ""
+    )
+
     consent = json.dumps(PROMO_CONSENT_TEXT, ensure_ascii=False)
     html = (
         "<!doctype html>"
@@ -672,6 +683,7 @@ def promocao_page():
         "<body>"
         "<h1>Promoção</h1>"
         "<p id=\"consent\"></p>"
+        + promo_html
         "<button id=\"btn\">Confirmar participação</button>"
         "<div id=\"msg\"></div>"
         "<script>"
@@ -1096,6 +1108,9 @@ def api_get_data():
         if "postOrderImage" in ui:
             ui = dict(ui)
             ui["postOrderImage"] = _normalize_asset_ref(ui.get("postOrderImage"))
+        if "promoImage" in ui:
+            ui = dict(ui)
+            ui["promoImage"] = _normalize_asset_ref(ui.get("promoImage"))
         if "afterSendImage" in ui:
             ui = dict(ui)
             ui["afterSendImage"] = _normalize_asset_ref(ui.get("afterSendImage"))
