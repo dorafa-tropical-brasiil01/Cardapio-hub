@@ -121,6 +121,10 @@ def init_db() -> None:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_emitido_em ON promo_inscricoes(emitido_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_confirmado_em ON promo_inscricoes(confirmado_em)")
+            try:
+                cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_promo_inscricoes_token_unique ON promo_inscricoes(token)")
+            except Exception:
+                pass
 
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
@@ -436,6 +440,28 @@ def get_promo_inscricao_by_sale_id(*, sale_id: int) -> dict[str, Any] | None:
             return dict(row) if row else None
 
 
+def get_promo_inscricao_by_token(*, token: str) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    tok = str(token or "").strip()
+    if not tok:
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                FROM promo_inscricoes
+                WHERE token=%s
+                """,
+                (tok,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
 def confirm_promo_inscricao(*, sale_id: int) -> dict[str, Any] | None:
     if not is_enabled():
         return None
@@ -445,20 +471,40 @@ def confirm_promo_inscricao(*, sale_id: int) -> dict[str, Any] | None:
     except Exception:
         return None
 
-    confirmed_at = datetime.now().isoformat(timespec="seconds")
     with _conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
+                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                FROM promo_inscricoes
+                WHERE sale_id=%s
+                """,
+                (sid,),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                return None
+
+            already_confirmed = existing.get("confirmado_em") is not None
+            if already_confirmed:
+                out = dict(existing)
+                out["already_confirmed"] = True
+                return out
+
+            confirmed_at = datetime.now().isoformat(timespec="seconds")
+            cur.execute(
+                """
                 UPDATE promo_inscricoes
-                SET confirmado_em = COALESCE(confirmado_em, %s)
+                SET confirmado_em = %s
                 WHERE sale_id=%s
                 RETURNING sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 """,
                 (confirmed_at, sid),
             )
             row = cur.fetchone()
-            return dict(row) if row else None
+            out = dict(row) if row else dict(existing)
+            out["already_confirmed"] = False
+            return out
 
 
 def list_promo_inscricoes_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:

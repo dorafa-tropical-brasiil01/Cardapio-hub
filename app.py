@@ -556,6 +556,14 @@ def _promo_make_token(*, payload: dict[str, Any]) -> str:
     return _b64url_encode(payload_json) + "." + _b64url_encode(sig)
 
 
+def _promo_make_short_token() -> str:
+    while True:
+        tok = secrets.token_urlsafe(9).strip()
+        tok = tok.replace("-", "").replace("_", "").strip()
+        if tok and "." not in tok and len(tok) >= 10:
+            return tok
+
+
 def _promo_parse_and_verify_token(*, token: str) -> dict[str, Any] | None:
     if not PROMO_HMAC_SECRET:
         return None
@@ -626,29 +634,36 @@ def api_pdv_promo_emitir():
         url = _promo_base_url() + PROMO_PATH + "?t=" + urllib.parse.quote(tok)
         return jsonify({"ok": True, "token": tok, "url": url, "numero_sorteio": existing.get("numero_sorteio")})
 
-    payload = {
-        "sale_id": sale_id,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "lucky": numero_sorteio,
-    }
-    try:
-        tok = _promo_make_token(payload=payload)
-    except Exception:
-        return jsonify({"error": "falha_gerar_token"}), 500
-
     installation_id = str(request.headers.get("X-PDV-ID") or "").strip() or None
-    try:
-        pg_store.upsert_promo_inscricao_emitida(
-            sale_id=sale_id,
-            cliente_nome=cliente_nome,
-            cliente_whatsapp=cliente_whatsapp,
-            produtos=produtos_txt,
-            numero_sorteio=numero_sorteio,
-            token=tok,
-            pdv_installation_id=installation_id,
-        )
-    except Exception:
-        return jsonify({"error": "falha_persistir"}), 500
+    last_err: Exception | None = None
+    tok = ""
+    for _ in range(6):
+        tok = _promo_make_short_token()
+        try:
+            pg_store.upsert_promo_inscricao_emitida(
+                sale_id=sale_id,
+                cliente_nome=cliente_nome,
+                cliente_whatsapp=cliente_whatsapp,
+                produtos=produtos_txt,
+                numero_sorteio=numero_sorteio,
+                token=tok,
+                pdv_installation_id=installation_id,
+            )
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
+            continue
+
+    if last_err is not None:
+        try:
+            existing = pg_store.get_promo_inscricao_by_sale_id(sale_id=sale_id)
+        except Exception:
+            existing = None
+        if isinstance(existing, dict) and str(existing.get("token") or "").strip():
+            tok = str(existing.get("token") or "").strip()
+        else:
+            return jsonify({"error": "falha_persistir"}), 500
 
     url = _promo_base_url() + PROMO_PATH + "?t=" + urllib.parse.quote(tok)
     return jsonify({"ok": True, "token": tok, "url": url, "numero_sorteio": numero_sorteio})
@@ -663,7 +678,7 @@ def promocao_page():
     ui = published.get("ui") if isinstance(published, dict) else {}
     promo_img = _normalize_asset_ref(ui.get("promoImage")) if isinstance(ui, dict) else ""
     promo_html = (
-        "<div style=\"margin:12px 0 16px 0;\">"
+        "<div id=\"promo-img\" style=\"margin:12px 0 16px 0;\">"
         f"<img src=\"{promo_img}\" alt=\"Promoção\" style=\"max-width:100%;height:auto;border-radius:12px;\">"
         "</div>"
         if promo_img
@@ -678,12 +693,12 @@ def promocao_page():
         "<meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         "<title>Promoção</title>"
-        "<style>body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;}h1{font-size:22px;}button{font-size:16px;padding:12px 16px;border:0;border-radius:10px;background:#111;color:#fff;}button:disabled{opacity:.6;}#msg{margin-top:14px;white-space:pre-line;}</style>"
+        "<style>body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;}h1{font-size:22px;margin:0 0 10px 0;}button{font-size:16px;padding:12px 16px;border:0;border-radius:10px;background:#111;color:#fff;}button:disabled{opacity:.6;}#msg{margin-top:14px;white-space:pre-line;}#promo-img{margin:0 0 14px 0;}</style>"
         "</head>"
         "<body>"
         "<h1>Promoção</h1>"
-        "<p id=\"consent\"></p>"
         + promo_html
+        "<p id=\"consent\"></p>"
         + "<button id=\"btn\">Confirmar participação</button>"
         "<div id=\"msg\"></div>"
         "<script>"
@@ -700,9 +715,10 @@ def promocao_page():
         "    const resp=await fetch('/api/promo/confirmar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});"
         "    const j=await resp.json().catch(()=>({}));"
         "    if(!resp.ok||!j||j.ok!==true){msg.innerText=(j&&j.error)?('Erro: '+j.error):'Falha ao confirmar.';btn.disabled=false;return;}"
-        "    let out='Participação confirmada.';"
+        "    let out = (j && j.already_confirmed===true) ? 'QR code já cadastrado.\\nEsse comprovante já confirmou a participação.' : 'Participação confirmada.';"
         "    if(j.numero_sorteio){out+='\\nNúmero do sorteio: '+j.numero_sorteio;}"
         "    msg.innerText=out;"
+        "    if(j && j.already_confirmed===true){btn.disabled=true;}"
         "  } catch(e){ msg.innerText='Falha ao confirmar.'; btn.disabled=false; }"
         "});"
         "</script>"
@@ -728,23 +744,35 @@ def api_promo_confirmar():
     if not tok:
         return jsonify({"error": "token_ausente"}), 400
 
-    payload = _promo_parse_and_verify_token(token=tok)
-    if not isinstance(payload, dict):
-        return jsonify({"error": "token_invalido"}), 400
+    sale_id: int | None = None
+    if "." in tok:
+        payload = _promo_parse_and_verify_token(token=tok)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "token_invalido"}), 400
+        try:
+            sale_id = int(payload.get("sale_id"))
+        except Exception:
+            return jsonify({"error": "token_invalido"}), 400
+    else:
+        try:
+            rec0 = pg_store.get_promo_inscricao_by_token(token=tok)
+        except Exception:
+            rec0 = None
+        if not isinstance(rec0, dict):
+            return jsonify({"error": "token_invalido"}), 400
+        try:
+            sale_id = int(rec0.get("sale_id"))
+        except Exception:
+            return jsonify({"error": "token_invalido"}), 400
 
     try:
-        sale_id = int(payload.get("sale_id"))
-    except Exception:
-        return jsonify({"error": "token_invalido"}), 400
-
-    try:
-        rec = pg_store.confirm_promo_inscricao(sale_id=sale_id)
+        rec = pg_store.confirm_promo_inscricao(sale_id=int(sale_id))
     except Exception:
         rec = None
     if not isinstance(rec, dict):
         return jsonify({"error": "nao_encontrado"}), 404
 
-    return jsonify({"ok": True, "numero_sorteio": rec.get("numero_sorteio")})
+    return jsonify({"ok": True, "numero_sorteio": rec.get("numero_sorteio"), "already_confirmed": bool(rec.get("already_confirmed"))})
 
 
 @app.get("/api/pdv/promo/inscricoes")
