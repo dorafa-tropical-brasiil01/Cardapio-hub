@@ -564,6 +564,63 @@ def _promo_make_short_token() -> str:
             return tok
 
 
+def _mask_name(value: Any) -> str:
+    s = str(value or "").strip()
+    if not s:
+        return ""
+    parts = [p for p in s.split() if p]
+    if len(parts) >= 2:
+        first = parts[0]
+        last_initial = parts[-1][:1]
+        return f"{first} {last_initial}****"
+    base = parts[0]
+    if len(base) <= 2:
+        return base[:1] + "****"
+    return base[:2] + "****"
+
+
+def _mask_phone(value: Any) -> str:
+    raw = re.sub(r"\D+", "", str(value or "").strip())
+    if not raw:
+        return ""
+    tail = raw[-4:] if len(raw) >= 4 else raw
+    return ("*" * max(0, len(raw) - len(tail))) + tail
+
+
+def _promo_title_from_ui(ui: Any) -> str:
+    if not isinstance(ui, dict):
+        return "Promoção"
+    for k in ("promoTitle", "promoName", "promoCampaignName", "campaignName"):
+        v = str(ui.get(k) or "").strip()
+        if v:
+            return v
+    return "Promoção"
+
+
+def _promo_get_sale_id_from_token(tok: str) -> int | None:
+    t = str(tok or "").strip()
+    if not t:
+        return None
+    if "." in t:
+        payload = _promo_parse_and_verify_token(token=t)
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return int(payload.get("sale_id"))
+        except Exception:
+            return None
+    try:
+        rec0 = pg_store.get_promo_inscricao_by_token(token=t)
+    except Exception:
+        rec0 = None
+    if not isinstance(rec0, dict):
+        return None
+    try:
+        return int(rec0.get("sale_id"))
+    except Exception:
+        return None
+
+
 def _promo_parse_and_verify_token(*, token: str) -> dict[str, Any] | None:
     if not PROMO_HMAC_SECRET:
         return None
@@ -608,6 +665,7 @@ def api_pdv_promo_emitir():
 
     cliente_nome = str(data.get("cliente_nome") or "").strip()
     cliente_whatsapp = str(data.get("cliente_whatsapp") or "").strip()
+    campaign_name = str(data.get("campaign_name") or data.get("promo_campaign_name") or "").strip() or None
     produtos = data.get("produtos")
     if isinstance(produtos, list):
         produtos_txt = ", ".join([str(x or "").strip() for x in produtos if str(x or "").strip()])
@@ -642,6 +700,7 @@ def api_pdv_promo_emitir():
         try:
             pg_store.upsert_promo_inscricao_emitida(
                 sale_id=sale_id,
+                campaign_name=campaign_name,
                 cliente_nome=cliente_nome,
                 cliente_whatsapp=cliente_whatsapp,
                 produtos=produtos_txt,
@@ -676,10 +735,14 @@ def promocao_page():
 
     published = _read_catalogo_publicado()
     ui = published.get("ui") if isinstance(published, dict) else {}
+    promo_title = _promo_title_from_ui(ui)
     promo_img = _normalize_asset_ref(ui.get("promoImage")) if isinstance(ui, dict) else ""
+    promo_img_url = ""
+    if promo_img:
+        promo_img_url = promo_img + ("&" if "?" in promo_img else "?") + "v=" + urllib.parse.quote(datetime.now().isoformat(timespec="seconds"))
     promo_html = (
-        "<div id=\"promo-img\" style=\"margin:12px 0 16px 0;\">"
-        f"<img src=\"{promo_img}\" alt=\"Promoção\" style=\"max-width:100%;height:auto;border-radius:12px;\">"
+        "<div id=\"promo-img\" style=\"margin:12px 0 10px 0;\">"
+        f"<img src=\"{promo_img_url}\" alt=\"Promoção\" style=\"width:100%;height:auto;border-radius:12px;display:block;\">"
         "</div>"
         if promo_img
         else ""
@@ -693,11 +756,20 @@ def promocao_page():
         "<meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         "<title>Promoção</title>"
-        "<style>body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;}h1{font-size:22px;margin:0 0 10px 0;}button{font-size:16px;padding:12px 16px;border:0;border-radius:10px;background:#111;color:#fff;}button:disabled{opacity:.6;}#msg{margin-top:14px;white-space:pre-line;}#promo-img{margin:0 0 14px 0;}</style>"
+        "<style>body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;}h1{font-size:22px;margin:0 0 10px 0;}button{font-size:16px;padding:12px 16px;border:0;border-radius:10px;background:#111;color:#fff;}button:disabled{opacity:.6;}#msg{margin-top:14px;white-space:pre-line;}.muted{opacity:.78;}#promo-img{margin:0 0 10px 0;}.box{background:rgba(255,255,255,0.65);border:1px solid rgba(0,0,0,0.08);border-radius:12px;padding:12px;margin:10px 0;}#client{margin-top:10px;}#promoTitle{font-weight:900;font-size:20px;margin:0 0 8px 0;}</style>"
         "</head>"
         "<body>"
-        "<h1>Promoção</h1>"
+        + "<div id=\"promoTitle\">Promoção: <span id=\"promoTitleText\"></span></div>"
         + promo_html
+        + "<div class=\"box muted\" id=\"promoExplain\">"
+        + "Este QR code é de uso único e confirma a participação do cliente na promoção. "
+        + "O cadastro é automático: fez o pedido no cardápio online, pagou e gerou o QR code. "
+        + "Agora basta ler o QR e confirmar. Não é possível transferir ou usar o mesmo QR em mais de um celular."
+        + "</div>"
+        + "<div class=\"box\" id=\"client\" style=\"display:none\">"
+        + "<div><b>Nome:</b> <span id=\"clientName\"></span></div>"
+        + "<div style=\"margin-top:6px\"><b>Contato/WhatsApp:</b> <span id=\"clientPhone\"></span></div>"
+        + "</div>"
         + "<p id=\"consent\"></p>"
         + "<button id=\"btn\">Confirmar participação</button>"
         + "<div id=\"msg\"></div>"
@@ -710,7 +782,24 @@ def promocao_page():
         + "const t=params.get('t')||'';"
         + "const btn=document.getElementById('btn');"
         + "const msg=document.getElementById('msg');"
+        + "const clientBox=document.getElementById('client');"
+        + "const clientNameEl=document.getElementById('clientName');"
+        + "const clientPhoneEl=document.getElementById('clientPhone');"
+        + "const promoTitleText=document.getElementById('promoTitleText');"
         + "if(!t){btn.disabled=true;msg.innerText='Token ausente.';}"
+        + "async function loadInfo(){"
+        + "  if(!t) return;"
+        + "  try {"
+        + "    const resp=await fetch('/api/promo/info?t='+encodeURIComponent(t),{method:'GET'});"
+        + "    const j=await resp.json().catch(()=>({}));"
+        + "    if(!resp.ok||!j||j.ok!==true) return;"
+        + f"    if(promoTitleText) promoTitleText.innerText=(j.promo_title||{json.dumps(promo_title, ensure_ascii=False)}||'');"
+        + "    if(j.nome){clientNameEl.innerText=j.nome;}"
+        + "    if(j.whatsapp){clientPhoneEl.innerText=j.whatsapp;}"
+        + "    if((j.nome||j.whatsapp) && clientBox){clientBox.style.display='block';}"
+        + "  } catch(e){}"
+        + "}"
+        + "loadInfo();"
         + "btn.addEventListener('click', async ()=>{"
         + "  btn.disabled=true; msg.innerText='Confirmando...';"
         + "  try {"
@@ -724,12 +813,48 @@ def promocao_page():
         + "  } catch(e){ msg.innerText='Falha ao confirmar.'; btn.disabled=false; }"
         + "});"
         + "</script>"
-        "</body>"
-        "</html>"
+        + "</body>"
+        + "</html>"
     )
     resp = make_response(html, 200)
     resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+@app.get("/api/promo/info")
+def api_promo_info():
+    if not _promo_enabled():
+        return jsonify({"error": "promo_desabilitada"}), 404
+    if not _pg_enabled():
+        return jsonify({"error": "pg_disabled"}), 500
+
+    tok = str(request.args.get("t") or "").strip()
+    if not tok:
+        return jsonify({"error": "token_ausente"}), 400
+
+    sale_id = _promo_get_sale_id_from_token(tok)
+    if sale_id is None:
+        return jsonify({"error": "token_invalido"}), 400
+
+    try:
+        rec = pg_store.get_promo_inscricao_by_sale_id(sale_id=int(sale_id))
+    except Exception:
+        rec = None
+    if not isinstance(rec, dict):
+        return jsonify({"error": "nao_encontrado"}), 404
+
+    published = _read_catalogo_publicado()
+    ui = published.get("ui") if isinstance(published, dict) else {}
+    promo_title = str(rec.get("campaign_name") or "").strip() or _promo_title_from_ui(ui)
+
+    return jsonify(
+        {
+            "ok": True,
+            "promo_title": "Promoção: " + promo_title if promo_title else "Promoção",
+            "nome": _mask_name(rec.get("cliente_nome")),
+            "whatsapp": _mask_phone(rec.get("cliente_whatsapp")),
+        }
+    )
 
 
 @app.post("/api/promo/confirmar")

@@ -108,6 +108,7 @@ def init_db() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS promo_inscricoes (
                     sale_id BIGINT PRIMARY KEY,
+                    campaign_name TEXT,
                     cliente_nome TEXT NOT NULL,
                     cliente_whatsapp TEXT NOT NULL,
                     produtos TEXT NOT NULL,
@@ -119,6 +120,10 @@ def init_db() -> None:
                 )
                 """
             )
+            try:
+                cur.execute("ALTER TABLE promo_inscricoes ADD COLUMN IF NOT EXISTS campaign_name TEXT")
+            except Exception:
+                pass
             cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_emitido_em ON promo_inscricoes(emitido_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_promo_inscricoes_confirmado_em ON promo_inscricoes(confirmado_em)")
             try:
@@ -355,6 +360,7 @@ def update_solicitacao_status(*, solicitacao_id: str, pdv_status: str) -> None:
 def upsert_promo_inscricao_emitida(
     *,
     sale_id: int,
+    campaign_name: str | None = None,
     cliente_nome: str,
     cliente_whatsapp: str,
     produtos: str,
@@ -378,6 +384,7 @@ def upsert_promo_inscricao_emitida(
     prods = str(produtos or "").strip()
     lucky = str(numero_sorteio or "").strip()
     tok = str(token or "").strip()
+    camp = str(campaign_name or "").strip() or None
     inst = str(pdv_installation_id or "").strip() or None
 
     if not nome or not whatsapp or not prods or not lucky or not tok:
@@ -393,6 +400,7 @@ def upsert_promo_inscricao_emitida(
                 """
                 INSERT INTO promo_inscricoes(
                     sale_id,
+                    campaign_name,
                     cliente_nome,
                     cliente_whatsapp,
                     produtos,
@@ -401,17 +409,18 @@ def upsert_promo_inscricao_emitida(
                     emitido_em,
                     pdv_installation_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (sale_id) DO UPDATE SET
+                    campaign_name=EXCLUDED.campaign_name,
                     cliente_nome=EXCLUDED.cliente_nome,
                     cliente_whatsapp=EXCLUDED.cliente_whatsapp,
                     produtos=EXCLUDED.produtos,
                     numero_sorteio=EXCLUDED.numero_sorteio,
                     token=EXCLUDED.token,
                     pdv_installation_id=EXCLUDED.pdv_installation_id
-                RETURNING sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                RETURNING sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 """,
-                (sid, nome, whatsapp, prods, lucky, tok, emitido_em, inst),
+                (sid, camp, nome, whatsapp, prods, lucky, tok, emitido_em, inst),
             )
             row = cur.fetchone() or {}
             return dict(row)
@@ -430,7 +439,7 @@ def get_promo_inscricao_by_sale_id(*, sale_id: int) -> dict[str, Any] | None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                SELECT sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 FROM promo_inscricoes
                 WHERE sale_id=%s
                 """,
@@ -452,7 +461,7 @@ def get_promo_inscricao_by_token(*, token: str) -> dict[str, Any] | None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                SELECT sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 FROM promo_inscricoes
                 WHERE token=%s
                 """,
@@ -475,7 +484,7 @@ def confirm_promo_inscricao(*, sale_id: int) -> dict[str, Any] | None:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                SELECT sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 FROM promo_inscricoes
                 WHERE sale_id=%s
                 """,
@@ -497,7 +506,7 @@ def confirm_promo_inscricao(*, sale_id: int) -> dict[str, Any] | None:
                 UPDATE promo_inscricoes
                 SET confirmado_em = %s
                 WHERE sale_id=%s
-                RETURNING sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                RETURNING sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 """,
                 (confirmed_at, sid),
             )
@@ -520,7 +529,7 @@ def list_promo_inscricoes_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT sale_id, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
+                SELECT sale_id, campaign_name, cliente_nome, cliente_whatsapp, produtos, numero_sorteio, token, emitido_em, confirmado_em, pdv_installation_id
                 FROM promo_inscricoes
                 WHERE emitido_em >= %s::timestamptz
                   AND emitido_em < (%s::timestamptz + INTERVAL '1 day')

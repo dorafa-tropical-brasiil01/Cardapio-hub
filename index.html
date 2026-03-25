@@ -99,7 +99,9 @@
         .banner {
             margin: 20px auto;
             width: 92%;
-            height: 200px;
+            height: auto;
+            aspect-ratio: 16 / 9;
+            max-height: 260px;
             background: #fefecf;
             border-radius: 20px;
             display: flex;
@@ -113,7 +115,8 @@
         .banner img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            background: #fefecf;
             display: none;
         }
 
@@ -846,7 +849,9 @@
 
             .banner {
                 width: 92%;
-                height: 160px;
+                height: auto;
+                aspect-ratio: 16 / 9;
+                max-height: 200px;
                 font-size: 28px;
             }
 
