@@ -739,7 +739,7 @@ def promocao_page():
     promo_img = _normalize_asset_ref(ui.get("promoImage")) if isinstance(ui, dict) else ""
     promo_img_url = ""
     if promo_img:
-        promo_img_url = promo_img + ("&" if "?" in promo_img else "?") + "v=" + urllib.parse.quote(datetime.now().isoformat(timespec="seconds"))
+        promo_img_url = promo_img + ("&" if "?" in promo_img else "?") + "v=" + urllib.parse.quote(uuid.uuid4().hex)
     promo_html = (
         "<div id=\"promo-img\" style=\"margin:12px 0 10px 0;\">"
         f"<img src=\"{promo_img_url}\" alt=\"Promoção\" style=\"width:100%;height:auto;border-radius:12px;display:block;\">"
@@ -850,7 +850,7 @@ def api_promo_info():
     return jsonify(
         {
             "ok": True,
-            "promo_title": "Promoção: " + promo_title if promo_title else "Promoção",
+            "promo_title": promo_title or "Promoção",
             "nome": _mask_name(rec.get("cliente_nome")),
             "whatsapp": _mask_phone(rec.get("cliente_whatsapp")),
         }
@@ -899,7 +899,14 @@ def api_promo_confirmar():
     if not isinstance(rec, dict):
         return jsonify({"error": "nao_encontrado"}), 404
 
-    return jsonify({"ok": True, "numero_sorteio": rec.get("numero_sorteio"), "already_confirmed": bool(rec.get("already_confirmed"))})
+    already_confirmed = bool(rec.get("already_confirmed"))
+    out: dict[str, Any] = {
+        "ok": True,
+        "already_confirmed": already_confirmed,
+    }
+    if not already_confirmed:
+        out["numero_sorteio"] = rec.get("numero_sorteio")
+    return jsonify(out)
 
 
 @app.get("/api/pdv/promo/inscricoes")
