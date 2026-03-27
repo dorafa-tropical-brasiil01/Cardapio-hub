@@ -99,14 +99,8 @@
         .banner {
             margin: 20px auto;
             width: 92%;
-            height: auto;
             background: #fefecf;
             border-radius: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 48px;
-            font-weight: bold;
             overflow: hidden;
         }
 
@@ -119,6 +113,11 @@
         .banner img {
             width: 100%;
             height: auto;
+            display: block;
+        }
+
+        .banner img:not([src]),
+        .banner img[src=""] {
             display: none;
         }
 
