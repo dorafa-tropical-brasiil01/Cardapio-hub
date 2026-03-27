@@ -99,7 +99,7 @@
         .banner {
             margin: 20px auto;
             width: 92%;
-            height: clamp(160px, 22vw, 260px);
+            height: auto;
             background: #fefecf;
             border-radius: 20px;
             display: flex;
@@ -112,15 +112,13 @@
 
         @media (max-width: 480px) {
             .banner {
-                height: clamp(120px, 18vw, 160px);
+                height: auto;
             }
         }
 
         .banner img {
             width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: center;
+            height: auto;
             display: none;
         }
 
