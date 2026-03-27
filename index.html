@@ -99,8 +99,7 @@
         .banner {
             margin: 20px auto;
             width: 92%;
-            height: auto;
-            aspect-ratio: 32 / 5;
+            height: clamp(160px, 22vw, 260px);
             background: #fefecf;
             border-radius: 20px;
             display: flex;
@@ -113,15 +112,14 @@
 
         @media (max-width: 480px) {
             .banner {
-                height: auto;
-                aspect-ratio: 32 / 5;
+                height: clamp(120px, 18vw, 160px);
             }
         }
 
         .banner img {
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover;
             object-position: center;
             display: none;
         }
