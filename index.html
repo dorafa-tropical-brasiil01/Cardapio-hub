@@ -102,8 +102,9 @@
             margin: 20px auto;
             border-radius: 20px;
             overflow: hidden;
-            aspect-ratio: 32 / 5;
+            aspect-ratio: 8 / 3;
             background: var(--amarelo);
+            position: relative;
         }
 
         .banner img {
@@ -111,6 +112,22 @@
             height: 100%;
             display: block;
             object-fit: contain;
+            object-position: center;
+        }
+
+        #bannerFallback {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 14px 16px;
+            box-sizing: border-box;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+            color: var(--verde);
+            background: rgba(254, 254, 207, 0.92);
         }
 
         .section-title {
