@@ -218,6 +218,15 @@ def _format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append("Tipo de Pagamento:")
     lines.append(pagamento)
+    if pagamento == "DINHEIRO":
+        troco_para = record.get("troco_para")
+        if troco_para is not None and str(troco_para).strip() != "":
+            try:
+                tp = float(troco_para)
+            except Exception:
+                tp = None
+            if tp is not None and tp > 0:
+                lines.append(f"Troco para: R$ {_money_brl(tp)}")
     lines.append("")
     lines.append("Tipo de entrega:")
     if tipo_entrega:
