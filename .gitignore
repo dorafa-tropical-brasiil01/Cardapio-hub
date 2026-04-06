@@ -18,5 +18,6 @@ catalogo_publicado.json
 mesas.json
 solicitacoes.json
 assets/
+!assets/
 !assets/app.css
 !assets/app.js
