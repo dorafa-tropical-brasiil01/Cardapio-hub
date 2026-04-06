@@ -7,8 +7,9 @@
     <meta name="supported-color-schemes" content="light">
     <title>DORAFA Tropical Brasil - Cardápio</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="/assets/app.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <style>
+    <style media="not all">
         :root {
             color-scheme: light;
         }
@@ -1025,7 +1026,8 @@
     </div>
 </div>
 
-<script>
+<script src="/assets/app.js"></script>
+<script type="text/plain" id="legacyInlineScript">
     const STORAGE_KEYS = {
         carrinho: "cardapio.cart.v1",
         pedido: "cardapio.lastPedido.v1",
