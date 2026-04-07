@@ -78,7 +78,21 @@ def promo_enabled_flag() -> str:
 
 
 def promo_public_base_url() -> str:
-    return str(os.environ.get("CARDAPIO_PUBLIC_BASE_URL") or os.environ.get("PROMO_PUBLIC_BASE_URL") or "").strip()
+    raw = str(os.environ.get("CARDAPIO_PUBLIC_BASE_URL") or os.environ.get("PROMO_PUBLIC_BASE_URL") or "").strip()
+    if not raw:
+        return ""
+
+    base = raw.strip().rstrip("/")
+    low = base.lower()
+    if low.startswith("http://") or low.startswith("https://"):
+        return base
+
+    # Se cair aqui, pode ser um valor sem esquema (ex.: dominio.com) ou algo perigoso
+    # como uma string de conexão (ex.: postgresql://...).
+    if "://" in base:
+        return ""
+
+    return f"https://{base}"
 
 
 def promo_path() -> str:
