@@ -14,6 +14,7 @@ from flask import Flask, jsonify, make_response, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from . import core
+from .ops_auth.store import create_password_hash
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +318,120 @@ def register_routes(app: Flask) -> None:
         if denied is not None:
             return denied
         return jsonify({"ok": True})
+
+    @app.get("/api/pdv/ops_users")
+    def api_pdv_ops_users_list():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        role = str(request.args.get("role") or "").strip().upper()
+        if not role:
+            return jsonify({"error": "role_ausente"}), 400
+        try:
+            arr = core.pg_store.list_ops_users_by_role(role=role)
+        except Exception:
+            arr = []
+
+        safe: list[dict[str, Any]] = []
+        for u in arr:
+            if not isinstance(u, dict):
+                continue
+            safe.append(
+                {
+                    "id": u.get("id"),
+                    "username": u.get("username"),
+                    "role": u.get("role"),
+                    "nome": u.get("nome"),
+                    "telefone": u.get("telefone"),
+                    "telegram": u.get("telegram"),
+                    "endereco": u.get("endereco"),
+                    "pix": u.get("pix"),
+                    "ativo": u.get("ativo"),
+                    "criado_em": u.get("criado_em"),
+                    "atualizado_em": u.get("atualizado_em"),
+                }
+            )
+        return jsonify({"ok": True, "users": safe})
+
+    @app.post("/api/pdv/ops_users/upsert")
+    def api_pdv_ops_users_upsert():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        body = request.get_json(silent=True) or {}
+        username = str(body.get("username") or "").strip().lower()
+        role = str(body.get("role") or "").strip().upper()
+        if not username or not role:
+            return jsonify({"error": "username_ou_role_invalido"}), 400
+
+        telegram_raw = body.get("telegram")
+        telegram: str | None
+        if telegram_raw is None:
+            telegram = None
+        else:
+            tg = str(telegram_raw or "").strip()
+            if tg == "":
+                telegram = None
+            else:
+                # chat_id numérico (string). Grupos podem ser negativos.
+                if not tg.lstrip("-").isdigit():
+                    return jsonify({"error": "telegram_chat_id_invalido"}), 400
+                telegram = tg
+
+        password = body.get("password")
+        salt: str | None = None
+        pwd_hash: str | None = None
+        if password is not None:
+            p = str(password)
+            if len(p) < 4:
+                return jsonify({"error": "password_curta"}), 400
+            salt, pwd_hash = create_password_hash(p)
+
+        try:
+            rec = core.pg_store.upsert_ops_user(
+                username=username,
+                role=role,
+                nome=(str(body.get("nome") or "").strip() or None),
+                telefone=(str(body.get("telefone") or "").strip() or None),
+                telegram=telegram,
+                endereco=(str(body.get("endereco") or "").strip() or None),
+                pix=(str(body.get("pix") or "").strip() or None),
+                ativo=bool(body.get("ativo", True)),
+                password_salt=salt,
+                password_hash=pwd_hash,
+            )
+        except Exception:
+            logger.exception("Falha ao upsert ops_user")
+            return jsonify({"error": "internal_error"}), 500
+
+        if not isinstance(rec, dict):
+            # normalmente acontece quando tentou criar sem senha
+            return jsonify({"error": "upsert_failed"}), 400
+
+        return jsonify(
+            {
+                "ok": True,
+                "user": {
+                    "id": rec.get("id"),
+                    "username": rec.get("username"),
+                    "role": rec.get("role"),
+                    "nome": rec.get("nome"),
+                    "telefone": rec.get("telefone"),
+                    "telegram": rec.get("telegram"),
+                    "endereco": rec.get("endereco"),
+                    "pix": rec.get("pix"),
+                    "ativo": rec.get("ativo"),
+                    "criado_em": rec.get("criado_em"),
+                    "atualizado_em": rec.get("atualizado_em"),
+                },
+            }
+        )
 
     @app.get("/")
     def home():

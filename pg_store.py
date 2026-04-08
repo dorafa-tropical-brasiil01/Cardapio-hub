@@ -324,6 +324,128 @@ def list_ops_users_by_role(*, role: str) -> list[dict[str, Any]]:
             return [dict(x) for x in (cur.fetchall() or [])]
 
 
+def update_ops_user(
+    *,
+    username: str,
+    role: str | None = None,
+    nome: str | None = None,
+    telefone: str | None = None,
+    telegram: str | None = None,
+    endereco: str | None = None,
+    pix: str | None = None,
+    ativo: bool | None = None,
+    password_salt: str | None = None,
+    password_hash: str | None = None,
+) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    _ensure_db_ready()
+
+    u = str(username or "").strip().lower()
+    if not u:
+        return None
+
+    now = datetime.now().isoformat(timespec="seconds")
+    cols: list[str] = []
+    vals: list[Any] = []
+
+    if role is not None:
+        cols.append("role=%s")
+        vals.append(str(role or "").strip().upper())
+    if nome is not None:
+        cols.append("nome=%s")
+        vals.append(nome)
+    if telefone is not None:
+        cols.append("telefone=%s")
+        vals.append(telefone)
+    if telegram is not None:
+        cols.append("telegram=%s")
+        vals.append(telegram)
+    if endereco is not None:
+        cols.append("endereco=%s")
+        vals.append(endereco)
+    if pix is not None:
+        cols.append("pix=%s")
+        vals.append(pix)
+    if ativo is not None:
+        cols.append("ativo=%s")
+        vals.append(bool(ativo))
+    if password_salt is not None and password_hash is not None:
+        cols.append("password_salt=%s")
+        vals.append(str(password_salt))
+        cols.append("password_hash=%s")
+        vals.append(str(password_hash))
+
+    cols.append("atualizado_em=%s")
+    vals.append(now)
+
+    if len(cols) == 0:
+        return get_ops_user_by_username(username=u)
+
+    vals.append(u)
+    q = "UPDATE ops_users SET " + ", ".join(cols) + " WHERE username=%s RETURNING *"
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(q, tuple(vals))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def upsert_ops_user(
+    *,
+    username: str,
+    role: str,
+    nome: str | None,
+    telefone: str | None,
+    telegram: str | None,
+    endereco: str | None,
+    pix: str | None,
+    ativo: bool = True,
+    password_salt: str | None = None,
+    password_hash: str | None = None,
+) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    _ensure_db_ready()
+
+    u = str(username or "").strip().lower()
+    r = str(role or "").strip().upper()
+    if not u or not r:
+        return None
+
+    existing = get_ops_user_by_username(username=u)
+    if isinstance(existing, dict) and int(existing.get("id") or 0) > 0:
+        return update_ops_user(
+            username=u,
+            role=r,
+            nome=nome,
+            telefone=telefone,
+            telegram=telegram,
+            endereco=endereco,
+            pix=pix,
+            ativo=ativo,
+            password_salt=password_salt,
+            password_hash=password_hash,
+        )
+
+    if password_salt is None or password_hash is None:
+        return None
+
+    return create_ops_user(
+        username=u,
+        role=r,
+        nome=nome,
+        telefone=telefone,
+        telegram=telegram,
+        endereco=endereco,
+        pix=pix,
+        password_salt=password_salt,
+        password_hash=password_hash,
+    )
+
+
 def _now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 

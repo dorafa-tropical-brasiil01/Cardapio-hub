@@ -99,6 +99,8 @@ def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) 
         chat_id = str((u or {}).get("telegram") or "").strip()
         if not chat_id:
             continue
+        if not chat_id.lstrip("-").isdigit():
+            continue
         try:
             core.telegram_send_message_to(chat_id=chat_id, text=msg)
         except Exception:
