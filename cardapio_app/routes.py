@@ -433,6 +433,57 @@ def register_routes(app: Flask) -> None:
             }
         )
 
+    @app.post("/api/pdv/ops_users/reset_password")
+    def api_pdv_ops_users_reset_password():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        body = request.get_json(silent=True) or {}
+        username = str(body.get("username") or "").strip().lower()
+        password = str(body.get("password") or "")
+        if not username:
+            return jsonify({"error": "username_invalido"}), 400
+        if len(password) < 4:
+            return jsonify({"error": "password_curta"}), 400
+
+        salt, pwd_hash = create_password_hash(password)
+        try:
+            rec = core.pg_store.update_ops_user(username=username, password_salt=salt, password_hash=pwd_hash)
+        except Exception:
+            logger.exception("Falha ao resetar senha ops_user")
+            return jsonify({"error": "internal_error"}), 500
+        if not isinstance(rec, dict):
+            return jsonify({"error": "not_found"}), 404
+
+        return jsonify({"ok": True})
+
+    @app.get("/api/pdv/ops_metrics")
+    def api_pdv_ops_metrics():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        ini = str(request.args.get("ini") or "").strip()
+        fim = str(request.args.get("fim") or "").strip()
+        if not ini or not fim:
+            return jsonify({"error": "periodo_invalido"}), 400
+
+        try:
+            kds = core.pg_store.kds_list_done_periodo(ini=ini, fim=fim)
+        except Exception:
+            kds = []
+        try:
+            runs = core.pg_store.logistica_list_runs_periodo(ini=ini, fim=fim)
+        except Exception:
+            runs = []
+
+        return jsonify({"ok": True, "kds": kds, "runs": runs})
+
     @app.get("/")
     def home():
         resp = make_response(send_from_directory(str(_ctx().bundle_dir), "index.html"))

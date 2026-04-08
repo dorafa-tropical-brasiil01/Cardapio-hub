@@ -692,7 +692,7 @@ def logistica_run_start(*, ops_user_id: int) -> dict[str, Any]:
 
 def logistica_run_finish(*, ops_user_id: int) -> dict[str, Any]:
     if not is_enabled():
-        return {"items": []}
+        raise RuntimeError("pg_disabled")
     _ensure_db_ready()
     uid = int(ops_user_id)
     run = logistica_get_or_create_draft_run(ops_user_id=uid)
@@ -711,6 +711,75 @@ def logistica_run_finish(*, ops_user_id: int) -> dict[str, Any]:
                 (finished, run_id),
             )
     return {"ok": True, "id": run_id}
+
+
+def kds_list_done_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    ini_s = str(ini or "").strip()
+    fim_s = str(fim or "").strip()
+    if not ini_s or not fim_s:
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    solicitacao_id,
+                    ops_user_id,
+                    status,
+                    created_em,
+                    started_em,
+                    done_em,
+                    EXTRACT(EPOCH FROM (done_em - started_em))::bigint AS preparo_seconds,
+                    EXTRACT(EPOCH FROM (done_em - created_em))::bigint AS total_seconds
+                FROM kds_orders
+                WHERE status='PRONTO'
+                  AND done_em >= %s::timestamptz
+                  AND done_em < (%s::timestamptz + INTERVAL '1 day')
+                ORDER BY done_em ASC
+                """,
+                (ini_s, fim_s),
+            )
+            return [dict(x) for x in (cur.fetchall() or [])]
+
+
+def logistica_list_runs_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    ini_s = str(ini or "").strip()
+    fim_s = str(fim or "").strip()
+    if not ini_s or not fim_s:
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    r.id,
+                    r.ops_user_id,
+                    r.status,
+                    r.created_em,
+                    r.started_em,
+                    r.finished_em,
+                    COUNT(i.solicitacao_id)::bigint AS itens,
+                    EXTRACT(EPOCH FROM (r.finished_em - r.started_em))::bigint AS corrida_seconds
+                FROM log_runs r
+                LEFT JOIN log_run_items i ON i.run_id=r.id
+                WHERE r.status='FINALIZADA'
+                  AND r.finished_em IS NOT NULL
+                  AND r.finished_em >= %s::timestamptz
+                  AND r.finished_em < (%s::timestamptz + INTERVAL '1 day')
+                GROUP BY r.id
+                ORDER BY r.finished_em ASC
+                """,
+                (ini_s, fim_s),
+            )
+            return [dict(x) for x in (cur.fetchall() or [])]
 
 
 def save_solicitacao(*, record: dict[str, Any]) -> None:
