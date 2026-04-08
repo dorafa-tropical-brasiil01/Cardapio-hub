@@ -50,6 +50,21 @@ def obter_corrida_atual(*, ops_user_id: int) -> dict[str, Any]:
         enriched.append(merged)
 
     out["items"] = enriched
+
+    total = len(enriched)
+    entregues = 0
+    pendentes = 0
+    for it in enriched:
+        delivered_em = (it or {}).get("delivered_em")
+        if delivered_em:
+            entregues += 1
+        else:
+            pendentes += 1
+    out["resumo"] = {
+        "total": total,
+        "entregues": entregues,
+        "pendentes": pendentes,
+    }
     return out
 
 
@@ -63,6 +78,24 @@ def corrida_remove(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
     if not core.pg_enabled():
         raise RuntimeError("pg_disabled")
     return core.pg_store.logistica_run_remove_order(ops_user_id=int(ops_user_id), solicitacao_id=str(solicitacao_id or "").strip())
+
+
+def corrida_devolver(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    return core.pg_store.logistica_run_return_order(ops_user_id=int(ops_user_id), solicitacao_id=str(solicitacao_id or "").strip())
+
+
+def corrida_marcar_entregue(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    return core.pg_store.logistica_run_mark_delivered(ops_user_id=int(ops_user_id), solicitacao_id=str(solicitacao_id or "").strip())
+
+
+def corrida_nova(*, ops_user_id: int) -> dict[str, Any]:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    return core.pg_store.logistica_run_new_draft(ops_user_id=int(ops_user_id))
 
 
 def corrida_start(*, ops_user_id: int) -> dict[str, Any]:

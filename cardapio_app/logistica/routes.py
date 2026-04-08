@@ -5,7 +5,10 @@ from flask import Flask, jsonify, make_response, request, session
 from ..ops_auth.routes import require_ops_login
 from .service import (
     corrida_add,
+    corrida_devolver,
     corrida_finish,
+    corrida_marcar_entregue,
+    corrida_nova,
     corrida_remove,
     corrida_start,
     listar_prontos,
@@ -39,7 +42,38 @@ def register_logistica_routes(app: Flask) -> None:
         sid = str(body.get("solicitacao_id") or "").strip()
         if not sid:
             return jsonify({"error": "solicitacao_id_ausente"}), 400
-        c = corrida_add(ops_user_id=uid, solicitacao_id=sid)
+        try:
+            c = corrida_add(ops_user_id=uid, solicitacao_id=sid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/nova")
+    def api_logistica_corrida_nova():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        try:
+            c = corrida_nova(ops_user_id=uid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/entregue")
+    def api_logistica_corrida_entregue():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+        try:
+            c = corrida_marcar_entregue(ops_user_id=uid, solicitacao_id=sid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True, "corrida": c})
 
     @app.post("/api/logistica/corrida/remove")
@@ -52,7 +86,26 @@ def register_logistica_routes(app: Flask) -> None:
         sid = str(body.get("solicitacao_id") or "").strip()
         if not sid:
             return jsonify({"error": "solicitacao_id_ausente"}), 400
-        c = corrida_remove(ops_user_id=uid, solicitacao_id=sid)
+        try:
+            c = corrida_remove(ops_user_id=uid, solicitacao_id=sid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/devolver")
+    def api_logistica_corrida_devolver():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+        try:
+            c = corrida_devolver(ops_user_id=uid, solicitacao_id=sid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True, "corrida": c})
 
     @app.post("/api/logistica/corrida/start")
@@ -61,7 +114,10 @@ def register_logistica_routes(app: Flask) -> None:
         if denied is not None:
             return denied
         uid = int(session.get("ops_user_id") or 0)
-        c = corrida_start(ops_user_id=uid)
+        try:
+            c = corrida_start(ops_user_id=uid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True, "corrida": c})
 
     @app.post("/api/logistica/corrida/finish")
@@ -70,7 +126,10 @@ def register_logistica_routes(app: Flask) -> None:
         if denied is not None:
             return denied
         uid = int(session.get("ops_user_id") or 0)
-        out = corrida_finish(ops_user_id=uid)
+        try:
+            out = corrida_finish(ops_user_id=uid)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
         return jsonify(dict(out))
 
     @app.get("/entregas")
@@ -80,10 +139,10 @@ def register_logistica_routes(app: Flask) -> None:
             return denied
 
         html = """<!doctype html>
-<html lang=\"pt-BR\">
+<html lang="pt-BR">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Entregas</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:#0b0b0c;color:#fff}
@@ -93,6 +152,7 @@ def register_logistica_routes(app: Flask) -> None:
     .muted{opacity:.75}
     .list{margin-top:10px;display:flex;flex-direction:column;gap:10px}
     .item{padding:12px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:#0f0f12}
+    .item.delivered{opacity:.72;border-color:rgba(255,255,255,0.14)}
     button{font-size:16px;padding:10px 12px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
     button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
   </style>
@@ -116,11 +176,13 @@ def register_logistica_routes(app: Flask) -> None:
 
     <div class=\"card\">
       <div style=\"font-weight:900\">Minha Corrida</div>
+      <div id=\"toast\" class=\"card\" style=\"display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);\"></div>
       <div class=\"muted\" id=\"corrida_meta\">Carregando...</div>
       <div class=\"list\" id=\"corrida_itens\"></div>
       <div style=\"margin-top:10px;display:flex;gap:10px;flex-wrap:wrap\">
         <button id=\"btn_start\" type=\"button\" class=\"secondary\">Iniciar Corrida</button>
         <button id=\"btn_finish\" type=\"button\" class=\"secondary\">Finalizar Corrida</button>
+        <button id=\"btn_new\" type=\"button\" class=\"secondary\">Nova Corrida</button>
       </div>
     </div>
   </div>
@@ -130,12 +192,71 @@ def register_logistica_routes(app: Flask) -> None:
     const corridaItens = document.getElementById('corrida_itens');
     const btnStart = document.getElementById('btn_start');
     const btnFinish = document.getElementById('btn_finish');
+    const btnNew = document.getElementById('btn_new');
+    const toastEl = document.getElementById('toast');
+
+    let corridaTimerHandle = null;
+    let corridaSnapshot = null;
+
+    function showToast(msg) {
+      const t = String(msg || '').trim();
+      if (!toastEl) return;
+      if (!t) { toastEl.style.display = 'none'; toastEl.innerText = ''; return; }
+      toastEl.style.display = 'block';
+      toastEl.innerText = t;
+      setTimeout(() => {
+        if (!toastEl) return;
+        toastEl.style.display = 'none';
+        toastEl.innerText = '';
+      }, 5500);
+    }
 
     async function api(url, opts) {
       const resp = await fetch(url, opts || {method:'GET'});
       const j = await resp.json().catch(()=>({}));
-      if (!resp.ok) throw j;
+      if (!resp.ok) {
+        const err = (j && j.error) ? j.error : 'erro';
+        throw {error: err};
+      }
       return j;
+    }
+
+    function applyButtonsByStatus(c) {
+      const status = String((c && c.status) || '').toUpperCase();
+      const hasRun = !!(c && c.id);
+      const items = (c && Array.isArray(c.items)) ? c.items : [];
+
+      if (!hasRun) {
+        btnStart.disabled = true;
+        btnFinish.disabled = true;
+        btnNew.disabled = false;
+        return;
+      }
+
+      if (status === 'MONTANDO') {
+        btnStart.disabled = (items.length === 0);
+        btnFinish.disabled = true;
+        btnNew.disabled = false;
+        return;
+      }
+
+      if (status === 'EM_ANDAMENTO') {
+        btnStart.disabled = true;
+        btnFinish.disabled = false;
+        btnNew.disabled = true;
+        return;
+      }
+
+      if (status === 'FINALIZADA') {
+        btnStart.disabled = true;
+        btnFinish.disabled = true;
+        btnNew.disabled = false;
+        return;
+      }
+
+      btnStart.disabled = true;
+      btnFinish.disabled = true;
+      btnNew.disabled = false;
     }
 
     function renderProntos(pedidos) {
@@ -176,6 +297,8 @@ def register_logistica_routes(app: Flask) -> None:
           try {
             await api('/api/logistica/corrida/add', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
             await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao aceitar pedido.');
           } finally {
             btn.disabled = false;
           }
@@ -184,12 +307,39 @@ def register_logistica_routes(app: Flask) -> None:
     }
 
     function renderCorrida(c) {
+      corridaSnapshot = c || null;
       if (!c || !c.id) {
         corridaMeta.innerText = 'Sem corrida.';
         corridaItens.innerHTML = '';
+        if (corridaTimerHandle) { clearInterval(corridaTimerHandle); corridaTimerHandle = null; }
+        applyButtonsByStatus(null);
         return;
       }
-      corridaMeta.innerText = 'Corrida #' + c.id + ' | Status: ' + (c.status || '');
+      const r = (c && c.resumo) ? c.resumo : null;
+      const resumoTxt = (r && (r.total !== undefined))
+        ? (' | Itens: ' + (r.total ?? 0) + ' | Entregues: ' + (r.entregues ?? 0) + ' | Pendentes: ' + (r.pendentes ?? 0))
+        : '';
+
+      const isRunning = (String(c.status || '').toUpperCase() === 'EM_ANDAMENTO');
+      const startedEm = (c && c.started_em) ? String(c.started_em) : '';
+      const tempoTxt = (isRunning && startedEm) ? (' | Tempo: ' + formatElapsedFromIso(startedEm)) : '';
+      corridaMeta.innerText = 'Corrida #' + c.id + ' | Status: ' + (c.status || '') + tempoTxt + resumoTxt;
+      applyButtonsByStatus(c);
+
+      if (corridaTimerHandle) { clearInterval(corridaTimerHandle); corridaTimerHandle = null; }
+      if (isRunning && startedEm) {
+        corridaTimerHandle = setInterval(() => {
+          if (!corridaSnapshot || !corridaSnapshot.id) return;
+          const rr = (corridaSnapshot && corridaSnapshot.resumo) ? corridaSnapshot.resumo : null;
+          const resumoTxt2 = (rr && (rr.total !== undefined))
+            ? (' | Itens: ' + (rr.total ?? 0) + ' | Entregues: ' + (rr.entregues ?? 0) + ' | Pendentes: ' + (rr.pendentes ?? 0))
+            : '';
+          corridaMeta.innerText = 'Corrida #' + corridaSnapshot.id + ' | Status: ' + (corridaSnapshot.status || '')
+            + ' | Tempo: ' + formatElapsedFromIso(startedEm)
+            + resumoTxt2;
+        }, 1000);
+      }
+
       const items = Array.isArray(c.items) ? c.items : [];
       if (items.length === 0) {
         corridaItens.innerHTML = '<div class="muted" style="margin-top:10px">Nenhum pedido selecionado.</div>';
@@ -197,6 +347,7 @@ def register_logistica_routes(app: Flask) -> None:
       }
       corridaItens.innerHTML = items.map(it => {
         const sid = (it && it.solicitacao_id) ? String(it.solicitacao_id) : '';
+        const deliveredEm = (it && it.delivered_em) ? String(it.delivered_em) : '';
         const p = (it && it.pedido) ? it.pedido : null;
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
@@ -211,13 +362,27 @@ def register_logistica_routes(app: Flask) -> None:
           const label = nome || code || 'Item';
           return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
         }).join('');
-        return '<div class="item">'
+        const isDelivered = !!deliveredEm;
+
+        const btnLabel = isRunning ? 'Devolver' : 'Remover';
+        const btnAttr = isRunning ? 'data-return' : 'data-remove';
+
+        let deliveredHtml = '';
+        if (isDelivered) {
+          deliveredHtml = '<div class="muted" style="margin-top:6px">Status: ENTREGUE</div>';
+        } else if (isRunning) {
+          deliveredHtml = '<div style="margin-top:10px"><button type="button" data-delivered="' + sid + '">Marcar Entregue</button></div>';
+        }
+
+        const cls = isDelivered ? 'item delivered' : 'item';
+        return '<div class="' + cls + '">'
           + '<div style="font-weight:900">Pedido ' + sid + '</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
           + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
-          + '<div style="margin-top:10px"><button type="button" class="secondary" data-remove="' + sid + '">Remover</button></div>'
+          + deliveredHtml
+          + '<div style="margin-top:10px"><button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button></div>'
           + '</div>';
       }).join('');
       corridaItens.querySelectorAll('button[data-remove]').forEach(btn => {
@@ -228,6 +393,40 @@ def register_logistica_routes(app: Flask) -> None:
           try {
             await api('/api/logistica/corrida/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
             await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao remover.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      corridaItens.querySelectorAll('button[data-return]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-return');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/corrida/devolver', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao devolver.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      corridaItens.querySelectorAll('button[data-delivered]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-delivered');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/corrida/entregue', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao marcar entregue.');
           } finally {
             btn.disabled = false;
           }
@@ -236,6 +435,7 @@ def register_logistica_routes(app: Flask) -> None:
     }
 
     async function load() {
+      showToast('');
       try {
         const p = await api('/api/logistica/prontos');
         renderProntos(p.pedidos);
@@ -251,11 +451,33 @@ def register_logistica_routes(app: Flask) -> None:
       }
     }
 
+    function formatElapsedFromIso(iso) {
+      try {
+        const t0 = Date.parse(String(iso || ''));
+        if (!t0) return '00:00';
+        const diff = Math.max(0, Date.now() - t0);
+        const sec = Math.floor(diff / 1000);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        const mm = String(m).padStart(2, '0');
+        const ss = String(s).padStart(2, '0');
+        if (h > 0) {
+          return String(h) + ':' + mm + ':' + ss;
+        }
+        return mm + ':' + ss;
+      } catch (e) {
+        return '00:00';
+      }
+    }
+
     btnStart.addEventListener('click', async () => {
       btnStart.disabled = true;
       try {
         await api('/api/logistica/corrida/start', {method:'POST'});
         await load();
+      } catch (e) {
+        showToast((e && e.error) ? e.error : 'Falha ao iniciar corrida.');
       } finally {
         btnStart.disabled = false;
       }
@@ -266,8 +488,22 @@ def register_logistica_routes(app: Flask) -> None:
       try {
         await api('/api/logistica/corrida/finish', {method:'POST'});
         await load();
+      } catch (e) {
+        showToast((e && e.error) ? e.error : 'Falha ao finalizar corrida.');
       } finally {
         btnFinish.disabled = false;
+      }
+    });
+
+    btnNew.addEventListener('click', async () => {
+      btnNew.disabled = true;
+      try {
+        await api('/api/logistica/corrida/nova', {method:'POST'});
+        await load();
+      } catch (e) {
+        showToast((e && e.error) ? e.error : 'Falha ao criar nova corrida.');
+      } finally {
+        btnNew.disabled = false;
       }
     });
 

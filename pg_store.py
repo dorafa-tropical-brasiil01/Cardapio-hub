@@ -782,16 +782,19 @@ def logistica_get_or_create_draft_run(*, ops_user_id: int) -> dict[str, Any]:
     uid = int(ops_user_id)
     with _conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Preferir corrida ativa (EM_ANDAMENTO) sobre rascunho (MONTANDO).
             cur.execute(
                 """
                 SELECT * FROM log_runs
-                WHERE ops_user_id=%s AND status='MONTANDO'
-                ORDER BY created_em DESC
+                WHERE ops_user_id=%s AND status IN ('EM_ANDAMENTO','MONTANDO')
+                ORDER BY (status='EM_ANDAMENTO') DESC, created_em DESC
                 LIMIT 1
                 """,
                 (uid,),
             )
             run = cur.fetchone()
+
+            # Só cria uma nova corrida se o usuário não tiver nenhuma ativa/rascunho.
             if not run:
                 now = _now_iso()
                 cur.execute(
@@ -828,8 +831,38 @@ def logistica_run_add_order(*, ops_user_id: int, solicitacao_id: str) -> dict[st
     sid = str(solicitacao_id or "").strip()
     if not sid:
         return logistica_get_or_create_draft_run(ops_user_id=uid)
+
     run = logistica_get_or_create_draft_run(ops_user_id=uid)
     run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
+    if run_status != "MONTANDO":
+        raise RuntimeError("corrida_em_andamento")
+
+    # Só aceita pedidos que estejam PRONTO no KDS.
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM kds_orders WHERE solicitacao_id=%s", (sid,))
+            row = cur.fetchone()
+            st = str(row[0] if row else "").strip().upper()
+            if st != "PRONTO":
+                raise RuntimeError("pedido_nao_pronto")
+
+            # Impede o mesmo pedido em outra corrida ativa.
+            cur.execute(
+                """
+                SELECT 1
+                FROM log_run_items i
+                JOIN log_runs r ON r.id=i.run_id
+                WHERE i.solicitacao_id=%s
+                  AND r.status IN ('MONTANDO','EM_ANDAMENTO')
+                  AND r.ops_user_id <> %s
+                LIMIT 1
+                """,
+                (sid, uid),
+            )
+            if cur.fetchone():
+                raise RuntimeError("pedido_em_outra_corrida")
+
     added = _now_iso()
     with _conn() as conn:
         with conn.cursor() as cur:
@@ -844,6 +877,60 @@ def logistica_run_add_order(*, ops_user_id: int, solicitacao_id: str) -> dict[st
     return logistica_get_or_create_draft_run(ops_user_id=uid)
 
 
+def logistica_run_new_draft(*, ops_user_id: int) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    now = _now_iso()
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Não permite criar nova corrida se já existir uma em andamento.
+            cur.execute(
+                """
+                SELECT id
+                FROM log_runs
+                WHERE ops_user_id=%s AND status='EM_ANDAMENTO'
+                ORDER BY started_em DESC NULLS LAST
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            if cur.fetchone():
+                raise RuntimeError("corrida_em_andamento")
+
+            # Reutiliza a corrida MONTANDO mais recente, limpando os itens.
+            cur.execute(
+                """
+                SELECT id
+                FROM log_runs
+                WHERE ops_user_id=%s AND status='MONTANDO'
+                ORDER BY created_em DESC
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+            if row and row.get("id"):
+                run_id = int(row.get("id") or 0)
+                cur.execute("DELETE FROM log_run_items WHERE run_id=%s", (run_id,))
+                cur.execute(
+                    "UPDATE log_runs SET created_em=%s, started_em=NULL, finished_em=NULL WHERE id=%s AND ops_user_id=%s",
+                    (now, run_id, uid),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO log_runs(ops_user_id, status, created_em)
+                    VALUES (%s,'MONTANDO',%s)
+                    RETURNING id
+                    """,
+                    (uid, now),
+                )
+
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
 def logistica_run_remove_order(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
     if not is_enabled():
         return {"items": []}
@@ -852,11 +939,67 @@ def logistica_run_remove_order(*, ops_user_id: int, solicitacao_id: str) -> dict
     sid = str(solicitacao_id or "").strip()
     run = logistica_get_or_create_draft_run(ops_user_id=uid)
     run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
     if not run_id or not sid:
         return run
+    if run_status != "MONTANDO":
+        raise RuntimeError("corrida_em_andamento_use_devolver")
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM log_run_items WHERE run_id=%s AND solicitacao_id=%s", (run_id, sid))
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
+def logistica_run_return_order(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
+    if not run_id or not sid:
+        return run
+    if run_status != "EM_ANDAMENTO":
+        raise RuntimeError("corrida_nao_em_andamento")
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM log_run_items WHERE run_id=%s AND solicitacao_id=%s AND delivered_em IS NULL", (run_id, sid))
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
+def logistica_run_mark_delivered(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
+    if not run_id or not sid:
+        return run
+    if run_status != "EM_ANDAMENTO":
+        raise RuntimeError("corrida_nao_em_andamento")
+
+    delivered = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE log_run_items
+                SET delivered_em=%s
+                WHERE run_id=%s
+                  AND solicitacao_id=%s
+                  AND delivered_em IS NULL
+                """,
+                (delivered, run_id, sid),
+            )
+            if (cur.rowcount or 0) == 0:
+                # Ou já estava entregue, ou não existe na corrida.
+                raise RuntimeError("pedido_nao_encontrado_ou_ja_entregue")
+
     return logistica_get_or_create_draft_run(ops_user_id=uid)
 
 
@@ -867,8 +1010,14 @@ def logistica_run_start(*, ops_user_id: int) -> dict[str, Any]:
     uid = int(ops_user_id)
     run = logistica_get_or_create_draft_run(ops_user_id=uid)
     run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
     if not run_id:
         return run
+    if run_status != "MONTANDO":
+        raise RuntimeError("corrida_em_andamento")
+    items = run.get("items")
+    if not isinstance(items, list) or len(items) == 0:
+        raise RuntimeError("corrida_sem_pedidos")
     started = _now_iso()
     with _conn() as conn:
         with conn.cursor() as cur:
@@ -886,18 +1035,17 @@ def logistica_run_finish(*, ops_user_id: int) -> dict[str, Any]:
     uid = int(ops_user_id)
     run = logistica_get_or_create_draft_run(ops_user_id=uid)
     run_id = int(run.get("id") or 0)
+    run_status = str(run.get("status") or "").strip().upper()
     if not run_id:
         return run
+    if run_status != "EM_ANDAMENTO":
+        raise RuntimeError("corrida_nao_iniciada")
     finished = _now_iso()
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE log_runs SET status='FINALIZADA', finished_em=%s WHERE id=%s AND ops_user_id=%s",
                 (finished, run_id, uid),
-            )
-            cur.execute(
-                "UPDATE log_run_items SET delivered_em=%s WHERE run_id=%s AND delivered_em IS NULL",
-                (finished, run_id),
             )
     return {"ok": True, "id": run_id}
 
