@@ -155,6 +155,48 @@ def init_db() -> None:
             except Exception:
                 pass
 
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS kds_orders (
+                    solicitacao_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    created_em TIMESTAMPTZ NOT NULL,
+                    started_em TIMESTAMPTZ,
+                    done_em TIMESTAMPTZ,
+                    ops_user_id BIGINT
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_status_created ON kds_orders(status, created_em)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_done_em ON kds_orders(done_em)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS log_runs (
+                    id BIGSERIAL PRIMARY KEY,
+                    ops_user_id BIGINT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_em TIMESTAMPTZ NOT NULL,
+                    started_em TIMESTAMPTZ,
+                    finished_em TIMESTAMPTZ
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_runs_user_status ON log_runs(ops_user_id, status)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS log_run_items (
+                    run_id BIGINT NOT NULL REFERENCES log_runs(id) ON DELETE CASCADE,
+                    solicitacao_id TEXT NOT NULL,
+                    added_em TIMESTAMPTZ NOT NULL,
+                    delivered_em TIMESTAMPTZ,
+                    PRIMARY KEY (run_id, solicitacao_id)
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_run_items_solicitacao ON log_run_items(solicitacao_id)")
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -259,6 +301,294 @@ def get_ops_user_by_username(*, username: str) -> dict[str, Any] | None:
             cur.execute("SELECT * FROM ops_users WHERE username=%s", (u,))
             row = cur.fetchone()
             return dict(row) if row else None
+
+
+def list_ops_users_by_role(*, role: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    r = str(role or "").strip().upper()
+    if not r:
+        return []
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM ops_users
+                WHERE role=%s AND ativo=TRUE
+                ORDER BY id ASC
+                """,
+                (r,),
+            )
+            return [dict(x) for x in (cur.fetchall() or [])]
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def kds_ensure_order_row(*, solicitacao_id: str) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    created = datetime.now().isoformat(timespec="seconds")
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO kds_orders(solicitacao_id, status, created_em)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (solicitacao_id) DO NOTHING
+                """,
+                (sid, "AGUARDANDO", created),
+            )
+
+
+def kds_get_current_for_user(*, ops_user_id: int) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM kds_orders
+                WHERE status='EM_PREPARO' AND ops_user_id=%s
+                ORDER BY started_em ASC NULLS LAST
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+
+            cur.execute(
+                """
+                SELECT *
+                FROM kds_orders
+                WHERE status='AGUARDANDO'
+                ORDER BY created_em ASC
+                LIMIT 1
+                """
+            )
+            row2 = cur.fetchone()
+            return dict(row2) if row2 else None
+
+
+def kds_start_order(*, solicitacao_id: str, ops_user_id: int) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    uid = int(ops_user_id)
+    kds_ensure_order_row(solicitacao_id=sid)
+    started = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET status='EM_PREPARO', started_em=%s, ops_user_id=%s
+                WHERE solicitacao_id=%s
+                """,
+                (started, uid, sid),
+            )
+
+
+def kds_mark_done(*, solicitacao_id: str, ops_user_id: int) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    uid = int(ops_user_id)
+    kds_ensure_order_row(solicitacao_id=sid)
+    done = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET status='PRONTO', done_em=%s, ops_user_id=%s
+                WHERE solicitacao_id=%s
+                """,
+                (done, uid, sid),
+            )
+
+
+def kds_stats_today() -> dict[str, int]:
+    if not is_enabled():
+        return {"pendentes": 0, "concluidos": 0}
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status IN ('AGUARDANDO','EM_PREPARO')")
+            pend = int(cur.fetchone()[0] or 0)
+            cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status='PRONTO' AND done_em::date = CURRENT_DATE")
+            done = int(cur.fetchone()[0] or 0)
+            return {"pendentes": pend, "concluidos": done}
+
+
+def logistica_list_ready_order_ids() -> list[str]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT k.solicitacao_id
+                FROM kds_orders k
+                WHERE k.status='PRONTO'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM log_run_items i
+                    JOIN log_runs r ON r.id=i.run_id
+                    WHERE i.solicitacao_id=k.solicitacao_id
+                      AND r.status IN ('MONTANDO','EM_ANDAMENTO')
+                  )
+                ORDER BY k.done_em ASC NULLS LAST
+                LIMIT 200
+                """
+            )
+            return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
+
+
+def logistica_get_or_create_draft_run(*, ops_user_id: int) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM log_runs
+                WHERE ops_user_id=%s AND status='MONTANDO'
+                ORDER BY created_em DESC
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            run = cur.fetchone()
+            if not run:
+                now = _now_iso()
+                cur.execute(
+                    """
+                    INSERT INTO log_runs(ops_user_id, status, created_em)
+                    VALUES (%s,'MONTANDO',%s)
+                    RETURNING *
+                    """,
+                    (uid, now),
+                )
+                run = cur.fetchone()
+
+            run_id = int(run.get("id") or 0)
+            cur.execute(
+                """
+                SELECT solicitacao_id, added_em, delivered_em
+                FROM log_run_items
+                WHERE run_id=%s
+                ORDER BY added_em ASC
+                """,
+                (run_id,),
+            )
+            items = [dict(r) for r in (cur.fetchall() or [])]
+            out = dict(run)
+            out["items"] = items
+            return out
+
+
+def logistica_run_add_order(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return logistica_get_or_create_draft_run(ops_user_id=uid)
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    added = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO log_run_items(run_id, solicitacao_id, added_em)
+                VALUES (%s,%s,%s)
+                ON CONFLICT (run_id, solicitacao_id) DO NOTHING
+                """,
+                (run_id, sid, added),
+            )
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
+def logistica_run_remove_order(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    if not run_id or not sid:
+        return run
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM log_run_items WHERE run_id=%s AND solicitacao_id=%s", (run_id, sid))
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
+def logistica_run_start(*, ops_user_id: int) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    if not run_id:
+        return run
+    started = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE log_runs SET status='EM_ANDAMENTO', started_em=%s WHERE id=%s AND ops_user_id=%s",
+                (started, run_id, uid),
+            )
+    return logistica_get_or_create_draft_run(ops_user_id=uid)
+
+
+def logistica_run_finish(*, ops_user_id: int) -> dict[str, Any]:
+    if not is_enabled():
+        return {"items": []}
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    run = logistica_get_or_create_draft_run(ops_user_id=uid)
+    run_id = int(run.get("id") or 0)
+    if not run_id:
+        return run
+    finished = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE log_runs SET status='FINALIZADA', finished_em=%s WHERE id=%s AND ops_user_id=%s",
+                (finished, run_id, uid),
+            )
+            cur.execute(
+                "UPDATE log_run_items SET delivered_em=%s WHERE run_id=%s AND delivered_em IS NULL",
+                (finished, run_id),
+            )
+    return {"ok": True, "id": run_id}
 
 
 def save_solicitacao(*, record: dict[str, Any]) -> None:

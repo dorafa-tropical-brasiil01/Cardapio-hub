@@ -115,6 +115,11 @@ def telegram_chat_id() -> str:
     return os.environ.get("TELEGRAM_CHAT_ID", "")
 
 
+def telegram_bot_enabled() -> bool:
+    token = str(os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    return bool(token)
+
+
 def pdv_products_url() -> str:
     return os.environ.get("PDV_PRODUCTS_URL", "http://127.0.0.1:5600/api/produtos?ativos=1")
 
@@ -365,6 +370,37 @@ def telegram_send_message(text: str) -> bool:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
+        "text": str(text or "").strip()[:3900],
+        "disable_web_page_preview": True,
+    }
+    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=raw,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            ok = int(getattr(resp, "status", 0) or 0) == 200
+            return ok
+    except Exception:
+        logger.exception("Falha ao enviar mensagem no Telegram")
+        return False
+
+
+def telegram_send_message_to(*, chat_id: str, text: str) -> bool:
+    if not telegram_bot_enabled():
+        return False
+
+    token = str(os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+    cid = str(chat_id or "").strip()
+    if not token or not cid:
+        return False
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": cid,
         "text": str(text or "").strip()[:3900],
         "disable_web_page_preview": True,
     }

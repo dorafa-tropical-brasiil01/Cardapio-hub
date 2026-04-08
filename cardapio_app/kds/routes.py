@@ -1,11 +1,45 @@
 from __future__ import annotations
 
-from flask import Flask, make_response, request
+from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
+from .service import get_pedido_atual, marcar_pronto, preparar_pedido, stats_hoje
+from ..logistica.service import notificar_entregadores_pedido_pronto
 
 
 def register_kds_routes(app: Flask) -> None:
+    @app.get("/api/kds/pedido_atual")
+    def api_kds_pedido_atual():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        pedido = get_pedido_atual(ops_user_id=uid)
+        st = stats_hoje()
+        return jsonify({"ok": True, "pedido": pedido, "stats": st})
+
+    @app.post("/api/kds/<solicitacao_id>/preparar")
+    def api_kds_preparar(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        preparar_pedido(solicitacao_id=solicitacao_id, ops_user_id=uid)
+        return jsonify({"ok": True})
+
+    @app.post("/api/kds/<solicitacao_id>/pronto")
+    def api_kds_pronto(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        marcar_pronto(solicitacao_id=solicitacao_id, ops_user_id=uid)
+        try:
+            notificar_entregadores_pedido_pronto(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
+        except Exception:
+            pass
+        return jsonify({"ok": True})
+
     @app.get("/cozinha")
     def cozinha_page():
         denied = require_ops_login(role="KDS")
@@ -41,14 +75,90 @@ def register_kds_routes(app: Flask) -> None:
     </div>
 
     <div class=\"card\" id=\"pedido\">
-      <div class=\"muted\">Fila e ações serão conectadas ao backend na próxima etapa.</div>
+      <div class=\"muted\" id=\"stats\">Carregando...</div>
+      <div style=\"margin-top:10px\" id=\"pedido_box\"></div>
       <div class=\"btns\">
-        <button type=\"button\">Preparar Pedido</button>
-        <button type=\"button\" class=\"secondary\">Pedido Pronto</button>
-        <button type=\"button\" class=\"secondary\">Próximo Pedido</button>
+        <button id=\"btn_preparar\" type=\"button\">Preparar Pedido</button>
+        <button id=\"btn_pronto\" type=\"button\" class=\"secondary\">Pedido Pronto</button>
+        <button id=\"btn_proximo\" type=\"button\" class=\"secondary\">Próximo Pedido</button>
       </div>
     </div>
   </div>
+  <script>
+    let currentId = '';
+    const statsEl = document.getElementById('stats');
+    const pedidoBox = document.getElementById('pedido_box');
+    const btnPreparar = document.getElementById('btn_preparar');
+    const btnPronto = document.getElementById('btn_pronto');
+    const btnProximo = document.getElementById('btn_proximo');
+
+    function setButtons(disabled) {
+      btnPreparar.disabled = disabled;
+      btnPronto.disabled = disabled;
+      btnProximo.disabled = disabled;
+    }
+
+    function renderPedido(p) {
+      if (!p || !p.id) {
+        currentId = '';
+        pedidoBox.innerHTML = '<div class="muted">Sem pedidos na fila.</div>';
+        return;
+      }
+      currentId = String(p.id);
+      const cliente = (p.cliente_nome || '').toString();
+      const tipo = (p.tipo_entrega || p.kind || '').toString();
+      const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
+      pedidoBox.innerHTML = ''
+        + '<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>'
+        + '<div class="muted" style="margin-top:6px">' + (cliente ? ('Cliente: ' + cliente) : '') + '</div>'
+        + '<div class="muted">' + (tipo ? ('Tipo: ' + tipo) : '') + '</div>'
+        + '<div class="muted">KDS: ' + status + '</div>';
+    }
+
+    async function load() {
+      try {
+        const resp = await fetch('/api/kds/pedido_atual', {method: 'GET'});
+        const j = await resp.json().catch(() => ({}));
+        if (!resp.ok || !j || j.ok !== true) {
+          statsEl.innerText = 'Falha ao carregar.';
+          return;
+        }
+        const st = j.stats || {};
+        statsEl.innerText = 'Pendentes: ' + (st.pendentes ?? 0) + ' | Concluídos hoje: ' + (st.concluidos ?? 0);
+        renderPedido(j.pedido);
+      } catch (e) {
+        statsEl.innerText = 'Falha ao carregar.';
+      }
+    }
+
+    btnPreparar.addEventListener('click', async () => {
+      if (!currentId) return;
+      setButtons(true);
+      try {
+        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/preparar', {method: 'POST'});
+      } finally {
+        setButtons(false);
+        load();
+      }
+    });
+
+    btnPronto.addEventListener('click', async () => {
+      if (!currentId) return;
+      setButtons(true);
+      try {
+        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/pronto', {method: 'POST'});
+      } finally {
+        setButtons(false);
+        load();
+      }
+    });
+
+    btnProximo.addEventListener('click', async () => {
+      load();
+    });
+
+    load();
+  </script>
 </body>
 </html>"""
         resp = make_response(html, 200)

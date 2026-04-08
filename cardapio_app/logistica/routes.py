@@ -1,11 +1,78 @@
 from __future__ import annotations
 
-from flask import Flask, make_response
+from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
+from .service import (
+    corrida_add,
+    corrida_finish,
+    corrida_remove,
+    corrida_start,
+    listar_prontos,
+    obter_corrida_atual,
+)
 
 
 def register_logistica_routes(app: Flask) -> None:
+    @app.get("/api/logistica/prontos")
+    def api_logistica_prontos():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        return jsonify({"ok": True, "pedidos": listar_prontos()})
+
+    @app.get("/api/logistica/corrida")
+    def api_logistica_corrida():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        return jsonify({"ok": True, "corrida": obter_corrida_atual(ops_user_id=uid)})
+
+    @app.post("/api/logistica/corrida/add")
+    def api_logistica_corrida_add():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+        c = corrida_add(ops_user_id=uid, solicitacao_id=sid)
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/remove")
+    def api_logistica_corrida_remove():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+        c = corrida_remove(ops_user_id=uid, solicitacao_id=sid)
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/start")
+    def api_logistica_corrida_start():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        c = corrida_start(ops_user_id=uid)
+        return jsonify({"ok": True, "corrida": c})
+
+    @app.post("/api/logistica/corrida/finish")
+    def api_logistica_corrida_finish():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        out = corrida_finish(ops_user_id=uid)
+        return jsonify(dict(out))
+
     @app.get("/entregas")
     def entregas_page():
         denied = require_ops_login(role="LOGISTICA")
@@ -41,25 +108,138 @@ def register_logistica_routes(app: Flask) -> None:
     </div>
 
     <div class=\"card\">
-      <div class=\"muted\">Nesta etapa, a tela já existe e está protegida por login. A lógica de aceitar pedidos/corrida será conectada na próxima etapa.</div>
+      <div class=\"muted\">Pedidos prontos para entrega:</div>
       <div class=\"list\">
-        <div class=\"item\">
-          <div style=\"font-weight:900\">Pedidos prontos para entrega</div>
-          <div class=\"muted\">(lista será preenchida via API)</div>
-          <div style=\"margin-top:10px\"><button type=\"button\">Aceitar</button></div>
-        </div>
+        <div class=\"muted\" id=\"prontos\">Carregando...</div>
       </div>
     </div>
 
     <div class=\"card\">
       <div style=\"font-weight:900\">Minha Corrida</div>
-      <div class=\"muted\">(em implantação)</div>
+      <div class=\"muted\" id=\"corrida_meta\">Carregando...</div>
+      <div class=\"list\" id=\"corrida_itens\"></div>
       <div style=\"margin-top:10px;display:flex;gap:10px;flex-wrap:wrap\">
-        <button type=\"button\" class=\"secondary\">Iniciar Corrida</button>
-        <button type=\"button\" class=\"secondary\">Finalizar Corrida</button>
+        <button id=\"btn_start\" type=\"button\" class=\"secondary\">Iniciar Corrida</button>
+        <button id=\"btn_finish\" type=\"button\" class=\"secondary\">Finalizar Corrida</button>
       </div>
     </div>
   </div>
+  <script>
+    const prontosEl = document.getElementById('prontos');
+    const corridaMeta = document.getElementById('corrida_meta');
+    const corridaItens = document.getElementById('corrida_itens');
+    const btnStart = document.getElementById('btn_start');
+    const btnFinish = document.getElementById('btn_finish');
+
+    async function api(url, opts) {
+      const resp = await fetch(url, opts || {method:'GET'});
+      const j = await resp.json().catch(()=>({}));
+      if (!resp.ok) throw j;
+      return j;
+    }
+
+    function renderProntos(pedidos) {
+      const arr = Array.isArray(pedidos) ? pedidos : [];
+      if (arr.length === 0) {
+        prontosEl.innerHTML = '<div class="muted">Nenhum pedido pronto.</div>';
+        return;
+      }
+      prontosEl.innerHTML = arr.map(p => {
+        const id = (p && p.id) ? String(p.id) : '';
+        const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
+        return '<div class="item">'
+          + '<div style="font-weight:900">Pedido ' + id + '</div>'
+          + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
+          + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
+          + '</div>';
+      }).join('');
+      prontosEl.querySelectorAll('button[data-id]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-id');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/corrida/add', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+            await load();
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    function renderCorrida(c) {
+      if (!c || !c.id) {
+        corridaMeta.innerText = 'Sem corrida.';
+        corridaItens.innerHTML = '';
+        return;
+      }
+      corridaMeta.innerText = 'Corrida #' + c.id + ' | Status: ' + (c.status || '');
+      const items = Array.isArray(c.items) ? c.items : [];
+      if (items.length === 0) {
+        corridaItens.innerHTML = '<div class="muted" style="margin-top:10px">Nenhum pedido selecionado.</div>';
+        return;
+      }
+      corridaItens.innerHTML = items.map(it => {
+        const sid = (it && it.solicitacao_id) ? String(it.solicitacao_id) : '';
+        return '<div class="item">'
+          + '<div style="font-weight:900">Pedido ' + sid + '</div>'
+          + '<div style="margin-top:10px"><button type="button" class="secondary" data-remove="' + sid + '">Remover</button></div>'
+          + '</div>';
+      }).join('');
+      corridaItens.querySelectorAll('button[data-remove]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-remove');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/corrida/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+            await load();
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function load() {
+      try {
+        const p = await api('/api/logistica/prontos');
+        renderProntos(p.pedidos);
+      } catch (e) {
+        prontosEl.innerText = 'Falha ao carregar prontos.';
+      }
+
+      try {
+        const c = await api('/api/logistica/corrida');
+        renderCorrida(c.corrida);
+      } catch (e) {
+        corridaMeta.innerText = 'Falha ao carregar corrida.';
+      }
+    }
+
+    btnStart.addEventListener('click', async () => {
+      btnStart.disabled = true;
+      try {
+        await api('/api/logistica/corrida/start', {method:'POST'});
+        await load();
+      } finally {
+        btnStart.disabled = false;
+      }
+    });
+
+    btnFinish.addEventListener('click', async () => {
+      btnFinish.disabled = true;
+      try {
+        await api('/api/logistica/corrida/finish', {method:'POST'});
+        await load();
+      } finally {
+        btnFinish.disabled = false;
+      }
+    });
+
+    load();
+  </script>
 </body>
 </html>"""
         resp = make_response(html, 200)

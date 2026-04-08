@@ -998,6 +998,10 @@ def register_routes(app: Flask) -> None:
                 core.pg_store.save_solicitacao(record=rec)
             except Exception:
                 pass
+            try:
+                core.pg_store.kds_ensure_order_row(solicitacao_id=solicitacao_id)
+            except Exception:
+                pass
         else:
             data["solicitacoes"].append(rec)
             core.save_solicitacoes(_ctx(), data)
@@ -1134,6 +1138,10 @@ def register_routes(app: Flask) -> None:
                 core.pg_store.save_solicitacao(record=rec)
             except Exception:
                 return jsonify({"error": "falha_ao_salvar"}), 500
+            try:
+                core.pg_store.kds_ensure_order_row(solicitacao_id=solicitacao_id)
+            except Exception:
+                pass
         else:
             data = core.ensure_solicitacoes_file(_ctx())
             data["solicitacoes"].append(rec)
