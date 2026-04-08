@@ -482,7 +482,24 @@ def register_routes(app: Flask) -> None:
         except Exception:
             runs = []
 
-        return jsonify({"ok": True, "kds": kds, "runs": runs})
+        try:
+            kds_by_user = core.pg_store.kds_summary_by_user_periodo(ini=ini, fim=fim)
+        except Exception:
+            kds_by_user = []
+        try:
+            runs_by_user = core.pg_store.logistica_summary_by_user_periodo(ini=ini, fim=fim)
+        except Exception:
+            runs_by_user = []
+
+        return jsonify(
+            {
+                "ok": True,
+                "kds": kds,
+                "runs": runs,
+                "kds_by_user": kds_by_user,
+                "runs_by_user": runs_by_user,
+            }
+        )
 
     @app.get("/")
     def home():

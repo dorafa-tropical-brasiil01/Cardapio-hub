@@ -324,6 +324,87 @@ def list_ops_users_by_role(*, role: str) -> list[dict[str, Any]]:
             return [dict(x) for x in (cur.fetchall() or [])]
 
 
+def kds_summary_by_user_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    ini_s = str(ini or "").strip()
+    fim_s = str(fim or "").strip()
+    if not ini_s or not fim_s:
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    k.ops_user_id,
+                    u.username AS ops_username,
+                    u.nome AS ops_nome,
+                    COUNT(*)::bigint AS pedidos,
+                    AVG(EXTRACT(EPOCH FROM (k.done_em - k.started_em)))::bigint AS avg_preparo_seconds,
+                    MIN(EXTRACT(EPOCH FROM (k.done_em - k.started_em)))::bigint AS min_preparo_seconds,
+                    MAX(EXTRACT(EPOCH FROM (k.done_em - k.started_em)))::bigint AS max_preparo_seconds,
+                    AVG(EXTRACT(EPOCH FROM (k.done_em - k.created_em)))::bigint AS avg_total_seconds
+                FROM kds_orders k
+                LEFT JOIN ops_users u ON u.id=k.ops_user_id
+                WHERE k.status='PRONTO'
+                  AND k.done_em IS NOT NULL
+                  AND k.started_em IS NOT NULL
+                  AND k.ops_user_id IS NOT NULL
+                  AND k.done_em >= %s::timestamptz
+                  AND k.done_em < (%s::timestamptz + INTERVAL '1 day')
+                GROUP BY k.ops_user_id, u.username, u.nome
+                ORDER BY avg_preparo_seconds ASC NULLS LAST, pedidos DESC
+                """,
+                (ini_s, fim_s),
+            )
+            return [dict(x) for x in (cur.fetchall() or [])]
+
+
+def logistica_summary_by_user_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    ini_s = str(ini or "").strip()
+    fim_s = str(fim or "").strip()
+    if not ini_s or not fim_s:
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    r.ops_user_id,
+                    u.username AS ops_username,
+                    u.nome AS ops_nome,
+                    COUNT(*)::bigint AS corridas,
+                    AVG(EXTRACT(EPOCH FROM (r.finished_em - r.started_em)))::bigint AS avg_corrida_seconds,
+                    MIN(EXTRACT(EPOCH FROM (r.finished_em - r.started_em)))::bigint AS min_corrida_seconds,
+                    MAX(EXTRACT(EPOCH FROM (r.finished_em - r.started_em)))::bigint AS max_corrida_seconds,
+                    AVG(it.itens)::numeric(10,2) AS avg_itens
+                FROM log_runs r
+                LEFT JOIN ops_users u ON u.id=r.ops_user_id
+                LEFT JOIN (
+                    SELECT run_id, COUNT(*)::bigint AS itens
+                    FROM log_run_items
+                    GROUP BY run_id
+                ) it ON it.run_id=r.id
+                WHERE r.status='FINALIZADA'
+                  AND r.finished_em IS NOT NULL
+                  AND r.started_em IS NOT NULL
+                  AND r.ops_user_id IS NOT NULL
+                  AND r.finished_em >= %s::timestamptz
+                  AND r.finished_em < (%s::timestamptz + INTERVAL '1 day')
+                GROUP BY r.ops_user_id, u.username, u.nome
+                ORDER BY avg_corrida_seconds ASC NULLS LAST, corridas DESC
+                """,
+                (ini_s, fim_s),
+            )
+            return [dict(x) for x in (cur.fetchall() or [])]
+
+
 def update_ops_user(
     *,
     username: str,
@@ -729,13 +810,16 @@ def kds_list_done_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
                 SELECT
                     solicitacao_id,
                     ops_user_id,
+                    u.username AS ops_username,
+                    u.nome AS ops_nome,
                     status,
                     created_em,
                     started_em,
                     done_em,
                     EXTRACT(EPOCH FROM (done_em - started_em))::bigint AS preparo_seconds,
                     EXTRACT(EPOCH FROM (done_em - created_em))::bigint AS total_seconds
-                FROM kds_orders
+                FROM kds_orders k
+                LEFT JOIN ops_users u ON u.id=k.ops_user_id
                 WHERE status='PRONTO'
                   AND done_em >= %s::timestamptz
                   AND done_em < (%s::timestamptz + INTERVAL '1 day')
@@ -762,6 +846,8 @@ def logistica_list_runs_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
                 SELECT
                     r.id,
                     r.ops_user_id,
+                    u.username AS ops_username,
+                    u.nome AS ops_nome,
                     r.status,
                     r.created_em,
                     r.started_em,
@@ -769,12 +855,21 @@ def logistica_list_runs_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:
                     COUNT(i.solicitacao_id)::bigint AS itens,
                     EXTRACT(EPOCH FROM (r.finished_em - r.started_em))::bigint AS corrida_seconds
                 FROM log_runs r
+                LEFT JOIN ops_users u ON u.id=r.ops_user_id
                 LEFT JOIN log_run_items i ON i.run_id=r.id
                 WHERE r.status='FINALIZADA'
                   AND r.finished_em IS NOT NULL
                   AND r.finished_em >= %s::timestamptz
                   AND r.finished_em < (%s::timestamptz + INTERVAL '1 day')
-                GROUP BY r.id
+                GROUP BY
+                    r.id,
+                    r.ops_user_id,
+                    u.username,
+                    u.nome,
+                    r.status,
+                    r.created_em,
+                    r.started_em,
+                    r.finished_em
                 ORDER BY r.finished_em ASC
                 """,
                 (ini_s, fim_s),
