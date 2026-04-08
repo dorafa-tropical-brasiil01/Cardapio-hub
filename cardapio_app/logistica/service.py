@@ -28,9 +28,29 @@ def obter_corrida_atual(*, ops_user_id: int) -> dict[str, Any]:
     if not core.pg_enabled():
         return {"items": []}
     try:
-        return core.pg_store.logistica_get_or_create_draft_run(ops_user_id=int(ops_user_id))
+        run = core.pg_store.logistica_get_or_create_draft_run(ops_user_id=int(ops_user_id))
     except Exception:
         return {"items": []}
+
+    out = dict(run) if isinstance(run, dict) else {"items": []}
+    items = out.get("items")
+    if not isinstance(items, list):
+        items = []
+
+    enriched: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        sid = str(it.get("solicitacao_id") or "").strip()
+        rec = get_solicitacao_by_id(solicitacao_id=sid) or {"id": sid}
+        if not isinstance(rec, dict):
+            rec = {"id": sid}
+        merged = dict(it)
+        merged["pedido"] = rec
+        enriched.append(merged)
+
+    out["items"] = enriched
+    return out
 
 
 def corrida_add(*, ops_user_id: int, solicitacao_id: str) -> dict[str, Any]:

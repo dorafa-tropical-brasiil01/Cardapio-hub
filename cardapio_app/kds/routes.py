@@ -3,11 +3,47 @@ from __future__ import annotations
 from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
-from .service import get_pedido_atual, marcar_pronto, preparar_pedido, stats_hoje
+from .service import (
+    get_pedido_atual,
+    listar_fila_pedidos,
+    marcar_pronto,
+    preparar_pedido,
+    pular_pedido,
+    selecionar_pedido,
+    stats_hoje,
+)
 from ..logistica.service import notificar_entregadores_pedido_pronto
 
 
 def register_kds_routes(app: Flask) -> None:
+    @app.get("/api/kds/fila")
+    def api_kds_fila():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_fila_pedidos(limit=limit)})
+
+    @app.post("/api/kds/<solicitacao_id>/pular")
+    def api_kds_pular(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        pular_pedido(solicitacao_id=solicitacao_id)
+        return jsonify({"ok": True})
+
+    @app.post("/api/kds/<solicitacao_id>/selecionar")
+    def api_kds_selecionar(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        selecionar_pedido(ops_user_id=uid, solicitacao_id=solicitacao_id)
+        return jsonify({"ok": True})
+
     @app.get("/api/kds/pedido_atual")
     def api_kds_pedido_atual():
         denied = require_ops_login(role="KDS")
@@ -77,6 +113,7 @@ def register_kds_routes(app: Flask) -> None:
     <div class=\"card\" id=\"pedido\">
       <div class=\"muted\" id=\"stats\">Carregando...</div>
       <div style=\"margin-top:10px\" id=\"pedido_box\"></div>
+      <div style=\"margin-top:12px\" id=\"fila_box\"></div>
       <div class=\"btns\">
         <button id=\"btn_preparar\" type=\"button\">Preparar Pedido</button>
         <button id=\"btn_pronto\" type=\"button\" class=\"secondary\">Pedido Pronto</button>
@@ -88,6 +125,7 @@ def register_kds_routes(app: Flask) -> None:
     let currentId = '';
     const statsEl = document.getElementById('stats');
     const pedidoBox = document.getElementById('pedido_box');
+    const filaBox = document.getElementById('fila_box');
     const btnPreparar = document.getElementById('btn_preparar');
     const btnPronto = document.getElementById('btn_pronto');
     const btnProximo = document.getElementById('btn_proximo');
@@ -98,6 +136,23 @@ def register_kds_routes(app: Flask) -> None:
       btnProximo.disabled = disabled;
     }
 
+    function safeText(x) {
+      return (x === null || x === undefined) ? '' : String(x);
+    }
+
+    function renderItens(itens) {
+      const arr = Array.isArray(itens) ? itens : [];
+      if (arr.length === 0) return '<div class="muted">Itens: (não informado)</div>';
+      const lines = arr.slice(0, 30).map(it => {
+        const nome = safeText(it && it.nome);
+        const code = safeText(it && (it.product_code || it.pdvCode));
+        const qty = safeText(it && (it.qty || it.quantidade));
+        const label = nome || code || 'Item';
+        return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
+      });
+      return '<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + lines.join('') + '</div>';
+    }
+
     function renderPedido(p) {
       if (!p || !p.id) {
         currentId = '';
@@ -105,14 +160,75 @@ def register_kds_routes(app: Flask) -> None:
         return;
       }
       currentId = String(p.id);
-      const cliente = (p.cliente_nome || '').toString();
-      const tipo = (p.tipo_entrega || p.kind || '').toString();
+      const cliente = safeText(p.cliente_nome);
+      const tipo = safeText(p.tipo_entrega || p.kind);
       const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
+      const obs = safeText(p.observacoes || p.obs || p.observacao);
+      const endereco = safeText(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
       pedidoBox.innerHTML = ''
         + '<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>'
         + '<div class="muted" style="margin-top:6px">' + (cliente ? ('Cliente: ' + cliente) : '') + '</div>'
         + '<div class="muted">' + (tipo ? ('Tipo: ' + tipo) : '') + '</div>'
         + '<div class="muted">KDS: ' + status + '</div>';
+
+      if (endereco) {
+        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + endereco + '</div></div>';
+      }
+      if (obs) {
+        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
+      }
+      pedidoBox.innerHTML += renderItens(p.itens);
+    }
+
+    function renderFila(fila) {
+      const arr = Array.isArray(fila) ? fila : [];
+      if (arr.length === 0) {
+        filaBox.innerHTML = '';
+        return;
+      }
+      const top = arr.slice(0, 8);
+      filaBox.innerHTML = '<div style="margin-top:8px"><div style="font-weight:900">Fila</div>'
+        + top.map(p => {
+          const id = (p && p.id) ? String(p.id) : '';
+          const cliente = safeText(p && p.cliente_nome);
+          return '<div class="card" style="padding:10px;margin:10px 0;background:#0f0f12">'
+            + '<div style="font-weight:800">Pedido ' + id + '</div>'
+            + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
+            + '<div class="btns" style="margin-top:10px">'
+            + '<button type="button" class="secondary" data-select="' + id + '">Selecionar</button>'
+            + '<button type="button" class="secondary" data-skip="' + id + '">Pular</button>'
+            + '</div>'
+            + '</div>';
+        }).join('')
+        + '</div>';
+
+      filaBox.querySelectorAll('button[data-select]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-select');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await fetch('/api/kds/' + encodeURIComponent(sid) + '/selecionar', {method: 'POST'});
+            await load();
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      filaBox.querySelectorAll('button[data-skip]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-skip');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await fetch('/api/kds/' + encodeURIComponent(sid) + '/pular', {method: 'POST'});
+            await load();
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
     }
 
     async function load() {
@@ -125,7 +241,20 @@ def register_kds_routes(app: Flask) -> None:
         }
         const st = j.stats || {};
         statsEl.innerText = 'Pendentes: ' + (st.pendentes ?? 0) + ' | Concluídos hoje: ' + (st.concluidos ?? 0);
+        if (currentId && (!j.pedido || String(j.pedido.id) !== String(currentId))) {
+          // mantém seleção manual se existir (quando usuário escolhe na fila)
+          // tenta buscar a fila para renderizar e mostrar o selecionado
+        }
         renderPedido(j.pedido);
+        try {
+          const fr = await fetch('/api/kds/fila?limit=20', {method: 'GET'});
+          const fj = await fr.json().catch(() => ({}));
+          if (fr.ok && fj && fj.ok === true) {
+            renderFila(fj.fila);
+          }
+        } catch (e) {
+          // ignore
+        }
       } catch (e) {
         statsEl.innerText = 'Falha ao carregar.';
       }
@@ -154,7 +283,17 @@ def register_kds_routes(app: Flask) -> None:
     });
 
     btnProximo.addEventListener('click', async () => {
-      load();
+      if (!currentId) {
+        load();
+        return;
+      }
+      setButtons(true);
+      try {
+        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/pular', {method: 'POST'});
+      } finally {
+        setButtons(false);
+        load();
+      }
     });
 
     load();

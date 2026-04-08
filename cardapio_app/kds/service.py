@@ -36,6 +36,46 @@ def get_pedido_atual(*, ops_user_id: int) -> dict[str, Any] | None:
     return pedido
 
 
+def listar_fila_ids(*, limit: int = 50) -> list[str]:
+    if not core.pg_enabled():
+        return []
+    try:
+        return core.pg_store.kds_list_queue_ids(limit=int(limit))
+    except Exception:
+        return []
+
+
+def listar_fila_pedidos(*, limit: int = 20) -> list[dict[str, Any]]:
+    ids = listar_fila_ids(limit=int(limit))
+    out: list[dict[str, Any]] = []
+    for sid in ids:
+        pedido = get_solicitacao_by_id(solicitacao_id=str(sid))
+        if isinstance(pedido, dict):
+            out.append(pedido)
+        else:
+            out.append({"id": str(sid)})
+    return out
+
+
+def pular_pedido(*, solicitacao_id: str) -> None:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    core.pg_store.kds_bump_queue_order(solicitacao_id=sid)
+
+
+def selecionar_pedido(*, ops_user_id: int, solicitacao_id: str) -> None:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    if not uid or not sid:
+        return
+    core.pg_store.kds_set_current_selection(ops_user_id=uid, solicitacao_id=sid)
+
+
 def preparar_pedido(*, solicitacao_id: str, ops_user_id: int) -> None:
     if not core.pg_enabled():
         raise RuntimeError("pg_disabled")

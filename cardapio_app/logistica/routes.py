@@ -147,9 +147,24 @@ def register_logistica_routes(app: Flask) -> None:
       prontosEl.innerHTML = arr.map(p => {
         const id = (p && p.id) ? String(p.id) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
+        const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
+        const endereco = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco)))
+          ? String(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))
+          : '';
+        const itens = Array.isArray(p && p.itens) ? p.itens : [];
+        const itensHtml = itens.slice(0, 20).map(it => {
+          const nome = (it && it.nome) ? String(it.nome) : '';
+          const code = (it && (it.product_code || it.pdvCode)) ? String(it.product_code || it.pdvCode) : '';
+          const qty = (it && (it.qty || it.quantidade)) ? String(it.qty || it.quantidade) : '';
+          const label = nome || code || 'Item';
+          return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
+        }).join('');
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + id + '</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
+          + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
+          + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
+          + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
           + '</div>';
       }).join('');
@@ -182,8 +197,26 @@ def register_logistica_routes(app: Flask) -> None:
       }
       corridaItens.innerHTML = items.map(it => {
         const sid = (it && it.solicitacao_id) ? String(it.solicitacao_id) : '';
+        const p = (it && it.pedido) ? it.pedido : null;
+        const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
+        const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
+        const endereco = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco)))
+          ? String(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))
+          : '';
+        const itens = Array.isArray(p && p.itens) ? p.itens : [];
+        const itensHtml = itens.slice(0, 20).map(it2 => {
+          const nome = (it2 && it2.nome) ? String(it2.nome) : '';
+          const code = (it2 && (it2.product_code || it2.pdvCode)) ? String(it2.product_code || it2.pdvCode) : '';
+          const qty = (it2 && (it2.qty || it2.quantidade)) ? String(it2.qty || it2.quantidade) : '';
+          const label = nome || code || 'Item';
+          return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
+        }).join('');
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + sid + '</div>'
+          + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
+          + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
+          + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
+          + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + '<div style="margin-top:10px"><button type="button" class="secondary" data-remove="' + sid + '">Remover</button></div>'
           + '</div>';
       }).join('');
