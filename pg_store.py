@@ -131,6 +131,30 @@ def init_db() -> None:
             except Exception:
                 pass
 
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ops_users (
+                    id BIGSERIAL PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    nome TEXT,
+                    telefone TEXT,
+                    telegram TEXT,
+                    endereco TEXT,
+                    pix TEXT,
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    password_salt TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    criado_em TIMESTAMPTZ NOT NULL,
+                    atualizado_em TIMESTAMPTZ
+                )
+                """
+            )
+            try:
+                cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ops_users_username_unique ON ops_users(username)")
+            except Exception:
+                pass
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -164,6 +188,77 @@ def get_table_token_map() -> dict[int, str]:
                 except Exception:
                     continue
     return out
+
+
+def create_ops_user(
+    *,
+    username: str,
+    role: str,
+    nome: str | None,
+    telefone: str | None,
+    telegram: str | None,
+    endereco: str | None,
+    pix: str | None,
+    password_salt: str,
+    password_hash: str,
+) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    _ensure_db_ready()
+
+    u = str(username or "").strip().lower()
+    r = str(role or "").strip().upper()
+    if not u or not r:
+        return None
+    if not password_salt or not password_hash:
+        return None
+
+    now = datetime.now().isoformat(timespec="seconds")
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO ops_users(
+                    username, role, nome, telefone, telegram, endereco, pix,
+                    ativo, password_salt, password_hash, criado_em, atualizado_em
+                )
+                VALUES (%s,%s,%s,%s,%s,%s,%s,TRUE,%s,%s,%s,NULL)
+                RETURNING *
+                """,
+                (
+                    u,
+                    r,
+                    nome,
+                    telefone,
+                    telegram,
+                    endereco,
+                    pix,
+                    str(password_salt),
+                    str(password_hash),
+                    now,
+                ),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def get_ops_user_by_username(*, username: str) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+
+    _ensure_db_ready()
+
+    u = str(username or "").strip().lower()
+    if not u:
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM ops_users WHERE username=%s", (u,))
+            row = cur.fetchone()
+            return dict(row) if row else None
 
 
 def save_solicitacao(*, record: dict[str, Any]) -> None:
