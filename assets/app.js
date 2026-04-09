@@ -186,9 +186,95 @@
         deliveryMaps: "",
         deliveryObs: "",
         deliveryTroco: "",
+        deliveryFeePreview: null,
+        deliveryFeeDistanceKm: null,
+        deliveryFeeEnabled: null,
+        deliveryFeeLoading: false,
+        deliveryFeeError: "",
+        _lastDeliveryFeeMapsUrl: "",
+        _skipFeeRefreshOnce: false,
         modalLockUntil: 0,
         modalCloseLabel: "Voltar"
     };
+
+    async function refreshDeliveryFeePreview() {
+        if (state._skipFeeRefreshOnce) {
+            state._skipFeeRefreshOnce = false;
+            return;
+        }
+
+        const isSalao = Boolean(state.mesa && state.token);
+        if (isSalao) return;
+
+        const tipo = String(state.deliveryType || "DELIVERY").toUpperCase();
+        if (tipo !== "DELIVERY") {
+            state.deliveryFeePreview = null;
+            state.deliveryFeeDistanceKm = null;
+            state.deliveryFeeEnabled = null;
+            state.deliveryFeeError = "";
+            return;
+        }
+
+        const mapsUrl = String(state.deliveryMaps || "").trim();
+        if (!mapsUrl) {
+            state.deliveryFeePreview = null;
+            state.deliveryFeeDistanceKm = null;
+            state.deliveryFeeEnabled = null;
+            state.deliveryFeeError = "";
+            return;
+        }
+
+        if (mapsUrl === state._lastDeliveryFeeMapsUrl && state.deliveryFeeEnabled !== null) {
+            return;
+        }
+        state._lastDeliveryFeeMapsUrl = mapsUrl;
+        state.deliveryFeeLoading = true;
+        state.deliveryFeeError = "";
+
+        try {
+            const url = `/api/public/taxa_entrega?maps_url=${encodeURIComponent(mapsUrl)}`;
+            const res = await fetch(url, { cache: "no-store" });
+            const j = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                state.deliveryFeePreview = null;
+                state.deliveryFeeDistanceKm = null;
+                state.deliveryFeeEnabled = null;
+                state.deliveryFeeError = String(j && j.error ? j.error : "falha_ao_calcular_taxa");
+                return;
+            }
+
+            state.deliveryFeeEnabled = Boolean(j && j.enabled);
+            if (j && j.ok && j.fee !== undefined && j.fee !== null) {
+                const feeNum = Number(j.fee);
+                state.deliveryFeePreview = Number.isFinite(feeNum) ? feeNum : null;
+                const distNum = Number(j.distance_km);
+                state.deliveryFeeDistanceKm = Number.isFinite(distNum) ? distNum : null;
+            } else {
+                state.deliveryFeePreview = null;
+                state.deliveryFeeDistanceKm = null;
+            }
+        } catch {
+            state.deliveryFeePreview = null;
+            state.deliveryFeeDistanceKm = null;
+            state.deliveryFeeEnabled = null;
+            state.deliveryFeeError = "falha_ao_calcular_taxa";
+        } finally {
+            state.deliveryFeeLoading = false;
+        }
+
+        try {
+            if (isModalOpen()) {
+                const title = String(document.getElementById("modalTitle")?.innerText || "");
+                if (title === "Carrinho / Pedido") {
+                    if (Date.now() < (state.modalLockUntil || 0)) return;
+                    state._skipFeeRefreshOnce = true;
+                    abrirCarrinho(true);
+                }
+            }
+        } catch {
+        }
+    }
 
     function humanStatus(status) {
         const s = String(status || "").toUpperCase();
@@ -377,7 +463,9 @@
         const v = String(val || "").trim().toUpperCase();
         state.deliveryType = (v === "RETIRADA") ? "RETIRADA" : "DELIVERY";
         saveDeliveryFields();
+        state._lastDeliveryFeeMapsUrl = "";
         abrirCarrinho();
+        refreshDeliveryFeePreview();
         lockModalRender(6000);
     }
 
@@ -400,6 +488,8 @@
         state.deliveryMaps = String(val || "").trim();
         saveDeliveryFields();
         lockModalRender(6000);
+        state._lastDeliveryFeeMapsUrl = "";
+        refreshDeliveryFeePreview();
         try {
             if (isModalOpen()) {
                 const title = String(document.getElementById("modalTitle")?.innerText || "");
@@ -1285,7 +1375,7 @@
     function atualizarStatusPedido(novoStatus) {
     }
 
-    function abrirCarrinho() {
+    function abrirCarrinho(skipFeeRefresh) {
         // Se o modal já está aberto, preservar a seleção atual antes de recriar o HTML
         // (evita voltar para o primeiro option em alguns navegadores/mobile)
         if (isModalOpen()) {
@@ -1295,7 +1385,16 @@
         const isSalao = Boolean(state.mesa && state.token);
 
         const pedido = getPedidoAtual();
-        const total = getCartTotal();
+        const subtotal = getCartTotal();
+        const fee = (!isSalao && String(state.deliveryType || "").toUpperCase() === "DELIVERY")
+            ? Number(state.deliveryFeePreview)
+            : NaN;
+        const hasFee = Number.isFinite(fee) && fee >= 0;
+        const total = hasFee ? (subtotal + fee) : subtotal;
+
+        if (!skipFeeRefresh) {
+            refreshDeliveryFeePreview();
+        }
 
         const cartHtml = state.carrinho.length === 0
             ? `<div class="muted">Carrinho vazio.</div>`
@@ -1435,7 +1534,42 @@
                        <button onclick="limparCarrinho()">Limpar</button>`
                     : ""}
             </div>
-            ${state.carrinho.length > 0 ? `<div style="margin-top:10px; font-size:18px"><strong>Total do carrinho:</strong> ${formatBRL(total)}</div>` : ""}
+            ${state.carrinho.length > 0
+                ? (() => {
+                    if (isSalao) {
+                        return `<div style="margin-top:10px; font-size:18px"><strong>Total do carrinho:</strong> ${formatBRL(total)}</div>`;
+                    }
+
+                    const tipo = String(state.deliveryType || "DELIVERY").toUpperCase();
+                    if (tipo !== "DELIVERY") {
+                        return `<div style="margin-top:10px; font-size:18px"><strong>Total:</strong> ${formatBRL(subtotal)}</div>`;
+                    }
+
+                    const feeLine = (() => {
+                        if (state.deliveryFeeLoading) {
+                            return `<div style="margin-top:6px" class="muted"><strong>Taxa de entrega:</strong> calculando...</div>`;
+                        }
+                        if (hasFee) {
+                            const d = Number(state.deliveryFeeDistanceKm);
+                            const dist = Number.isFinite(d) ? ` (${d.toFixed(2)} km)` : "";
+                            return `<div style="margin-top:6px"><strong>Taxa de entrega:</strong> ${formatBRL(fee)}${dist}</div>`;
+                        }
+                        if (state.deliveryFeeEnabled === false) {
+                            return `<div style="margin-top:6px" class="muted"><strong>Taxa de entrega:</strong> não aplicada</div>`;
+                        }
+                        if (state.deliveryFeeError) {
+                            return `<div style="margin-top:6px" class="muted"><strong>Taxa de entrega:</strong> indisponível</div>`;
+                        }
+                        return `<div style="margin-top:6px" class="muted"><strong>Taxa de entrega:</strong> a calcular</div>`;
+                    })();
+
+                    return `
+                        <div style="margin-top:10px; font-size:18px"><strong>Subtotal:</strong> ${formatBRL(subtotal)}</div>
+                        ${feeLine}
+                        <div style="margin-top:6px; font-size:18px"><strong>Total:</strong> ${formatBRL(total)}</div>
+                    `;
+                })()
+                : ""}
         `;
 
         setModal("Carrinho / Pedido", cartHtml + paymentUi + actions);

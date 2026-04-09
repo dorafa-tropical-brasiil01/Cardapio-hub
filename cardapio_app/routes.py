@@ -1316,6 +1316,13 @@ def register_routes(app: Flask) -> None:
             "comprovante": None,
         }
 
+        try:
+            from .taxa_entrega.service import apply_delivery_fee_to_order_record
+
+            rec = apply_delivery_fee_to_order_record(ctx=_ctx(), rec=rec)
+        except Exception:
+            pass
+
         if core.pg_enabled():
             try:
                 core.pg_store.save_solicitacao(record=rec)

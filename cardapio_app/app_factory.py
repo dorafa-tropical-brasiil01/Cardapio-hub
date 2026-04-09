@@ -11,6 +11,7 @@ from .kds.routes import register_kds_routes
 from .logistica.routes import register_logistica_routes
 from .ops_auth.routes import register_ops_auth_routes
 from .routes import register_routes
+from .taxa_entrega.routes import register_taxa_entrega_routes
 
 
 def create_app() -> Flask:
@@ -30,5 +31,6 @@ def create_app() -> Flask:
     register_ops_auth_routes(app)
     register_kds_routes(app)
     register_logistica_routes(app)
+    register_taxa_entrega_routes(app)
 
     return app
