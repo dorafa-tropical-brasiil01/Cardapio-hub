@@ -81,7 +81,7 @@ def register_taxa_entrega_routes(app: Flask) -> None:
         ui2["deliveryFee"] = cfg2
         published2 = dict(published)
         published2["ui"] = ui2
-        core.save_catalogo_publicado(_ctx(), published2)
+        core.save_catalogo_publicado(ctx=_ctx(), record=published2)
         return jsonify({"ok": True, "enabled": service.is_delivery_fee_enabled(ui2), "config": service.get_delivery_fee_config_from_ui(ui2)})
 
     def _set_enabled(enabled: bool):
@@ -105,7 +105,7 @@ def register_taxa_entrega_routes(app: Flask) -> None:
 
         published2 = dict(published)
         published2["ui"] = ui2
-        core.save_catalogo_publicado(_ctx(), published2)
+        core.save_catalogo_publicado(ctx=_ctx(), record=published2)
         return jsonify({"ok": True, "enabled": bool(enabled)})
 
     @app.post("/api/pdv/taxa_entrega/habilitar")
