@@ -95,3 +95,60 @@ def stats_hoje() -> dict[str, int]:
         return core.pg_store.kds_stats_today()
     except Exception:
         return {"pendentes": 0, "concluidos": 0}
+
+
+def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
+    if not core.pg_enabled():
+        return
+    if not core.telegram_bot_enabled():
+        return
+
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+
+    base = str(base_url or "").strip().rstrip("/")
+    if not base:
+        return
+
+    try:
+        users = core.pg_store.list_ops_users_by_role(role="KDS")
+    except Exception:
+        users = []
+    if not users:
+        return
+
+    pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
+    cliente = str(pedido.get("cliente_nome") or "").strip()
+    tipo = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
+    taxa = pedido.get("taxa_entrega")
+    try:
+        taxa_f = float(taxa) if taxa is not None else None
+    except Exception:
+        taxa_f = None
+
+    link = base + "/cozinha"
+    msg_lines: list[str] = []
+    msg_lines.append("NOVO PEDIDO NA COZINHA")
+    msg_lines.append(f"Pedido: {sid}")
+    if cliente:
+        msg_lines.append(f"Cliente: {cliente}")
+    if tipo:
+        msg_lines.append(f"Tipo: {tipo}")
+    if taxa_f is not None:
+        msg_lines.append(f"Taxa de entrega: R$ {taxa_f:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    msg_lines.append("")
+    msg_lines.append("Acesse o painel:")
+    msg_lines.append(link)
+    msg = "\n".join(msg_lines).strip()
+
+    for u in users:
+        chat_id = str((u or {}).get("telegram") or "").strip()
+        if not chat_id:
+            continue
+        if not chat_id.lstrip("-").isdigit():
+            continue
+        try:
+            core.telegram_send_message_to(chat_id=chat_id, text=msg)
+        except Exception:
+            continue

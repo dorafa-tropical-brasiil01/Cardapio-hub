@@ -499,8 +499,17 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
         total_f = float(total) if total is not None else None
     except Exception:
         total_f = None
+
+    taxa = record.get("taxa_entrega")
+    try:
+        taxa_f = float(taxa) if taxa is not None else None
+    except Exception:
+        taxa_f = None
+
     lines.append("")
     lines.append(f"Total: R$ {_money_brl(total_f)}" if total_f is not None else "Total: ")
+    if taxa_f is not None:
+        lines.append(f"Taxa de entrega: R$ {_money_brl(taxa_f)}")
     lines.append("")
     lines.append("")
     lines.append("Tipo de Pagamento:")

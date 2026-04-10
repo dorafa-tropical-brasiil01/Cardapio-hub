@@ -233,7 +233,12 @@
 
         try {
             const url = `/api/public/taxa_entrega?maps_url=${encodeURIComponent(mapsUrl)}`;
-            const res = await fetch(url, { cache: "no-store" });
+            const ac = new AbortController();
+            const t = setTimeout(() => {
+                try { ac.abort(); } catch {}
+            }, 3500);
+            const res = await fetch(url, { cache: "no-store", signal: ac.signal });
+            clearTimeout(t);
             const j = await res.json().catch(() => ({}));
 
             if (!res.ok) {
