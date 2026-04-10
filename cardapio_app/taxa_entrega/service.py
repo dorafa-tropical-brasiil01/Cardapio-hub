@@ -39,6 +39,31 @@ def _extract_lat_lng_from_text(s: str) -> tuple[float, float] | None:
         except Exception:
             return None
 
+    # Formato comum em links longos do Google Maps:
+    # ...!3d-16.75474!4d-48.5049903...
+    m = re.search(r"!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)", s)
+    if m:
+        try:
+            return float(m.group(1)), float(m.group(2))
+        except Exception:
+            return None
+
+    # Outro formato comum em URLs: ll=-16.75474,-48.5049903
+    m = re.search(r"(?:\?|&|#)ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", s)
+    if m:
+        try:
+            return float(m.group(1)), float(m.group(2))
+        except Exception:
+            return None
+
+    # Alguns links trazem 'query=lat,lng' (ou query=... onde o lat/lng aparece)
+    m = re.search(r"(?:\?|&|#)query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", s)
+    if m:
+        try:
+            return float(m.group(1)), float(m.group(2))
+        except Exception:
+            return None
+
     return None
 
 

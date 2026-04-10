@@ -768,6 +768,12 @@ def logistica_list_ready_order_ids() -> list[str]:
                     WHERE i.solicitacao_id=k.solicitacao_id
                       AND r.status IN ('MONTANDO','EM_ANDAMENTO')
                   )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM log_run_items i2
+                    WHERE i2.solicitacao_id=k.solicitacao_id
+                      AND i2.delivered_em IS NOT NULL
+                  )
                 ORDER BY k.done_em ASC NULLS LAST
                 LIMIT 200
                 """

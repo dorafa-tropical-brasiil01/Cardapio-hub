@@ -164,7 +164,28 @@ def register_kds_routes(app: Flask) -> None:
       const tipo = safeText(p.tipo_entrega || p.kind);
       const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
       const obs = safeText(p.observacoes || p.obs || p.observacao);
-      const endereco = safeText(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
+      const enderecoRaw = (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
+      const endereco = (() => {
+        if (!enderecoRaw) return '';
+        if (typeof enderecoRaw === 'string') return safeText(enderecoRaw);
+        if (typeof enderecoRaw !== 'object') return '';
+        const maps = safeText(enderecoRaw.maps_url || enderecoRaw.maps || enderecoRaw.localizacao);
+        const rua = safeText(enderecoRaw.rua);
+        const numero = safeText(enderecoRaw.numero);
+        const bairro = safeText(enderecoRaw.bairro);
+        const cidade = safeText(enderecoRaw.cidade);
+        const ref = safeText(enderecoRaw.referencia);
+        const parts = [];
+        if (rua || numero) parts.push((rua + (numero ? (', ' + numero) : '')).trim());
+        if (bairro) parts.push(bairro);
+        if (cidade) parts.push(cidade);
+        const line = parts.join(' - ').trim();
+        const out = [];
+        if (line) out.push(line);
+        if (ref) out.push('Ref: ' + ref);
+        if (maps) out.push(maps);
+        return out.join('\n').trim();
+      })();
       pedidoBox.innerHTML = ''
         + '<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>'
         + '<div class="muted" style="margin-top:6px">' + (cliente ? ('Cliente: ' + cliente) : '') + '</div>'
@@ -172,7 +193,7 @@ def register_kds_routes(app: Flask) -> None:
         + '<div class="muted">KDS: ' + status + '</div>';
 
       if (endereco) {
-        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + endereco + '</div></div>';
+        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(endereco).replace(/\n/g,'<br/>') + '</div></div>';
       }
       if (obs) {
         pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';

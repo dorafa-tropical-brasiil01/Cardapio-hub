@@ -269,9 +269,28 @@ def register_logistica_routes(app: Flask) -> None:
         const id = (p && p.id) ? String(p.id) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
-        const endereco = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco)))
-          ? String(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))
-          : '';
+        const enderecoRaw = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))) || null;
+        const endereco = (() => {
+          if (!enderecoRaw) return '';
+          if (typeof enderecoRaw === 'string') return String(enderecoRaw);
+          if (typeof enderecoRaw !== 'object') return '';
+          const maps = String(enderecoRaw.maps_url || enderecoRaw.maps || enderecoRaw.localizacao || '').trim();
+          const rua = String(enderecoRaw.rua || '').trim();
+          const numero = String(enderecoRaw.numero || '').trim();
+          const bairro = String(enderecoRaw.bairro || '').trim();
+          const cidade = String(enderecoRaw.cidade || '').trim();
+          const ref = String(enderecoRaw.referencia || '').trim();
+          const parts = [];
+          if (rua || numero) parts.push((rua + (numero ? (', ' + numero) : '')).trim());
+          if (bairro) parts.push(bairro);
+          if (cidade) parts.push(cidade);
+          const line = parts.join(' - ').trim();
+          const out = [];
+          if (line) out.push(line);
+          if (ref) out.push('Ref: ' + ref);
+          if (maps) out.push(maps);
+          return out.join(' | ').trim();
+        })();
         const itens = Array.isArray(p && p.itens) ? p.itens : [];
         const itensHtml = itens.slice(0, 20).map(it => {
           const nome = (it && it.nome) ? String(it.nome) : '';
