@@ -1190,6 +1190,12 @@ def register_routes(app: Flask) -> None:
             core.save_solicitacoes(_ctx(), data)
 
         core.notify_telegram_new_order(rec)
+        try:
+            from .kds.service import notificar_kds_novo_pedido
+
+            notificar_kds_novo_pedido(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
+        except Exception:
+            pass
         return jsonify({"id": solicitacao_id, "status": "PENDENTE"})
 
     @app.get("/api/solicitacoes/<solicitacao_id>")
@@ -1338,6 +1344,12 @@ def register_routes(app: Flask) -> None:
             core.save_solicitacoes(_ctx(), data)
 
         core.notify_telegram_new_order(rec)
+        try:
+            from .kds.service import notificar_kds_novo_pedido
+
+            notificar_kds_novo_pedido(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
+        except Exception:
+            pass
         return jsonify({"id": solicitacao_id, "token": access_token, "status": "PENDENTE"})
 
     @app.get("/api/public/pedidos/<solicitacao_id>")

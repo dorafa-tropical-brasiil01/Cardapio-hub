@@ -142,6 +142,24 @@ def compute_delivery_fee(*, ui: Any, client_maps_url: str) -> dict[str, Any] | N
     if max_v is not None:
         fee = min(fee, float(max_v))
 
+    # Regra de arredondamento para valor cheio em reais:
+    # - até X,49: arredonda para baixo
+    # - a partir de X,50: arredonda para cima
+    try:
+        floor_v = math.floor(float(fee))
+        frac = float(fee) - float(floor_v)
+        fee_int = int(floor_v + (1 if frac >= 0.5 else 0))
+        fee = float(fee_int)
+    except Exception:
+        pass
+
+    # Reaplica limites após arredondamento, para manter coerência caso min/max
+    # sejam definidos e a regra de arredondamento produza um valor fora deles.
+    if min_v is not None:
+        fee = max(fee, float(min_v))
+    if max_v is not None:
+        fee = min(fee, float(max_v))
+
     fee = round(fee + 1e-9, 2)
     dist_km = round(float(dist_km) + 1e-9, 3)
 
