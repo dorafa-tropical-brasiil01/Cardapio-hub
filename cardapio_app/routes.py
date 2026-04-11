@@ -583,6 +583,10 @@ def register_routes(app: Flask) -> None:
             if not isinstance(published, dict):
                 published = {"categorias": [], "produtos": [], "ui": {}}
 
+            pub_ui = published.get("ui") if isinstance(published.get("ui"), dict) else {}
+            pub_horario = pub_ui.get("horario") if isinstance(pub_ui.get("horario"), dict) else {}
+            pub_tz = str(pub_horario.get("tz") or "").strip() or None
+
             try:
                 local = core.read_json_file(ctx.data_file)
             except FileNotFoundError:
@@ -620,6 +624,8 @@ def register_routes(app: Flask) -> None:
                 if meta.get("queridinho") is not None:
                     out_p["queridinho"] = bool(meta.get("queridinho"))
                 merged_products.append(out_p)
+
+            merged_products = core.filter_catalogo_items_by_weekday(items=merged_products, tz_name=pub_tz)
 
             def _code_sort_key(x: dict[str, Any]) -> tuple[str, int, str]:
                 code = str(x.get("pdvCode") or x.get("id") or x.get("code") or "").strip().upper()
