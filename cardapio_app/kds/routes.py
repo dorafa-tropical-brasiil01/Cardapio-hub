@@ -89,15 +89,25 @@ def register_kds_routes(app: Flask) -> None:
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
   <title>Cozinha</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:#0b0b0c;color:#fff}
-    .wrap{max-width:520px;margin:0 auto}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:#0b0b0c;color:#fff;line-height:1.35;padding-bottom:28px}
+    .wrap{max-width:720px;margin:0 auto}
     .card{background:#151518;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px;margin:10px 0}
     .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{flex:1;min-width:140px;font-size:16px;padding:12px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
+    button{flex:1;min-width:140px;font-size:16px;padding:12px 14px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
     button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
-    a.wa{display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:10px 12px;border-radius:12px;font-weight:800}
-    a.wa.discreet{padding:8px 10px;font-weight:700;opacity:.9}
-    .muted{opacity:.75}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:12px 12px;border-radius:12px;font-weight:800;width:100%;box-sizing:border-box}
+    a.wa.discreet{padding:10px 12px;font-weight:800;opacity:.95}
+    .muted{opacity:.78}
+
+    .actions{position:sticky;bottom:-1px;background:#151518;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;margin-top:12px}
+
+    @media (max-width: 520px) {
+      body{padding:12px;padding-bottom:34px}
+      .card{padding:12px}
+      button{min-width:0;font-size:16px;padding:14px 14px}
+      .btns button{flex:1 1 46%}
+      .btns button#btn_preparar{flex-basis:100%}
+    }
   </style>
 </head>
 <body>
@@ -117,7 +127,7 @@ def register_kds_routes(app: Flask) -> None:
       <div style="margin-top:10px" id="pedido_box"></div>
       <div style="margin-top:10px" id="wa_box"></div>
       <div style="margin-top:12px" id="fila_box"></div>
-      <div class="btns">
+      <div class="btns actions">
         <button id="btn_preparar" type="button">Preparar Pedido</button>
         <button id="btn_pronto" type="button" class="secondary">Pedido Pronto</button>
         <button id="btn_proximo" type="button" class="secondary">Próximo Pedido</button>
