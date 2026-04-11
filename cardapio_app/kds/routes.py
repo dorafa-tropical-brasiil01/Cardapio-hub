@@ -292,7 +292,9 @@ def register_kds_routes(app: Flask) -> None:
           return;
         }
         const st = j.stats || {};
-        statsEl.innerText = 'Pendentes: ' + (st.pendentes ?? 0) + ' | Concluídos hoje: ' + (st.concluidos ?? 0);
+        const pend = (st && st.pendentes !== undefined && st.pendentes !== null) ? st.pendentes : 0;
+        const conc = (st && st.concluidos !== undefined && st.concluidos !== null) ? st.concluidos : 0;
+        statsEl.innerText = 'Pendentes: ' + pend + ' | Concluídos hoje: ' + conc;
         if (currentId && (!j.pedido || String(j.pedido.id) !== String(currentId))) {
           // mantém seleção manual se existir (quando usuário escolhe na fila)
           // tenta buscar a fila para renderizar e mostrar o selecionado
