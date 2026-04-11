@@ -72,15 +72,21 @@ def register_ops_auth_routes(app: Flask) -> None:
         session.pop("ops_user_id", None)
         session.pop("ops_username", None)
         session.pop("ops_role", None)
-        return jsonify({"ok": True})
+        return redirect("/ops/login", code=302)
 
 
 def require_ops_login(*, role: str | None = None) -> Any:
     uid = session.get("ops_user_id")
     if not uid:
-        return redirect("/ops/login?next=" + str(request.path or "/"), code=302)
+        path = str(request.path or "/")
+        if path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect("/ops/login?next=" + path, code=302)
     if role is not None:
         got = str(session.get("ops_role") or "").strip().upper()
         if got != str(role).strip().upper():
+            path = str(request.path or "/")
+            if path.startswith("/api/"):
+                return jsonify({"error": "forbidden"}), 403
             return make_response("forbidden", 403)
     return None
