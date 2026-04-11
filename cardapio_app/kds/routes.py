@@ -145,7 +145,7 @@ def register_kds_routes(app: Flask) -> None:
     }
 
     function waUrl(phone, msg) {
-      const digits = String(phone || '').replace(/\D+/g, '');
+      const digits = String(phone || '').replace(/\\D+/g, '');
       if (!digits) return '';
       let url = 'https://wa.me/' + digits;
       const m = String(msg || '').trim();
