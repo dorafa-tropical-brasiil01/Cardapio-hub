@@ -310,7 +310,7 @@ def register_logistica_routes(app: Flask) -> None:
           const label = nome || code || 'Item';
           return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
         }).join('');
-        const wa = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + id + '</div>'
@@ -398,7 +398,7 @@ def register_logistica_routes(app: Flask) -> None:
         }).join('');
         const isDelivered = !!deliveredEm;
 
-        const wa = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
 
         const btnLabel = isRunning ? 'Devolver' : 'Remover';

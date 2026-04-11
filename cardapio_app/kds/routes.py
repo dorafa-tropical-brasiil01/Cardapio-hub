@@ -216,7 +216,7 @@ def register_kds_routes(app: Flask) -> None:
       pedidoBox.innerHTML += renderItens(p.itens);
 
       if (waBox) {
-        const url = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        const url = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         if (url) {
           waBox.innerHTML = '<a class="wa discreet" target="_blank" rel="noopener" href="' + url + '">'
             + '<span aria-hidden="true" style="font-size:16px">🟢</span>'

@@ -142,7 +142,7 @@ def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) 
     msg_lines.append(f"Pedido: {sid}")
     if cliente:
         msg_lines.append(f"Cliente: {cliente}")
-    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message="Olá! Estamos entrando em contato sobre seu pedido.")
+    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message=core.whatsapp_default_message(context="entrega"))
     if wa_url:
         msg_lines.append(f"Falar com o cliente: {wa_url}")
     if tipo:

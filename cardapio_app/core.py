@@ -394,6 +394,11 @@ def whatsapp_digits(value: Any) -> str:
     return re.sub(r"\D+", "", str(value or "").strip())
 
 
+def whatsapp_default_message(*, context: str | None = None) -> str:
+    _ = str(context or "").strip().lower()
+    return "Olá! 😊 Estamos entrando em contato sobre seu pedido."
+
+
 def whatsapp_wa_me_url(*, phone: Any, message: str | None = None) -> str:
     digits = whatsapp_digits(phone)
     if not digits:
@@ -542,7 +547,7 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append(f"Cliente: {cliente_nome}")
     lines.append(f"WhatsApp: {whatsapp}")
 
-    wa_url = whatsapp_wa_me_url(phone=whatsapp, message="Olá! Estamos entrando em contato sobre seu pedido.")
+    wa_url = whatsapp_wa_me_url(phone=whatsapp, message=whatsapp_default_message(context="pedido"))
     if wa_url:
         lines.append(f"Falar com o cliente: {wa_url}")
     lines.append("")
