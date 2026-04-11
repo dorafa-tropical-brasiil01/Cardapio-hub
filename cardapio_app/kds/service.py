@@ -134,7 +134,7 @@ def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
     msg_lines.append(f"Pedido: {sid}")
     if cliente:
         msg_lines.append(f"Cliente: {cliente}")
-    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message="Olá! Estamos entrando em contato sobre seu pedido.")
+    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message=core.whatsapp_default_message(context="kds"))
     if wa_url:
         msg_lines.append(f"Falar com o cliente: {wa_url}")
     if tipo:

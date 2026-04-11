@@ -201,19 +201,22 @@ def register_kds_routes(app: Flask) -> None:
         if (maps) out.push(maps);
         return out.join('\n').trim();
       })();
-      pedidoBox.innerHTML = ''
-        + '<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>'
-        + '<div class="muted" style="margin-top:6px">' + (cliente ? ('Cliente: ' + cliente) : '') + '</div>'
-        + '<div class="muted">' + (tipo ? ('Tipo: ' + tipo) : '') + '</div>'
-        + '<div class="muted">KDS: ' + status + '</div>';
+      const headLines = [];
+      headLines.push('<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>');
+      if (cliente) headLines.push('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>');
+      if (tipo) headLines.push('<div class="muted">Tipo: ' + tipo + '</div>');
+      if (status) headLines.push('<div class="muted">KDS: ' + status + '</div>');
+      if (whatsapp) headLines.push('<div class="muted">WhatsApp: ' + whatsapp + '</div>');
+
+      pedidoBox.innerHTML = headLines.join('');
 
       if (endereco) {
         pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(endereco).replace(/\n/g,'<br/>') + '</div></div>';
       }
       if (obs) {
-        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
+        pedidoBox.innerHTML += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
       }
-      pedidoBox.innerHTML += renderItens(p.itens);
+      pedidoBox.innerHTML += '<div style="margin-top:10px">' + renderItens(p.itens) + '</div>';
 
       if (waBox) {
         const url = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
@@ -284,7 +287,8 @@ def register_kds_routes(app: Flask) -> None:
         const resp = await fetch('/api/kds/pedido_atual', {method: 'GET'});
         const j = await resp.json().catch(() => ({}));
         if (!resp.ok || !j || j.ok !== true) {
-          statsEl.innerText = 'Falha ao carregar.';
+          const err = (j && (j.error || j.message)) ? String(j.error || j.message) : ('HTTP ' + resp.status);
+          statsEl.innerText = 'Falha ao carregar: ' + err;
           return;
         }
         const st = j.stats || {};
@@ -304,7 +308,17 @@ def register_kds_routes(app: Flask) -> None:
           // ignore
         }
       } catch (e) {
-        statsEl.innerText = 'Falha ao carregar.';
+        statsEl.innerText = 'Falha ao carregar: erro de rede.';
+      }
+    }
+
+    function startAutoRefresh() {
+      try {
+        load();
+        setInterval(() => {
+          try { load(); } catch (e) {}
+        }, 2500);
+      } catch (e) {
       }
     }
 
@@ -344,7 +358,7 @@ def register_kds_routes(app: Flask) -> None:
       }
     });
 
-    load();
+    startAutoRefresh();
   </script>
 </body>
 </html>"""

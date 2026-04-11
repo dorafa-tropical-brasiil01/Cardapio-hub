@@ -272,7 +272,22 @@
             if (isModalOpen()) {
                 const title = String(document.getElementById("modalTitle")?.innerText || "");
                 if (title === "Carrinho / Pedido") {
-                    if (Date.now() < (state.modalLockUntil || 0)) return;
+                    const until = Number(state.modalLockUntil || 0);
+                    const now = Date.now();
+                    if (until && now < until) {
+                        const waitMs = Math.min(6500, Math.max(50, until - now + 50));
+                        setTimeout(() => {
+                            try {
+                                if (!isModalOpen()) return;
+                                const t2 = String(document.getElementById("modalTitle")?.innerText || "");
+                                if (t2 !== "Carrinho / Pedido") return;
+                                state._skipFeeRefreshOnce = true;
+                                abrirCarrinho(true);
+                            } catch {
+                            }
+                        }, waitMs);
+                        return;
+                    }
                     state._skipFeeRefreshOnce = true;
                     abrirCarrinho(true);
                 }
