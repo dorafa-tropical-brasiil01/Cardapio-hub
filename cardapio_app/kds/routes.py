@@ -89,21 +89,44 @@ def register_kds_routes(app: Flask) -> None:
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
   <title>Cozinha</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:#0b0b0c;color:#fff;line-height:1.35;padding-bottom:28px}
-    .wrap{max-width:720px;margin:0 auto}
-    .card{background:#151518;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px;margin:10px 0}
+    :root{
+      --bg:#0b0b0c;
+      --card:#151518;
+      --card2:#0f0f12;
+      --border:rgba(255,255,255,0.10);
+      --muted:rgba(255,255,255,0.78);
+      --text:#ffffff;
+      --btn:#ffffff;
+      --btnText:#111111;
+      --btn2:#2a2a2f;
+      --accent:#22c55e;
+      --accentBg:rgba(34,197,94,0.10);
+    }
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);color:var(--text);line-height:1.35;padding-bottom:34px}
+    .wrap{max-width:760px;margin:0 auto}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin:10px 0}
+    .topbar{position:sticky;top:-1px;z-index:10;background:rgba(11,11,12,0.92);backdrop-filter:blur(10px);padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+    .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
+    .top-title{font-weight:900;font-size:18px}
+    .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{flex:1;min-width:140px;font-size:16px;padding:12px 14px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
-    button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
-    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:12px 12px;border-radius:12px;font-weight:800;width:100%;box-sizing:border-box}
-    a.wa.discreet{padding:10px 12px;font-weight:800;opacity:.95}
+    button{flex:1;min-width:140px;font-size:16px;padding:12px 14px;border-radius:14px;border:0;background:var(--btn);color:var(--btnText);font-weight:900}
+    button.secondary{background:var(--btn2);color:#fff;font-weight:800}
+    button:disabled{opacity:.55}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(37,211,102,0.14);border:1px solid rgba(37,211,102,0.28);color:#d9ffe8;padding:12px 12px;border-radius:14px;font-weight:900;width:100%;box-sizing:border-box}
+    a.wa.discreet{padding:10px 12px;font-weight:900;opacity:.98}
     .muted{opacity:.78}
 
-    .actions{position:sticky;bottom:-1px;background:#151518;border-top:1px solid rgba(255,255,255,0.08);padding-top:10px;margin-top:12px}
+    .actions{position:sticky;bottom:-1px;background:rgba(21,21,24,0.96);backdrop-filter:blur(10px);border-top:1px solid rgba(255,255,255,0.10);padding-top:10px;margin-top:12px;border-radius:14px}
+    .queue-item{padding:10px;margin:10px 0;background:var(--card2);border:1px solid rgba(255,255,255,0.08);border-radius:14px}
+    .queue-item.selected{border-color:rgba(34,197,94,0.55);box-shadow:0 0 0 2px rgba(34,197,94,0.12) inset}
+    .pill{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06)}
+    .pill.sel{border-color:rgba(34,197,94,0.50);background:rgba(34,197,94,0.12)}
 
     @media (max-width: 520px) {
-      body{padding:12px;padding-bottom:34px}
+      body{padding:12px;padding-bottom:38px}
       .card{padding:12px}
+      .topbar .inner{padding:0 12px}
       button{min-width:0;font-size:16px;padding:14px 14px}
       .btns button{flex:1 1 46%}
       .btns button#btn_preparar{flex-basis:100%}
@@ -111,16 +134,17 @@ def register_kds_routes(app: Flask) -> None:
   </style>
 </head>
 <body>
-  <div class=\"wrap\">
-    <div class=\"card\">
-      <div style=\"display:flex;justify-content:space-between;align-items:center;\">
-        <div>
-          <div style=\"font-weight:900;font-size:18px\">Cozinha</div>
-          <div class=\"muted\" style=\"font-size:13px\">Painel (em implantação)</div>
-        </div>
-        <form method=\"post\" action=\"/ops/logout\"><button class=\"secondary\" type=\"submit\" style=\"min-width:auto\">Sair</button></form>
+  <div class="topbar">
+    <div class="inner">
+      <div>
+        <div class="top-title">Cozinha</div>
+        <div class="top-sub">Painel operacional</div>
       </div>
+      <form method="post" action="/ops/logout"><button class="secondary" type="submit" style="min-width:auto">Sair</button></form>
     </div>
+  </div>
+
+  <div class=\"wrap\">
 
     <div class=\"card\" id=\"pedido\">
       <div class="muted" id="stats">Carregando...</div>
@@ -252,11 +276,15 @@ def register_kds_routes(app: Flask) -> None:
         + top.map(p => {
           const id = (p && p.id) ? String(p.id) : '';
           const cliente = safeText(p && p.cliente_nome);
-          return '<div class="card" style="padding:10px;margin:10px 0;background:#0f0f12">'
-            + '<div style="font-weight:800">Pedido ' + id + '</div>'
-            + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
+          const isSel = (currentId && id && String(id) === String(currentId));
+          const pill = isSel ? '<span class="pill sel" style="margin-left:8px">SELECIONADO</span>' : '';
+          return '<div class="queue-item' + (isSel ? ' selected' : '') + '">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
+            + '<div style="font-weight:900">Pedido ' + id + pill + '</div>'
+            + '</div>'
+            + (cliente ? ('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>') : '')
             + '<div class="btns" style="margin-top:10px">'
-            + '<button type="button" class="secondary" data-select="' + id + '">Selecionar</button>'
+            + '<button type="button" class="secondary" data-select="' + id + '"' + (isSel ? ' disabled' : '') + '>Selecionar</button>'
             + '<button type="button" class="secondary" data-skip="' + id + '">Pular</button>'
             + '</div>'
             + '</div>';
@@ -269,6 +297,7 @@ def register_kds_routes(app: Flask) -> None:
           if (!sid) return;
           btn.disabled = true;
           try {
+            currentId = String(sid);
             await fetch('/api/kds/' + encodeURIComponent(sid) + '/selecionar', {method: 'POST'});
             await load();
           } finally {

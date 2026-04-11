@@ -145,28 +145,53 @@ def register_logistica_routes(app: Flask) -> None:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Entregas</title>
   <style>
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:#0b0b0c;color:#fff}
-    .wrap{max-width:720px;margin:0 auto}
-    .card{background:#151518;border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:12px;margin:10px 0}
+    :root{
+      --bg:#0b0b0c;
+      --card:#151518;
+      --card2:#0f0f12;
+      --border:rgba(255,255,255,0.10);
+      --text:#ffffff;
+      --btn:#ffffff;
+      --btnText:#111111;
+      --btn2:#2a2a2f;
+      --accent:#22c55e;
+    }
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);color:var(--text);line-height:1.35;padding-bottom:34px}
+    .wrap{max-width:760px;margin:0 auto}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin:10px 0}
+    .topbar{position:sticky;top:-1px;z-index:10;background:rgba(11,11,12,0.92);backdrop-filter:blur(10px);padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+    .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
+    .top-title{font-weight:900;font-size:18px}
+    .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     h1{font-size:18px;margin:0}
-    .muted{opacity:.75}
+    .muted{opacity:.78}
     .list{margin-top:10px;display:flex;flex-direction:column;gap:10px}
-    .item{padding:12px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:#0f0f12}
+    .item{padding:12px;border:1px solid rgba(255,255,255,0.08);border-radius:14px;background:var(--card2)}
     .item.delivered{opacity:.72;border-color:rgba(255,255,255,0.14)}
-    button{font-size:16px;padding:10px 12px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
-    button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
-    a.wa{display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:10px 12px;border-radius:12px;font-weight:900}
+    button{font-size:16px;padding:12px 14px;border-radius:14px;border:0;background:var(--btn);color:var(--btnText);font-weight:900}
+    button.secondary{background:var(--btn2);color:#fff;font-weight:800}
+    button:disabled{opacity:.55}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(37,211,102,0.14);border:1px solid rgba(37,211,102,0.28);color:#d9ffe8;padding:12px 12px;border-radius:14px;font-weight:900;width:100%;box-sizing:border-box}
+
+    @media (max-width: 520px) {
+      body{padding:12px;padding-bottom:38px}
+      .topbar .inner{padding:0 12px}
+      button{padding:14px 14px}
+    }
   </style>
 </head>
 <body>
-  <div class=\"wrap\">
-    <div class=\"card\" style=\"display:flex;justify-content:space-between;align-items:center;\">
+  <div class="topbar">
+    <div class="inner">
       <div>
-        <h1>Entregas</h1>
-        <div class=\"muted\" style=\"font-size:13px\">Fila e corridas (em implantação)</div>
+        <div class="top-title">Entregas</div>
+        <div class="top-sub">Fila e corridas</div>
       </div>
-      <form method=\"post\" action=\"/ops/logout\"><button class=\"secondary\" type=\"submit\">Sair</button></form>
+      <form method="post" action="/ops/logout"><button class="secondary" type="submit">Sair</button></form>
     </div>
+  </div>
+
+  <div class=\"wrap\">
 
     <div class=\"card\">
       <div class=\"muted\">Pedidos prontos para entrega:</div>
@@ -271,10 +296,14 @@ def register_logistica_routes(app: Flask) -> None:
 
     function renderProntos(pedidos) {
       const arr = Array.isArray(pedidos) ? pedidos : [];
+      const nowLabel = (() => {
+        try { return new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); } catch (e) { return ''; }
+      })();
       if (arr.length === 0) {
-        prontosEl.innerHTML = '<div class="muted">Nenhum pedido pronto.</div>';
+        prontosEl.innerHTML = '<div class="muted">Nenhum pedido pronto. ' + (nowLabel ? ('<span style="opacity:.75">(atualizado ' + nowLabel + ')</span>') : '') + '</div>';
         return;
       }
+      const head = '<div class="muted" style="margin-bottom:10px">Prontos: ' + arr.length + (nowLabel ? (' • atualizado ' + nowLabel) : '') + '</div>';
       prontosEl.innerHTML = arr.map(p => {
         const id = (p && p.id) ? String(p.id) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
@@ -322,6 +351,7 @@ def register_logistica_routes(app: Flask) -> None:
           + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
           + '</div>';
       }).join('');
+      prontosEl.innerHTML = head + prontosEl.innerHTML;
       prontosEl.querySelectorAll('button[data-id]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const sid = btn.getAttribute('data-id');
@@ -493,6 +523,16 @@ def register_logistica_routes(app: Flask) -> None:
       }
     }
 
+    function startAutoRefresh() {
+      try {
+        load();
+        setInterval(() => {
+          try { load(); } catch (e) {}
+        }, 2500);
+      } catch (e) {
+      }
+    }
+
     function formatElapsedFromIso(iso) {
       try {
         const t0 = Date.parse(String(iso || ''));
@@ -549,7 +589,7 @@ def register_logistica_routes(app: Flask) -> None:
       }
     });
 
-    load();
+    startAutoRefresh();
   </script>
 </body>
 </html>"""
