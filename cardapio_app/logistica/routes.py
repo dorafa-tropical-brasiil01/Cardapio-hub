@@ -146,37 +146,44 @@ def register_logistica_routes(app: Flask) -> None:
   <title>Entregas</title>
   <style>
     :root{
-      --bg:#0b0b0c;
-      --card:#151518;
-      --card2:#0f0f12;
-      --border:rgba(255,255,255,0.10);
-      --text:#ffffff;
-      --btn:#ffffff;
-      --btnText:#111111;
-      --btn2:#2a2a2f;
-      --accent:#22c55e;
+      --verde: #0a5c2f;
+      --amarelo: #fefecf;
+      --bg: #d9f3a2;
+      --bg2: #f6e27f;
+      --card: rgba(254, 254, 207, 0.92);
+      --card2: rgba(254, 254, 207, 0.78);
+      --border: rgba(10, 92, 47, 0.35);
+      --text: #0a5c2f;
     }
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);color:var(--text);line-height:1.35;padding-bottom:34px}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:linear-gradient(var(--bg), var(--bg2));background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin:10px 0}
-    .topbar{position:sticky;top:-1px;z-index:10;background:rgba(11,11,12,0.92);backdrop-filter:blur(10px);padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+    .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
+    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
     .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
     .top-title{font-weight:900;font-size:18px}
     .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     h1{font-size:18px;margin:0}
     .muted{opacity:.78}
     .list{margin-top:10px;display:flex;flex-direction:column;gap:10px}
-    .item{padding:12px;border:1px solid rgba(255,255,255,0.08);border-radius:14px;background:var(--card2)}
+    .item{padding:12px;border:2px solid rgba(10, 92, 47, 0.22);border-radius:18px;background:var(--card2)}
     .item.delivered{opacity:.72;border-color:rgba(255,255,255,0.14)}
-    button{font-size:16px;padding:12px 14px;border-radius:14px;border:0;background:var(--btn);color:var(--btnText);font-weight:900}
-    button.secondary{background:var(--btn2);color:#fff;font-weight:800}
+    button{font-size:16px;padding:15px 18px;border-radius:20px;border:0;background:var(--verde);color:#fff;font-weight:900;cursor:pointer}
+    button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
-    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(37,211,102,0.14);border:1px solid rgba(37,211,102,0.28);color:#d9ffe8;padding:12px 12px;border-radius:14px;font-weight:900;width:100%;box-sizing:border-box}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box}
+
+    #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
+    #bottomBarInner{width:min(920px, 92%);margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:stretch}
+    .bottom-action{flex:1 1 0;min-width:0;background:var(--amarelo);color:var(--verde);border:none;border-radius:14px;height:46px;padding:0 10px;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,0.18);user-select:none;-webkit-tap-highlight-color:transparent;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box}
+    .bottom-action.secondary{background:rgba(254,254,207,0.92)}
 
     @media (max-width: 520px) {
       body{padding:12px;padding-bottom:38px}
       .topbar .inner{padding:0 12px}
       button{padding:14px 14px}
+      #bottomBar{height:66px}
+      #bottomBarInner{width:92%;gap:6px}
+      .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
     }
   </style>
 </head>
@@ -220,6 +227,21 @@ def register_logistica_routes(app: Flask) -> None:
     const btnFinish = document.getElementById('btn_finish');
     const btnNew = document.getElementById('btn_new');
     const toastEl = document.getElementById('toast');
+
+    try {
+      window.addEventListener('error', (ev) => {
+        try {
+          const msg = (ev && ev.message) ? String(ev.message) : 'Erro de script.';
+          showToast(msg);
+        } catch (e) {}
+      });
+      window.addEventListener('unhandledrejection', (ev) => {
+        try {
+          const reason = (ev && ev.reason) ? String(ev.reason) : 'Falha inesperada.';
+          showToast(reason);
+        } catch (e) {}
+      });
+    } catch (e) {}
 
     let corridaTimerHandle = null;
     let corridaSnapshot = null;
@@ -591,6 +613,14 @@ def register_logistica_routes(app: Flask) -> None:
 
     startAutoRefresh();
   </script>
+
+  <div id="bottomBar">
+    <div id="bottomBarInner">
+      <button id="btn_start" type="button" class="bottom-action secondary">Iniciar</button>
+      <button id="btn_finish" type="button" class="bottom-action secondary">Finalizar</button>
+      <button id="btn_new" type="button" class="bottom-action">Nova</button>
+    </div>
+  </div>
 </body>
 </html>"""
         resp = make_response(html, 200)

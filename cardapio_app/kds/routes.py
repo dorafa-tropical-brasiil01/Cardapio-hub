@@ -90,38 +90,40 @@ def register_kds_routes(app: Flask) -> None:
   <title>Cozinha</title>
   <style>
     :root{
-      --bg:#0b0b0c;
-      --card:#151518;
-      --card2:#0f0f12;
-      --border:rgba(255,255,255,0.10);
-      --muted:rgba(255,255,255,0.78);
-      --text:#ffffff;
-      --btn:#ffffff;
-      --btnText:#111111;
-      --btn2:#2a2a2f;
-      --accent:#22c55e;
-      --accentBg:rgba(34,197,94,0.10);
+      --verde: #0a5c2f;
+      --amarelo: #fefecf;
+      --bg: #d9f3a2;
+      --bg2: #f6e27f;
+      --card: rgba(254, 254, 207, 0.92);
+      --card2: rgba(254, 254, 207, 0.78);
+      --border: rgba(10, 92, 47, 0.35);
+      --text: #0a5c2f;
     }
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);color:var(--text);line-height:1.35;padding-bottom:34px}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:linear-gradient(var(--bg), var(--bg2));background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;margin:10px 0}
-    .topbar{position:sticky;top:-1px;z-index:10;background:rgba(11,11,12,0.92);backdrop-filter:blur(10px);padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06)}
+    .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
+    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
     .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
     .top-title{font-weight:900;font-size:18px}
     .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    button{flex:1;min-width:140px;font-size:16px;padding:12px 14px;border-radius:14px;border:0;background:var(--btn);color:var(--btnText);font-weight:900}
-    button.secondary{background:var(--btn2);color:#fff;font-weight:800}
+    button{flex:1;min-width:140px;font-size:16px;padding:15px 18px;border-radius:20px;border:0;background:var(--verde);color:#fff;font-weight:900;cursor:pointer}
+    button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
-    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(37,211,102,0.14);border:1px solid rgba(37,211,102,0.28);color:#d9ffe8;padding:12px 12px;border-radius:14px;font-weight:900;width:100%;box-sizing:border-box}
-    a.wa.discreet{padding:10px 12px;font-weight:900;opacity:.98}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box}
+    a.wa.discreet{padding:14px 16px;font-weight:900;opacity:1}
     .muted{opacity:.78}
 
-    .actions{position:sticky;bottom:-1px;background:rgba(21,21,24,0.96);backdrop-filter:blur(10px);border-top:1px solid rgba(255,255,255,0.10);padding-top:10px;margin-top:12px;border-radius:14px}
-    .queue-item{padding:10px;margin:10px 0;background:var(--card2);border:1px solid rgba(255,255,255,0.08);border-radius:14px}
-    .queue-item.selected{border-color:rgba(34,197,94,0.55);box-shadow:0 0 0 2px rgba(34,197,94,0.12) inset}
+    .queue-item{padding:12px;margin:10px 0;background:var(--card2);border:2px solid rgba(10, 92, 47, 0.22);border-radius:18px}
+    .queue-item.selected{border-color:rgba(47,158,68,0.75);box-shadow:0 0 0 3px rgba(47,158,68,0.14) inset}
     .pill{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.06)}
-    .pill.sel{border-color:rgba(34,197,94,0.50);background:rgba(34,197,94,0.12)}
+    .pill{background:rgba(10, 92, 47, 0.08);border:1px solid rgba(10, 92, 47, 0.35);color:var(--verde)}
+    .pill.sel{background:var(--verde);border-color:var(--verde);color:#fff}
+
+    #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
+    #bottomBarInner{width:min(920px, 92%);margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:stretch}
+    .bottom-action{flex:1 1 0;min-width:0;background:var(--amarelo);color:var(--verde);border:none;border-radius:14px;height:46px;padding:0 10px;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,0.18);user-select:none;-webkit-tap-highlight-color:transparent;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box}
+    .bottom-action.secondary{background:rgba(254,254,207,0.92)}
 
     @media (max-width: 520px) {
       body{padding:12px;padding-bottom:38px}
@@ -130,6 +132,9 @@ def register_kds_routes(app: Flask) -> None:
       button{min-width:0;font-size:16px;padding:14px 14px}
       .btns button{flex:1 1 46%}
       .btns button#btn_preparar{flex-basis:100%}
+      #bottomBar{height:66px}
+      #bottomBarInner{width:92%;gap:6px}
+      .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
     }
   </style>
 </head>
@@ -151,11 +156,14 @@ def register_kds_routes(app: Flask) -> None:
       <div style="margin-top:10px" id="pedido_box"></div>
       <div style="margin-top:10px" id="wa_box"></div>
       <div style="margin-top:12px" id="fila_box"></div>
-      <div class="btns actions">
-        <button id="btn_preparar" type="button">Preparar Pedido</button>
-        <button id="btn_pronto" type="button" class="secondary">Pedido Pronto</button>
-        <button id="btn_proximo" type="button" class="secondary">Próximo Pedido</button>
-      </div>
+    </div>
+  </div>
+
+  <div id="bottomBar">
+    <div id="bottomBarInner">
+      <button id="btn_preparar" type="button" class="bottom-action">Preparar</button>
+      <button id="btn_pronto" type="button" class="bottom-action secondary">Pronto</button>
+      <button id="btn_proximo" type="button" class="bottom-action secondary">Próximo</button>
     </div>
   </div>
   <script>

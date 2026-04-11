@@ -602,17 +602,10 @@ def kds_get_current_for_user(*, ops_user_id: int) -> dict[str, Any] | None:
             if row:
                 return dict(row)
 
-            cur.execute(
-                """
-                SELECT *
-                FROM kds_orders
-                WHERE status='AGUARDANDO'
-                ORDER BY created_em ASC
-                LIMIT 1
-                """
-            )
-            row2 = cur.fetchone()
-            return dict(row2) if row2 else None
+            # IMPORTANTE: não selecionar automaticamente o próximo pedido.
+            # O fluxo operacional do KDS pode exigir seleção manual (ex.: quando o operador conclui um pedido,
+            # ele escolhe conscientemente o próximo na fila). Assim evitamos "auto-pegar" pedidos.
+            return None
 
 
 def kds_start_order(*, solicitacao_id: str, ops_user_id: int) -> None:
