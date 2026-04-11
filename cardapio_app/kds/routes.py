@@ -99,7 +99,7 @@ def register_kds_routes(app: Flask) -> None:
       --border: rgba(10, 92, 47, 0.35);
       --text: #0a5c2f;
     }
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:linear-gradient(var(--bg), var(--bg2));background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
     .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
     .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
@@ -134,7 +134,7 @@ def register_kds_routes(app: Flask) -> None:
       .btns button#btn_preparar{flex-basis:100%}
       #bottomBar{height:66px}
       #bottomBarInner{width:92%;gap:6px}
-      .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
+      .bottom-action{height:42px;font-size:14px;padding:0 8px;gap:6px;border-radius:12px}
     }
   </style>
 </head>

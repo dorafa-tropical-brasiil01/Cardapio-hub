@@ -155,7 +155,7 @@ def register_logistica_routes(app: Flask) -> None:
       --border: rgba(10, 92, 47, 0.35);
       --text: #0a5c2f;
     }
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:linear-gradient(var(--bg), var(--bg2));background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
     .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
     .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
@@ -226,6 +226,9 @@ def register_logistica_routes(app: Flask) -> None:
     const btnStart = document.getElementById('btn_start');
     const btnFinish = document.getElementById('btn_finish');
     const btnNew = document.getElementById('btn_new');
+    const btnStartBottom = document.getElementById('btn_start_bottom');
+    const btnFinishBottom = document.getElementById('btn_finish_bottom');
+    const btnNewBottom = document.getElementById('btn_new_bottom');
     const toastEl = document.getElementById('toast');
 
     try {
@@ -284,36 +287,52 @@ def register_logistica_routes(app: Flask) -> None:
       const items = (c && Array.isArray(c.items)) ? c.items : [];
 
       if (!hasRun) {
-        btnStart.disabled = true;
-        btnFinish.disabled = true;
-        btnNew.disabled = false;
+        if (btnStart) btnStart.disabled = true;
+        if (btnFinish) btnFinish.disabled = true;
+        if (btnNew) btnNew.disabled = false;
+        if (btnStartBottom) btnStartBottom.disabled = true;
+        if (btnFinishBottom) btnFinishBottom.disabled = true;
+        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
       if (status === 'MONTANDO') {
-        btnStart.disabled = (items.length === 0);
-        btnFinish.disabled = true;
-        btnNew.disabled = false;
+        const startDisabled = (items.length === 0);
+        if (btnStart) btnStart.disabled = startDisabled;
+        if (btnFinish) btnFinish.disabled = true;
+        if (btnNew) btnNew.disabled = false;
+        if (btnStartBottom) btnStartBottom.disabled = startDisabled;
+        if (btnFinishBottom) btnFinishBottom.disabled = true;
+        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
       if (status === 'EM_ANDAMENTO') {
-        btnStart.disabled = true;
-        btnFinish.disabled = false;
-        btnNew.disabled = true;
+        if (btnStart) btnStart.disabled = true;
+        if (btnFinish) btnFinish.disabled = false;
+        if (btnNew) btnNew.disabled = true;
+        if (btnStartBottom) btnStartBottom.disabled = true;
+        if (btnFinishBottom) btnFinishBottom.disabled = false;
+        if (btnNewBottom) btnNewBottom.disabled = true;
         return;
       }
 
       if (status === 'FINALIZADA') {
-        btnStart.disabled = true;
-        btnFinish.disabled = true;
-        btnNew.disabled = false;
+        if (btnStart) btnStart.disabled = true;
+        if (btnFinish) btnFinish.disabled = true;
+        if (btnNew) btnNew.disabled = false;
+        if (btnStartBottom) btnStartBottom.disabled = true;
+        if (btnFinishBottom) btnFinishBottom.disabled = true;
+        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
-      btnStart.disabled = true;
-      btnFinish.disabled = true;
-      btnNew.disabled = false;
+      if (btnStart) btnStart.disabled = true;
+      if (btnFinish) btnFinish.disabled = true;
+      if (btnNew) btnNew.disabled = false;
+      if (btnStartBottom) btnStartBottom.disabled = true;
+      if (btnFinishBottom) btnFinishBottom.disabled = true;
+      if (btnNewBottom) btnNewBottom.disabled = false;
     }
 
     function renderProntos(pedidos) {
@@ -575,50 +594,71 @@ def register_logistica_routes(app: Flask) -> None:
       }
     }
 
-    btnStart.addEventListener('click', async () => {
-      btnStart.disabled = true;
+    function bindBtn(el, handler) {
+      if (!el) return;
+      try {
+        el.addEventListener('click', handler);
+      } catch (e) {
+      }
+    }
+
+    async function onStart() {
+      if (btnStart) btnStart.disabled = true;
+      if (btnStartBottom) btnStartBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/start', {method:'POST'});
         await load();
       } catch (e) {
         showToast((e && e.error) ? e.error : 'Falha ao iniciar corrida.');
       } finally {
-        btnStart.disabled = false;
+        if (btnStart) btnStart.disabled = false;
+        if (btnStartBottom) btnStartBottom.disabled = false;
       }
-    });
+    }
 
-    btnFinish.addEventListener('click', async () => {
-      btnFinish.disabled = true;
+    async function onFinish() {
+      if (btnFinish) btnFinish.disabled = true;
+      if (btnFinishBottom) btnFinishBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/finish', {method:'POST'});
         await load();
       } catch (e) {
         showToast((e && e.error) ? e.error : 'Falha ao finalizar corrida.');
       } finally {
-        btnFinish.disabled = false;
+        if (btnFinish) btnFinish.disabled = false;
+        if (btnFinishBottom) btnFinishBottom.disabled = false;
       }
-    });
+    }
 
-    btnNew.addEventListener('click', async () => {
-      btnNew.disabled = true;
+    async function onNew() {
+      if (btnNew) btnNew.disabled = true;
+      if (btnNewBottom) btnNewBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/nova', {method:'POST'});
         await load();
       } catch (e) {
         showToast((e && e.error) ? e.error : 'Falha ao criar nova corrida.');
       } finally {
-        btnNew.disabled = false;
+        if (btnNew) btnNew.disabled = false;
+        if (btnNewBottom) btnNewBottom.disabled = false;
       }
-    });
+    }
+
+    bindBtn(btnStart, onStart);
+    bindBtn(btnStartBottom, onStart);
+    bindBtn(btnFinish, onFinish);
+    bindBtn(btnFinishBottom, onFinish);
+    bindBtn(btnNew, onNew);
+    bindBtn(btnNewBottom, onNew);
 
     startAutoRefresh();
   </script>
 
   <div id="bottomBar">
     <div id="bottomBarInner">
-      <button id="btn_start" type="button" class="bottom-action secondary">Iniciar</button>
-      <button id="btn_finish" type="button" class="bottom-action secondary">Finalizar</button>
-      <button id="btn_new" type="button" class="bottom-action">Nova</button>
+      <button id="btn_start_bottom" type="button" class="bottom-action secondary">Iniciar</button>
+      <button id="btn_finish_bottom" type="button" class="bottom-action secondary">Finalizar</button>
+      <button id="btn_new_bottom" type="button" class="bottom-action">Nova</button>
     </div>
   </div>
 </body>
