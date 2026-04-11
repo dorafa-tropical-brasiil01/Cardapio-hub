@@ -249,6 +249,17 @@ def register_logistica_routes(app: Flask) -> None:
     let corridaTimerHandle = null;
     let corridaSnapshot = null;
 
+    function fatal(msg) {
+      const t = String(msg || '').trim() || 'Falha inesperada.';
+      try {
+        if (prontosEl) prontosEl.innerText = t;
+      } catch (e) {}
+      try {
+        if (corridaMeta) corridaMeta.innerText = t;
+      } catch (e) {}
+      try { showToast(t); } catch (e) {}
+    }
+
     function showToast(msg) {
       const t = String(msg || '').trim();
       if (!toastEl) return;
@@ -651,7 +662,21 @@ def register_logistica_routes(app: Flask) -> None:
     bindBtn(btnNew, onNew);
     bindBtn(btnNewBottom, onNew);
 
-    startAutoRefresh();
+    try {
+      if (!prontosEl || !corridaMeta || !corridaItens) {
+        fatal('Falha ao iniciar: elementos da página não encontrados.');
+      } else {
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', () => {
+            try { startAutoRefresh(); } catch (e) { fatal('Falha ao iniciar: ' + e); }
+          });
+        } else {
+          startAutoRefresh();
+        }
+      }
+    } catch (e) {
+      fatal('Falha ao iniciar: ' + e);
+    }
   </script>
 
   <div id="bottomBar">
