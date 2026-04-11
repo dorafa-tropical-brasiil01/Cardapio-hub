@@ -221,6 +221,64 @@ def read_catalogo_publicado(ctx: AppContext) -> dict[str, Any]:
     return ensure_catalogo_publicado_file(ctx)
 
 
+def _weekday_key_from_datetime(dt: datetime) -> str:
+    wd = int(dt.weekday())
+    if wd == 0:
+        return "seg"
+    if wd == 1:
+        return "ter"
+    if wd == 2:
+        return "qua"
+    if wd == 3:
+        return "qui"
+    if wd == 4:
+        return "sex"
+    if wd == 5:
+        return "sab"
+    return "dom"
+
+
+def get_local_now(*, tz_name: str | None) -> datetime:
+    tz_raw = str(tz_name or "").strip() or "America/Sao_Paulo"
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.now(ZoneInfo(tz_raw))
+    except Exception:
+        return datetime.now()
+
+
+def filter_catalogo_items_by_weekday(*, items: list[dict[str, Any]], tz_name: str | None) -> list[dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+
+    now = get_local_now(tz_name=tz_name)
+    wd_key = _weekday_key_from_datetime(now)
+
+    map_field = {
+        "seg": "cardapioSeg",
+        "ter": "cardapioTer",
+        "qua": "cardapioQua",
+        "qui": "cardapioQui",
+        "sex": "cardapioSex",
+        "sab": "cardapioSab",
+        "dom": "cardapioDom",
+    }
+    field = map_field.get(wd_key) or "cardapioSeg"
+
+    out: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        # Retrocompatibilidade: se não existir campo do dia, assume True.
+        if it.get(field) is None:
+            out.append(it)
+            continue
+        if bool(it.get(field)):
+            out.append(it)
+    return out
+
+
 def save_catalogo_publicado(*, ctx: AppContext, record: dict[str, Any]) -> None:
     if not isinstance(record, dict):
         return
