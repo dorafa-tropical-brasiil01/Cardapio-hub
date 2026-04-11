@@ -82,7 +82,7 @@ def register_kds_routes(app: Flask) -> None:
         if denied is not None:
             return denied
 
-        html = """<!doctype html>
+        html = r"""<!doctype html>
 <html lang=\"pt-BR\">
 <head>
   <meta charset=\"utf-8\" />

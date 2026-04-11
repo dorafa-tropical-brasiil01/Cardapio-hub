@@ -138,7 +138,7 @@ def register_logistica_routes(app: Flask) -> None:
         if denied is not None:
             return denied
 
-        html = """<!doctype html>
+        html = r"""<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
@@ -350,7 +350,9 @@ def register_logistica_routes(app: Flask) -> None:
       }
       const r = (c && c.resumo) ? c.resumo : null;
       const resumoTxt = (r && (r.total !== undefined))
-        ? (' | Itens: ' + (r.total ?? 0) + ' | Entregues: ' + (r.entregues ?? 0) + ' | Pendentes: ' + (r.pendentes ?? 0))
+        ? (' | Itens: ' + ((r.total !== undefined && r.total !== null) ? r.total : 0)
+          + ' | Entregues: ' + ((r.entregues !== undefined && r.entregues !== null) ? r.entregues : 0)
+          + ' | Pendentes: ' + ((r.pendentes !== undefined && r.pendentes !== null) ? r.pendentes : 0))
         : '';
 
       const isRunning = (String(c.status || '').toUpperCase() === 'EM_ANDAMENTO');
@@ -365,7 +367,9 @@ def register_logistica_routes(app: Flask) -> None:
           if (!corridaSnapshot || !corridaSnapshot.id) return;
           const rr = (corridaSnapshot && corridaSnapshot.resumo) ? corridaSnapshot.resumo : null;
           const resumoTxt2 = (rr && (rr.total !== undefined))
-            ? (' | Itens: ' + (rr.total ?? 0) + ' | Entregues: ' + (rr.entregues ?? 0) + ' | Pendentes: ' + (rr.pendentes ?? 0))
+            ? (' | Itens: ' + ((rr.total !== undefined && rr.total !== null) ? rr.total : 0)
+              + ' | Entregues: ' + ((rr.entregues !== undefined && rr.entregues !== null) ? rr.entregues : 0)
+              + ' | Pendentes: ' + ((rr.pendentes !== undefined && rr.pendentes !== null) ? rr.pendentes : 0))
             : '';
           corridaMeta.innerText = 'Corrida #' + corridaSnapshot.id + ' | Status: ' + (corridaSnapshot.status || '')
             + ' | Tempo: ' + formatElapsedFromIso(startedEm)
