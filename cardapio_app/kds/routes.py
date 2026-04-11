@@ -95,6 +95,8 @@ def register_kds_routes(app: Flask) -> None:
     .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     button{flex:1;min-width:140px;font-size:16px;padding:12px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
     button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
+    a.wa{display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:10px 12px;border-radius:12px;font-weight:800}
+    a.wa.discreet{padding:8px 10px;font-weight:700;opacity:.9}
     .muted{opacity:.75}
   </style>
 </head>
@@ -111,13 +113,14 @@ def register_kds_routes(app: Flask) -> None:
     </div>
 
     <div class=\"card\" id=\"pedido\">
-      <div class=\"muted\" id=\"stats\">Carregando...</div>
-      <div style=\"margin-top:10px\" id=\"pedido_box\"></div>
-      <div style=\"margin-top:12px\" id=\"fila_box\"></div>
-      <div class=\"btns\">
-        <button id=\"btn_preparar\" type=\"button\">Preparar Pedido</button>
-        <button id=\"btn_pronto\" type=\"button\" class=\"secondary\">Pedido Pronto</button>
-        <button id=\"btn_proximo\" type=\"button\" class=\"secondary\">Próximo Pedido</button>
+      <div class="muted" id="stats">Carregando...</div>
+      <div style="margin-top:10px" id="pedido_box"></div>
+      <div style="margin-top:10px" id="wa_box"></div>
+      <div style="margin-top:12px" id="fila_box"></div>
+      <div class="btns">
+        <button id="btn_preparar" type="button">Preparar Pedido</button>
+        <button id="btn_pronto" type="button" class="secondary">Pedido Pronto</button>
+        <button id="btn_proximo" type="button" class="secondary">Próximo Pedido</button>
       </div>
     </div>
   </div>
@@ -125,6 +128,7 @@ def register_kds_routes(app: Flask) -> None:
     let currentId = '';
     const statsEl = document.getElementById('stats');
     const pedidoBox = document.getElementById('pedido_box');
+    const waBox = document.getElementById('wa_box');
     const filaBox = document.getElementById('fila_box');
     const btnPreparar = document.getElementById('btn_preparar');
     const btnPronto = document.getElementById('btn_pronto');
@@ -138,6 +142,15 @@ def register_kds_routes(app: Flask) -> None:
 
     function safeText(x) {
       return (x === null || x === undefined) ? '' : String(x);
+    }
+
+    function waUrl(phone, msg) {
+      const digits = String(phone || '').replace(/\D+/g, '');
+      if (!digits) return '';
+      let url = 'https://wa.me/' + digits;
+      const m = String(msg || '').trim();
+      if (m) url += '?text=' + encodeURIComponent(m);
+      return url;
     }
 
     function renderItens(itens) {
@@ -157,10 +170,12 @@ def register_kds_routes(app: Flask) -> None:
       if (!p || !p.id) {
         currentId = '';
         pedidoBox.innerHTML = '<div class="muted">Sem pedidos na fila.</div>';
+        if (waBox) waBox.innerHTML = '';
         return;
       }
       currentId = String(p.id);
       const cliente = safeText(p.cliente_nome);
+      const whatsapp = safeText(p.cliente_whatsapp);
       const tipo = safeText(p.tipo_entrega || p.kind);
       const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
       const obs = safeText(p.observacoes || p.obs || p.observacao);
@@ -199,6 +214,18 @@ def register_kds_routes(app: Flask) -> None:
         pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
       }
       pedidoBox.innerHTML += renderItens(p.itens);
+
+      if (waBox) {
+        const url = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        if (url) {
+          waBox.innerHTML = '<a class="wa discreet" target="_blank" rel="noopener" href="' + url + '">'
+            + '<span aria-hidden="true" style="font-size:16px">🟢</span>'
+            + '<span>Falar com o Cliente</span>'
+            + '</a>';
+        } else {
+          waBox.innerHTML = '';
+        }
+      }
     }
 
     function renderFila(fila) {

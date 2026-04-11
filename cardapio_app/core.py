@@ -390,6 +390,25 @@ def is_valid_whatsapp(value: Any) -> bool:
     return True
 
 
+def whatsapp_digits(value: Any) -> str:
+    return re.sub(r"\D+", "", str(value or "").strip())
+
+
+def whatsapp_wa_me_url(*, phone: Any, message: str | None = None) -> str:
+    digits = whatsapp_digits(phone)
+    if not digits:
+        return ""
+    url = f"https://wa.me/{digits}"
+    msg = str(message or "").strip()
+    if not msg:
+        return url
+    try:
+        q = urllib.parse.quote(msg)
+    except Exception:
+        q = ""
+    return url + (f"?text={q}" if q else "")
+
+
 def is_localhost() -> bool:
     ip = (request.remote_addr or "").strip()
     return ip in ("127.0.0.1", "::1")
@@ -522,6 +541,10 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"Cliente: {cliente_nome}")
     lines.append(f"WhatsApp: {whatsapp}")
+
+    wa_url = whatsapp_wa_me_url(phone=whatsapp, message="Olá! Estamos entrando em contato sobre seu pedido.")
+    if wa_url:
+        lines.append(f"Falar com o cliente: {wa_url}")
     lines.append("")
 
     itens = record.get("itens") if isinstance(record.get("itens"), list) else []

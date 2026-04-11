@@ -120,6 +120,7 @@ def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
 
     pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
     cliente = str(pedido.get("cliente_nome") or "").strip()
+    whatsapp = str(pedido.get("cliente_whatsapp") or "").strip()
     tipo = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
     taxa = pedido.get("taxa_entrega")
     try:
@@ -133,6 +134,9 @@ def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
     msg_lines.append(f"Pedido: {sid}")
     if cliente:
         msg_lines.append(f"Cliente: {cliente}")
+    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message="Olá! Estamos entrando em contato sobre seu pedido.")
+    if wa_url:
+        msg_lines.append(f"Falar com o cliente: {wa_url}")
     if tipo:
         msg_lines.append(f"Tipo: {tipo}")
     if taxa_f is not None:

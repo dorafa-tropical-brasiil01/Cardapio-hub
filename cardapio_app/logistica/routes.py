@@ -155,6 +155,7 @@ def register_logistica_routes(app: Flask) -> None:
     .item.delivered{opacity:.72;border-color:rgba(255,255,255,0.14)}
     button{font-size:16px;padding:10px 12px;border-radius:12px;border:0;background:#fff;color:#111;font-weight:800}
     button.secondary{background:#2a2a2f;color:#fff;font-weight:700}
+    a.wa{display:inline-flex;align-items:center;gap:8px;text-decoration:none;background:#0f2a17;border:1px solid rgba(37,211,102,0.25);color:#d9ffe8;padding:10px 12px;border-radius:12px;font-weight:900}
   </style>
 </head>
 <body>
@@ -209,6 +210,15 @@ def register_logistica_routes(app: Flask) -> None:
         toastEl.style.display = 'none';
         toastEl.innerText = '';
       }, 5500);
+    }
+
+    function waUrl(phone, msg) {
+      const digits = String(phone || '').replace(/\D+/g, '');
+      if (!digits) return '';
+      let url = 'https://wa.me/' + digits;
+      const m = String(msg || '').trim();
+      if (m) url += '?text=' + encodeURIComponent(m);
+      return url;
     }
 
     async function api(url, opts) {
@@ -268,6 +278,7 @@ def register_logistica_routes(app: Flask) -> None:
       prontosEl.innerHTML = arr.map(p => {
         const id = (p && p.id) ? String(p.id) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
+        const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
         const enderecoRaw = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))) || null;
         const endereco = (() => {
@@ -299,12 +310,15 @@ def register_logistica_routes(app: Flask) -> None:
           const label = nome || code || 'Item';
           return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
         }).join('');
+        const wa = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + id + '</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
           + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
+          + waHtml
           + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
           + '</div>';
       }).join('');
@@ -369,6 +383,7 @@ def register_logistica_routes(app: Flask) -> None:
         const deliveredEm = (it && it.delivered_em) ? String(it.delivered_em) : '';
         const p = (it && it.pedido) ? it.pedido : null;
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
+        const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
         const endereco = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco)))
           ? String(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))
@@ -382,6 +397,9 @@ def register_logistica_routes(app: Flask) -> None:
           return '<div class="muted">- ' + label + (qty ? (' x' + qty) : '') + '</div>';
         }).join('');
         const isDelivered = !!deliveredEm;
+
+        const wa = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
+        const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
 
         const btnLabel = isRunning ? 'Devolver' : 'Remover';
         const btnAttr = isRunning ? 'data-return' : 'data-remove';
@@ -400,6 +418,7 @@ def register_logistica_routes(app: Flask) -> None:
           + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
+          + waHtml
           + deliveredHtml
           + '<div style="margin-top:10px"><button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button></div>'
           + '</div>';
