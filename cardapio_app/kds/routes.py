@@ -244,7 +244,7 @@ def register_kds_routes(app: Flask) -> None:
         return out.join('\n').trim();
       })();
       const headLines = [];
-      headLines.push('<div style="font-weight:900;font-size:16px">Pedido ' + currentId + '</div>');
+      headLines.push('<div style="font-weight:900;font-size:16px">Pedido</div>');
       if (cliente) headLines.push('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>');
       if (tipo) headLines.push('<div class="muted">Tipo: ' + tipo + '</div>');
       if (status) headLines.push('<div class="muted">KDS: ' + status + '</div>');
@@ -288,7 +288,7 @@ def register_kds_routes(app: Flask) -> None:
           const pill = isSel ? '<span class="pill sel" style="margin-left:8px">SELECIONADO</span>' : '';
           return '<div class="queue-item' + (isSel ? ' selected' : '') + '">'
             + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
-            + '<div style="font-weight:900">Pedido ' + id + pill + '</div>'
+            + '<div style="font-weight:900">Pedido' + pill + '</div>'
             + '</div>'
             + (cliente ? ('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>') : '')
             + '<div class="btns" style="margin-top:10px">'

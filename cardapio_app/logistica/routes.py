@@ -486,7 +486,7 @@ def register_logistica_routes(app: Flask) -> None:
           : '';
         const acceptDisabledAttr = (String(flag || '').trim().toUpperCase() === 'SINALIZADO') ? ' disabled' : '';
         return '<div class="item">'
-          + '<div style="font-weight:900">Pedido ' + id + '</div>'
+          + '<div style="font-weight:900">Pedido</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
           + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
@@ -628,7 +628,7 @@ def register_logistica_routes(app: Flask) -> None:
 
         const cls = isDelivered ? 'item delivered' : 'item';
         return '<div class="' + cls + '">'
-          + '<div style="font-weight:900">Pedido ' + sid + '</div>'
+          + '<div style="font-weight:900">Pedido</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
           + (endereco ? ('<div class="muted">Endereço: ' + endereco + '</div>') : '')
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
