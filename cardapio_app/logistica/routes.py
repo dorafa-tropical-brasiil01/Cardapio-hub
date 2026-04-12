@@ -178,12 +178,14 @@ def register_logistica_routes(app: Flask) -> None:
     .bottom-action.secondary{background:rgba(254,254,207,0.92)}
 
     @media (max-width: 520px) {
-      body{padding:12px;padding-bottom:38px}
+      body{padding:12px;padding-bottom:calc(66px + 18px + env(safe-area-inset-bottom))}
       .topbar .inner{padding:0 12px}
       button{padding:14px 14px}
       #bottomBar{height:66px}
       #bottomBarInner{width:92%;gap:6px}
       .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
+      .top-actions{display:none}
+      a.wa{padding:13px 14px;font-size:14px;border-radius:16px}
     }
   </style>
 </head>
@@ -212,7 +214,7 @@ def register_logistica_routes(app: Flask) -> None:
       <div id="toast" class="card" style="display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);"></div>
       <div class="muted" id="corrida_meta">Carregando...</div>
       <div class="list" id="corrida_itens"></div>
-      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+      <div class="top-actions" style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
         <button id="btn_start" type="button" class="secondary">Iniciar Corrida</button>
         <button id="btn_finish" type="button" class="secondary">Finalizar Corrida</button>
         <button id="btn_new" type="button" class="secondary">Nova Corrida</button>
