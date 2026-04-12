@@ -232,6 +232,16 @@ def register_logistica_routes(app: Flask) -> None:
     const toastEl = document.getElementById('toast');
 
     try {
+      if (prontosEl && String(prontosEl.innerText || '').trim() === 'Carregando...') {
+        prontosEl.innerText = 'Iniciando...';
+      }
+      if (corridaMeta && String(corridaMeta.innerText || '').trim() === 'Carregando...') {
+        corridaMeta.innerText = 'Iniciando...';
+      }
+    } catch (e) {
+    }
+
+    try {
       window.addEventListener('error', (ev) => {
         try {
           const msg = (ev && ev.message) ? String(ev.message) : 'Erro de script.';
