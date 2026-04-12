@@ -453,10 +453,9 @@ def register_logistica_routes(app: Flask) -> None:
     }
 
     function renderProntos(pedidos) {
+      if (!prontosEl) return;
       const arr = Array.isArray(pedidos) ? pedidos : [];
-      const nowLabel = (() => {
-        try { return new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit', second:'2-digit'}); } catch (e) { return ''; }
-      })();
+      const nowLabel = new Date().toLocaleTimeString();
       if (arr.length === 0) {
         prontosEl.innerHTML = '<div class="muted">Nenhum pedido pronto. ' + (nowLabel ? ('<span style="opacity:.75">(atualizado ' + nowLabel + ')</span>') : '') + '</div>';
         return;
@@ -481,10 +480,14 @@ def register_logistica_routes(app: Flask) -> None:
         }).join('');
         const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
-        const flagHtml = (String(flag || '').trim().toUpperCase() === 'SINALIZADO')
-          ? ('<div style="margin-top:10px"><span class="badge danger">SINALIZADO</span></div>')
+        const isFlagged = (String(flag || '').trim().toUpperCase() === 'SINALIZADO');
+        const flagHtml = isFlagged
+          ? ('<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
+            + '<span class="badge danger">SINALIZADO</span>'
+            + '<button type="button" class="secondary" data-flag-clear="' + id + '">Desmarcar</button>'
+            + '</div>')
           : '';
-        const acceptDisabledAttr = (String(flag || '').trim().toUpperCase() === 'SINALIZADO') ? ' disabled' : '';
+        const acceptDisabledAttr = isFlagged ? ' disabled' : '';
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
@@ -527,6 +530,28 @@ def register_logistica_routes(app: Flask) -> None:
               return;
             }
             showToast(err);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      prontosEl.querySelectorAll('button[data-flag-clear]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-flag-clear');
+          if (!sid) return;
+          const pwd = prompt('Desmarcar SINALIZADO (apenas admin).\n\nDigite a senha do administrador:');
+          if (!pwd || !String(pwd).trim()) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/pedido/dessinalizar', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({solicitacao_id: sid, password: String(pwd)})
+            });
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao desmarcar.');
           } finally {
             btn.disabled = false;
           }
@@ -595,6 +620,7 @@ def register_logistica_routes(app: Flask) -> None:
         const sid = (it && it.solicitacao_id) ? String(it.solicitacao_id) : '';
         const deliveredEm = (it && it.delivered_em) ? String(it.delivered_em) : '';
         const p = (it && it.pedido) ? it.pedido : null;
+        const flag = (p && (p.logistica_flag || p.flag)) ? String(p.logistica_flag || p.flag) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
         const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
@@ -616,6 +642,14 @@ def register_logistica_routes(app: Flask) -> None:
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
         const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '" data-maps="' + sid + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
 
+        const isFlagged = (String(flag || '').trim().toUpperCase() === 'SINALIZADO');
+        const flagHtml = isFlagged
+          ? ('<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'
+            + '<span class="badge danger">SINALIZADO</span>'
+            + '<button type="button" class="secondary" data-flag-clear="' + sid + '">Desmarcar</button>'
+            + '</div>')
+          : '';
+
         const btnLabel = isRunning ? 'Devolver' : 'Remover';
         const btnAttr = isRunning ? 'data-return' : 'data-remove';
 
@@ -635,6 +669,7 @@ def register_logistica_routes(app: Flask) -> None:
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + waHtml
           + mapsHtml
+          + flagHtml
           + deliveredHtml
           + '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">'
           + '<button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button>'

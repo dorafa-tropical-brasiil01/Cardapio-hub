@@ -48,16 +48,36 @@ def obter_corrida_atual(*, ops_user_id: int) -> dict[str, Any]:
         items = []
 
     enriched: list[dict[str, Any]] = []
+    sids: list[str] = []
     for it in items:
         if not isinstance(it, dict):
             continue
         sid = str(it.get("solicitacao_id") or "").strip()
+        if sid:
+            sids.append(sid)
         rec = get_solicitacao_by_id(solicitacao_id=sid) or {"id": sid}
         if not isinstance(rec, dict):
             rec = {"id": sid}
         merged = dict(it)
         merged["pedido"] = rec
         enriched.append(merged)
+
+    try:
+        flags = core.pg_store.logistica_flags_get_map(solicitacao_ids=sids)
+    except Exception:
+        flags = {}
+
+    if isinstance(flags, dict) and flags:
+        for it in enriched:
+            sid = str((it or {}).get("solicitacao_id") or "").strip()
+            fl = str(flags.get(sid) or "").strip().upper()
+            if not sid or not fl:
+                continue
+            p = (it or {}).get("pedido")
+            if isinstance(p, dict):
+                p2 = dict(p)
+                p2["logistica_flag"] = fl
+                it["pedido"] = p2
 
     out["items"] = enriched
 

@@ -102,17 +102,18 @@ def register_kds_routes(app: Flask) -> None:
     body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
     .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
-    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
-    .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
+    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0;background:var(--bg);background-color:var(--bg)}
+    .topbar .inner{max-width:760px;margin:0 auto;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border:2px solid var(--border);border-radius:20px;box-sizing:border-box}
     .top-title{font-weight:900;font-size:18px}
     .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     .btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
     button{flex:1;min-width:140px;font-size:16px;padding:15px 18px;border-radius:20px;border:0;background:var(--verde);color:#fff;font-weight:900;cursor:pointer}
     button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
-    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
     a.wa.discreet{padding:14px 16px;font-weight:900;opacity:1}
-    .muted{opacity:.78}
+    a.maps{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
+    .muted{opacity:.78;overflow-wrap:anywhere;word-break:break-word}
 
     .queue-item{padding:12px;margin:10px 0;background:var(--card2);border:2px solid rgba(10, 92, 47, 0.22);border-radius:18px}
     .queue-item.selected{border-color:rgba(47,158,68,0.75);box-shadow:0 0 0 3px rgba(47,158,68,0.14) inset}
@@ -126,9 +127,9 @@ def register_kds_routes(app: Flask) -> None:
     .bottom-action.secondary{background:rgba(254,254,207,0.92)}
 
     @media (max-width: 520px) {
-      body{padding:12px;padding-bottom:38px}
+      body{padding:12px;padding-bottom:calc(66px + 18px + env(safe-area-inset-bottom))}
       .card{padding:12px}
-      .topbar .inner{padding:0 12px}
+      .topbar .inner{padding:10px 12px;margin:0 12px}
       button{min-width:0;font-size:16px;padding:14px 14px}
       .btns button{flex:1 1 46%}
       .btns button#btn_preparar{flex-basis:100%}
@@ -222,10 +223,10 @@ def register_kds_routes(app: Flask) -> None:
       const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
       const obs = safeText(p.observacoes || p.obs || p.observacao);
       const enderecoRaw = (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
-      const endereco = (() => {
-        if (!enderecoRaw) return '';
-        if (typeof enderecoRaw === 'string') return safeText(enderecoRaw);
-        if (typeof enderecoRaw !== 'object') return '';
+      const addr = (() => {
+        if (!enderecoRaw) return {text:'', maps:''};
+        if (typeof enderecoRaw === 'string') return {text: safeText(enderecoRaw), maps:''};
+        if (typeof enderecoRaw !== 'object') return {text:'', maps:''};
         const maps = safeText(enderecoRaw.maps_url || enderecoRaw.maps || enderecoRaw.localizacao);
         const rua = safeText(enderecoRaw.rua);
         const numero = safeText(enderecoRaw.numero);
@@ -240,8 +241,7 @@ def register_kds_routes(app: Flask) -> None:
         const out = [];
         if (line) out.push(line);
         if (ref) out.push('Ref: ' + ref);
-        if (maps) out.push(maps);
-        return out.join('\n').trim();
+        return {text: out.join('\n').trim(), maps: safeText(maps).trim()};
       })();
       const headLines = [];
       headLines.push('<div style="font-weight:900;font-size:16px">Pedido</div>');
@@ -252,8 +252,11 @@ def register_kds_routes(app: Flask) -> None:
 
       pedidoBox.innerHTML = headLines.join('');
 
-      if (endereco) {
-        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(endereco).replace(/\n/g,'<br/>') + '</div></div>';
+      if (addr && addr.text) {
+        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(addr.text).replace(/\n/g,'<br/>') + '</div></div>';
+      }
+      if (addr && addr.maps) {
+        pedidoBox.innerHTML += '<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + safeText(addr.maps) + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>';
       }
       if (obs) {
         pedidoBox.innerHTML += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';

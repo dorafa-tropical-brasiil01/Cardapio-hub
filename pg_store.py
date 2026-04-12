@@ -874,6 +874,36 @@ def logistica_flag_clear(*, ops_user_id: int, solicitacao_id: str, note: str | N
     logistica_event_add(ops_user_id=uid, solicitacao_id=sid, event="DESINALIZADO", note=nt)
 
 
+def logistica_flags_get_map(*, solicitacao_ids: list[str]) -> dict[str, str]:
+    if not is_enabled():
+        return {}
+    _ensure_db_ready()
+    sids = [str(x or "").strip() for x in (solicitacao_ids or [])]
+    sids = [x for x in sids if x]
+    if not sids:
+        return {}
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT solicitacao_id, COALESCE(flag,'') AS flag
+                FROM log_order_flags
+                WHERE solicitacao_id = ANY(%s)
+                """,
+                (sids,),
+            )
+            rows = cur.fetchall() or []
+    out: dict[str, str] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        sid = str(r.get("solicitacao_id") or "").strip()
+        fl = str(r.get("flag") or "").strip().upper()
+        if sid and fl:
+            out[sid] = fl
+    return out
+
+
 def logistica_event_add(*, ops_user_id: int, solicitacao_id: str, event: str, note: str | None = None) -> None:
     if not is_enabled():
         return
