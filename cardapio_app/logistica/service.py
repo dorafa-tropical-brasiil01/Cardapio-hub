@@ -11,16 +11,26 @@ def listar_prontos() -> list[dict[str, Any]]:
         return []
     out: list[dict[str, Any]] = []
     try:
-        ids = core.pg_store.logistica_list_ready_order_ids()
+        ready = core.pg_store.logistica_list_ready_orders()
     except Exception:
-        ids = []
+        ready = []
 
-    for sid in ids:
+    for rec in ready:
+        if not isinstance(rec, dict):
+            continue
+        sid = str(rec.get("solicitacao_id") or "").strip()
+        flag = str(rec.get("flag") or "").strip().upper()
         pedido = get_solicitacao_by_id(solicitacao_id=str(sid))
         if isinstance(pedido, dict):
-            out.append(pedido)
+            merged = dict(pedido)
+            if flag:
+                merged["logistica_flag"] = flag
+            out.append(merged)
         else:
-            out.append({"id": str(sid)})
+            row = {"id": str(sid)}
+            if flag:
+                row["logistica_flag"] = flag
+            out.append(row)
     return out
 
 
@@ -108,6 +118,28 @@ def corrida_finish(*, ops_user_id: int) -> dict[str, Any]:
     if not core.pg_enabled():
         raise RuntimeError("pg_disabled")
     return core.pg_store.logistica_run_finish(ops_user_id=int(ops_user_id))
+
+
+def pedido_sinalizar(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    core.pg_store.logistica_flag_signal(ops_user_id=int(ops_user_id), solicitacao_id=str(solicitacao_id or "").strip(), note=note)
+    core.pg_store.logistica_event_add(
+        ops_user_id=int(ops_user_id),
+        solicitacao_id=str(solicitacao_id or "").strip(),
+        event="SINALIZADO",
+        note=note,
+    )
+
+
+def pedido_cancelar_definitivo(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    core.pg_store.logistica_cancel_definitivo(
+        ops_user_id=int(ops_user_id),
+        solicitacao_id=str(solicitacao_id or "").strip(),
+        note=note,
+    )
 
 
 def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) -> None:

@@ -210,6 +210,34 @@ def init_db() -> None:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_log_run_items_solicitacao ON log_run_items(solicitacao_id)")
 
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS log_order_flags (
+                    solicitacao_id TEXT PRIMARY KEY,
+                    flag TEXT NOT NULL,
+                    flagged_em TIMESTAMPTZ NOT NULL,
+                    ops_user_id BIGINT,
+                    note TEXT
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_flags_flag ON log_order_flags(flag)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS log_order_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    solicitacao_id TEXT NOT NULL,
+                    event TEXT NOT NULL,
+                    created_em TIMESTAMPTZ NOT NULL,
+                    ops_user_id BIGINT,
+                    note TEXT
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_solicitacao ON log_order_events(solicitacao_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_event ON log_order_events(event)")
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -774,6 +802,110 @@ def logistica_list_ready_order_ids() -> list[str]:
             return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
 
 
+def logistica_list_ready_orders() -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    k.solicitacao_id,
+                    COALESCE(f.flag,'') AS flag
+                FROM kds_orders k
+                LEFT JOIN log_order_flags f ON f.solicitacao_id=k.solicitacao_id
+                WHERE k.status='PRONTO'
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM log_run_items i
+                    JOIN log_runs r ON r.id=i.run_id
+                    WHERE i.solicitacao_id=k.solicitacao_id
+                      AND r.status IN ('MONTANDO','EM_ANDAMENTO')
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM log_run_items i2
+                    WHERE i2.solicitacao_id=k.solicitacao_id
+                      AND i2.delivered_em IS NOT NULL
+                  )
+                ORDER BY k.done_em ASC NULLS LAST
+                LIMIT 200
+                """
+            )
+            return [dict(r) for r in (cur.fetchall() or [])]
+
+
+def logistica_flag_signal(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    now = _now_iso()
+    nt = str(note or "").strip() or None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO log_order_flags(solicitacao_id, flag, flagged_em, ops_user_id, note)
+                VALUES (%s,'SINALIZADO',%s,%s,%s)
+                ON CONFLICT (solicitacao_id)
+                DO UPDATE SET flag='SINALIZADO', flagged_em=EXCLUDED.flagged_em, ops_user_id=EXCLUDED.ops_user_id, note=EXCLUDED.note
+                """,
+                (sid, now, uid or None, nt),
+            )
+
+
+def logistica_event_add(*, ops_user_id: int, solicitacao_id: str, event: str, note: str | None = None) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    ev = str(event or "").strip().upper()
+    if not sid or not ev:
+        return
+    now = _now_iso()
+    nt = str(note or "").strip() or None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO log_order_events(solicitacao_id, event, created_em, ops_user_id, note)
+                VALUES (%s,%s,%s,%s,%s)
+                """,
+                (sid, ev, now, uid or None, nt),
+            )
+
+
+def logistica_cancel_definitivo(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    now = _now_iso()
+    nt = str(note or "").strip() or None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM log_run_items WHERE solicitacao_id=%s", (sid,))
+            cur.execute("DELETE FROM log_order_flags WHERE solicitacao_id=%s", (sid,))
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET status='CANCELADO', done_em=%s
+                WHERE solicitacao_id=%s
+                """,
+                (now, sid),
+            )
+    logistica_event_add(ops_user_id=uid, solicitacao_id=sid, event="CANCELADO", note=nt)
+
+
 def logistica_get_or_create_draft_run(*, ops_user_id: int) -> dict[str, Any]:
     if not is_enabled():
         return {"items": []}
@@ -845,6 +977,12 @@ def logistica_run_add_order(*, ops_user_id: int, solicitacao_id: str) -> dict[st
             st = str(row[0] if row else "").strip().upper()
             if st != "PRONTO":
                 raise RuntimeError("pedido_nao_pronto")
+
+            cur.execute("SELECT flag FROM log_order_flags WHERE solicitacao_id=%s", (sid,))
+            frow = cur.fetchone()
+            fl = str(frow[0] if frow else "").strip().upper()
+            if fl == "SINALIZADO":
+                raise RuntimeError("pedido_sinalizado")
 
             # Impede o mesmo pedido em outra corrida ativa.
             cur.execute(

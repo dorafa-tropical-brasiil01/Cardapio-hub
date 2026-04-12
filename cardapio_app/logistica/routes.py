@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
@@ -13,10 +15,15 @@ from .service import (
     corrida_start,
     listar_prontos,
     obter_corrida_atual,
+    pedido_cancelar_definitivo,
+    pedido_sinalizar,
 )
 
 
 def register_logistica_routes(app: Flask) -> None:
+    def _admin_password_configured() -> str:
+        return str(os.environ.get("OPS_ADMIN_PASSWORD") or "").strip()
+
     @app.get("/api/logistica/prontos")
     def api_logistica_prontos():
         denied = require_ops_login(role="LOGISTICA")
@@ -132,6 +139,47 @@ def register_logistica_routes(app: Flask) -> None:
             return jsonify({"error": str(e)}), 400
         return jsonify(dict(out))
 
+    @app.post("/api/logistica/pedido/sinalizar")
+    def api_logistica_pedido_sinalizar():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        note = str(body.get("note") or "").strip() or None
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+        try:
+            pedido_sinalizar(ops_user_id=uid, solicitacao_id=sid, note=note)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True})
+
+    @app.post("/api/logistica/pedido/cancelar_definitivo")
+    def api_logistica_pedido_cancelar_definitivo():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        pwd = str(body.get("password") or "")
+        note = str(body.get("note") or "").strip() or None
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+
+        adm = _admin_password_configured()
+        if not adm:
+            return jsonify({"error": "admin_password_nao_configurada"}), 400
+        if pwd != adm:
+            return jsonify({"error": "senha_invalida"}), 403
+        try:
+            pedido_cancelar_definitivo(ops_user_id=uid, solicitacao_id=sid, note=note)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True})
+
     @app.get("/entregas")
     def entregas_page():
         denied = require_ops_login(role="LOGISTICA")
@@ -155,7 +203,7 @@ def register_logistica_routes(app: Flask) -> None:
       --border: rgba(10, 92, 47, 0.35);
       --text: #0a5c2f;
     }
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35}
     .wrap{max-width:760px;margin:0 auto}
     .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
     .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0;background:var(--bg);background-color:var(--bg)}
@@ -174,19 +222,14 @@ def register_logistica_routes(app: Flask) -> None:
     a.maps{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
     .top-actions{display:none}
 
-    #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
-    #bottomBarInner{width:min(920px, 92%);margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:stretch}
-    .bottom-action{flex:1 1 0;min-width:0;background:var(--amarelo);color:var(--verde);border:none;border-radius:14px;height:46px;padding:0 10px;font-size:16px;font-weight:900;cursor:pointer;box-shadow:0 10px 22px rgba(0,0,0,0.18);user-select:none;-webkit-tap-highlight-color:transparent;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:8px;box-sizing:border-box}
-    .bottom-action.secondary{background:rgba(254,254,207,0.92)}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:2px solid rgba(10, 92, 47, 0.35);background:rgba(10, 92, 47, 0.08);font-weight:900;font-size:12px}
+    .badge.danger{border-color:rgba(160,0,0,0.25);background:rgba(160,0,0,0.06);color:#7a0000}
 
     @media (max-width: 520px) {
-      body{padding:12px;padding-bottom:calc(66px + 18px + env(safe-area-inset-bottom))}
+      body{padding-top:10px}
       .topbar{padding:10px 0}
       .topbar .inner{padding:10px 12px;margin:0 12px}
       button{padding:14px 14px}
-      #bottomBar{height:66px}
-      #bottomBarInner{width:92%;gap:6px}
-      .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
       a.wa{padding:13px 14px;font-size:14px;border-radius:16px}
       a.maps{padding:13px 14px;font-size:14px;border-radius:16px}
     }
@@ -226,9 +269,6 @@ def register_logistica_routes(app: Flask) -> None:
     const btnStart = document.getElementById('btn_start');
     const btnFinish = document.getElementById('btn_finish');
     const btnNew = document.getElementById('btn_new');
-    const btnStartBottom = document.getElementById('btn_start_bottom');
-    const btnFinishBottom = document.getElementById('btn_finish_bottom');
-    const btnNewBottom = document.getElementById('btn_new_bottom');
     const toastEl = document.getElementById('toast');
 
     try {
@@ -317,6 +357,11 @@ def register_logistica_routes(app: Flask) -> None:
       return {text: out.join(' | ').trim(), maps: maps};
     }
 
+    function intOr0(v) {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.trunc(n) : 0;
+    }
+
     async function api(url, opts) {
       const resp = await fetch(url, opts || {method:'GET'});
 
@@ -349,9 +394,6 @@ def register_logistica_routes(app: Flask) -> None:
         if (btnStart) btnStart.disabled = true;
         if (btnFinish) btnFinish.disabled = true;
         if (btnNew) btnNew.disabled = false;
-        if (btnStartBottom) btnStartBottom.disabled = true;
-        if (btnFinishBottom) btnFinishBottom.disabled = true;
-        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
@@ -360,9 +402,6 @@ def register_logistica_routes(app: Flask) -> None:
         if (btnStart) btnStart.disabled = startDisabled;
         if (btnFinish) btnFinish.disabled = true;
         if (btnNew) btnNew.disabled = false;
-        if (btnStartBottom) btnStartBottom.disabled = startDisabled;
-        if (btnFinishBottom) btnFinishBottom.disabled = true;
-        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
@@ -370,9 +409,6 @@ def register_logistica_routes(app: Flask) -> None:
         if (btnStart) btnStart.disabled = true;
         if (btnFinish) btnFinish.disabled = false;
         if (btnNew) btnNew.disabled = true;
-        if (btnStartBottom) btnStartBottom.disabled = true;
-        if (btnFinishBottom) btnFinishBottom.disabled = false;
-        if (btnNewBottom) btnNewBottom.disabled = true;
         return;
       }
 
@@ -380,18 +416,12 @@ def register_logistica_routes(app: Flask) -> None:
         if (btnStart) btnStart.disabled = true;
         if (btnFinish) btnFinish.disabled = true;
         if (btnNew) btnNew.disabled = false;
-        if (btnStartBottom) btnStartBottom.disabled = true;
-        if (btnFinishBottom) btnFinishBottom.disabled = true;
-        if (btnNewBottom) btnNewBottom.disabled = false;
         return;
       }
 
       if (btnStart) btnStart.disabled = true;
       if (btnFinish) btnFinish.disabled = true;
       if (btnNew) btnNew.disabled = false;
-      if (btnStartBottom) btnStartBottom.disabled = true;
-      if (btnFinishBottom) btnFinishBottom.disabled = true;
-      if (btnNewBottom) btnNewBottom.disabled = false;
     }
 
     function renderProntos(pedidos) {
@@ -406,13 +436,13 @@ def register_logistica_routes(app: Flask) -> None:
       const head = '<div class="muted" style="margin-bottom:10px">Prontos: ' + arr.length + (nowLabel ? (' • atualizado ' + nowLabel) : '') + '</div>';
       prontosEl.innerHTML = arr.map(p => {
         const id = (p && p.id) ? String(p.id) : '';
+        const flag = (p && (p.logistica_flag || p.flag)) ? String(p.logistica_flag || p.flag) : '';
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
         const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
         const enderecoRaw = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))) || null;
         const addr = parseEndereco(enderecoRaw);
         const endereco = addr.text;
-        const maps = addr.maps;
         const itens = Array.isArray(p && p.itens) ? p.itens : [];
         const itensHtml = itens.slice(0, 20).map(it => {
           const nome = (it && it.nome) ? String(it.nome) : '';
@@ -423,7 +453,10 @@ def register_logistica_routes(app: Flask) -> None:
         }).join('');
         const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
-        const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
+        const flagHtml = (String(flag || '').trim().toUpperCase() === 'SINALIZADO')
+          ? ('<div style="margin-top:10px"><span class="badge danger">SINALIZADO</span></div>')
+          : '';
+        const acceptDisabledAttr = (String(flag || '').trim().toUpperCase() === 'SINALIZADO') ? ' disabled' : '';
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + id + '</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
@@ -431,8 +464,11 @@ def register_logistica_routes(app: Flask) -> None:
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + waHtml
-          + mapsHtml
-          + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
+          + flagHtml
+          + '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">'
+          + '<button type="button" data-id="' + id + '"' + acceptDisabledAttr + '>Aceitar</button>'
+          + '<button type="button" class="secondary" data-cancel="' + id + '">Cancelar</button>'
+          + '</div>'
           + '</div>';
       }).join('');
       prontosEl.innerHTML = head + prontosEl.innerHTML;
@@ -446,6 +482,26 @@ def register_logistica_routes(app: Flask) -> None:
             await load();
           } catch (e) {
             showToast((e && e.error) ? e.error : 'Falha ao aceitar pedido.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      prontosEl.querySelectorAll('button[data-cancel]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-cancel');
+          if (!sid) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/pedido/sinalizar', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({solicitacao_id: sid, note: 'cancelado_sem_senha'})
+            });
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao cancelar.');
           } finally {
             btn.disabled = false;
           }
@@ -474,6 +530,20 @@ def register_logistica_routes(app: Flask) -> None:
       const tempoTxt = (isRunning && startedEm) ? (' | Tempo: ' + formatElapsedFromIso(startedEm)) : '';
       corridaMeta.innerText = 'Corrida #' + c.id + ' | Status: ' + (c.status || '') + tempoTxt + resumoTxt;
       applyButtonsByStatus(c);
+
+      const rr0 = (c && c.resumo) ? c.resumo : null;
+      const pend0 = intOr0(rr0 && rr0.pendentes);
+      const total0 = intOr0(rr0 && rr0.total);
+      if (isRunning && total0 > 0 && pend0 === 0) {
+        setTimeout(async () => {
+          try {
+            await api('/api/logistica/corrida/finish', {method:'POST'});
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao finalizar corrida automaticamente.');
+          }
+        }, 250);
+      }
 
       if (corridaTimerHandle) { clearInterval(corridaTimerHandle); corridaTimerHandle = null; }
       if (isRunning && startedEm) {
@@ -519,7 +589,7 @@ def register_logistica_routes(app: Flask) -> None:
 
         const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
-        const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
+        const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '" data-maps="' + sid + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
 
         const btnLabel = isRunning ? 'Devolver' : 'Remover';
         const btnAttr = isRunning ? 'data-return' : 'data-remove';
@@ -541,7 +611,10 @@ def register_logistica_routes(app: Flask) -> None:
           + waHtml
           + mapsHtml
           + deliveredHtml
-          + '<div style="margin-top:10px"><button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button></div>'
+          + '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">'
+          + '<button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button>'
+          + '<button type="button" class="secondary" data-cancel="' + sid + '">Cancelar</button>'
+          + '</div>'
           + '</div>';
       }).join('');
       corridaItens.querySelectorAll('button[data-remove]').forEach(btn => {
@@ -588,6 +661,66 @@ def register_logistica_routes(app: Flask) -> None:
             showToast((e && e.error) ? e.error : 'Falha ao marcar entregue.');
           } finally {
             btn.disabled = false;
+          }
+        });
+      });
+
+      corridaItens.querySelectorAll('button[data-cancel]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-cancel');
+          if (!sid) return;
+
+          const pwd = prompt('Senha do administrador (opcional para cancelar definitivo).\n\n- Sem senha: devolve para a fila como SINALIZADO.\n- Com senha: remove do fluxo definitivamente.');
+          btn.disabled = true;
+          try {
+            if (pwd && String(pwd).trim()) {
+              await api('/api/logistica/pedido/cancelar_definitivo', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({solicitacao_id: sid, password: String(pwd)})
+              });
+            } else {
+              try {
+                const st0 = String((corridaSnapshot && corridaSnapshot.status) || '').toUpperCase();
+                if (st0 === 'EM_ANDAMENTO') {
+                  await api('/api/logistica/corrida/devolver', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+                } else {
+                  await api('/api/logistica/corrida/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
+                }
+              } catch (e2) {
+              }
+              await api('/api/logistica/pedido/sinalizar', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({solicitacao_id: sid, note: 'cancelado_sem_senha'})
+              });
+            }
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao cancelar.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
+      corridaItens.querySelectorAll('a[data-maps]').forEach(a => {
+        a.addEventListener('click', async () => {
+          try {
+            if (!corridaSnapshot || !corridaSnapshot.id) return;
+            const st = String(corridaSnapshot.status || '').toUpperCase();
+            if (st !== 'MONTANDO') return;
+            const items2 = Array.isArray(corridaSnapshot.items) ? corridaSnapshot.items : [];
+            if (items2.length === 0) return;
+            const firstSid = String((items2[0] && (items2[0].solicitacao_id || (items2[0].pedido && items2[0].pedido.id))) || '').trim();
+            const clickedSid = String(a.getAttribute('data-maps') || '').trim();
+            if (!firstSid || !clickedSid) return;
+            if (firstSid !== clickedSid) return;
+
+            await api('/api/logistica/corrida/start', {method:'POST'});
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao iniciar corrida.');
           }
         });
       });
@@ -654,7 +787,6 @@ def register_logistica_routes(app: Flask) -> None:
 
     async function onStart() {
       if (btnStart) btnStart.disabled = true;
-      if (btnStartBottom) btnStartBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/start', {method:'POST'});
         await load();
@@ -662,13 +794,11 @@ def register_logistica_routes(app: Flask) -> None:
         showToast((e && e.error) ? e.error : 'Falha ao iniciar corrida.');
       } finally {
         if (btnStart) btnStart.disabled = false;
-        if (btnStartBottom) btnStartBottom.disabled = false;
       }
     }
 
     async function onFinish() {
       if (btnFinish) btnFinish.disabled = true;
-      if (btnFinishBottom) btnFinishBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/finish', {method:'POST'});
         await load();
@@ -676,13 +806,11 @@ def register_logistica_routes(app: Flask) -> None:
         showToast((e && e.error) ? e.error : 'Falha ao finalizar corrida.');
       } finally {
         if (btnFinish) btnFinish.disabled = false;
-        if (btnFinishBottom) btnFinishBottom.disabled = false;
       }
     }
 
     async function onNew() {
       if (btnNew) btnNew.disabled = true;
-      if (btnNewBottom) btnNewBottom.disabled = true;
       try {
         await api('/api/logistica/corrida/nova', {method:'POST'});
         await load();
@@ -690,16 +818,12 @@ def register_logistica_routes(app: Flask) -> None:
         showToast((e && e.error) ? e.error : 'Falha ao criar nova corrida.');
       } finally {
         if (btnNew) btnNew.disabled = false;
-        if (btnNewBottom) btnNewBottom.disabled = false;
       }
     }
 
     bindBtn(btnStart, onStart);
-    bindBtn(btnStartBottom, onStart);
     bindBtn(btnFinish, onFinish);
-    bindBtn(btnFinishBottom, onFinish);
     bindBtn(btnNew, onNew);
-    bindBtn(btnNewBottom, onNew);
 
     try {
       if (!prontosEl || !corridaMeta || !corridaItens) {
@@ -717,14 +841,6 @@ def register_logistica_routes(app: Flask) -> None:
       fatal('Falha ao iniciar: ' + e);
     }
   </script>
-
-  <div id="bottomBar">
-    <div id="bottomBarInner">
-      <button id="btn_start_bottom" type="button" class="bottom-action secondary">Iniciar</button>
-      <button id="btn_finish_bottom" type="button" class="bottom-action secondary">Finalizar</button>
-      <button id="btn_new_bottom" type="button" class="bottom-action">Nova</button>
-    </div>
-  </div>
 </body>
 </html>"""
         resp = make_response(html, 200)
