@@ -158,19 +158,19 @@ def register_logistica_routes(app: Flask) -> None:
     body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:14px;background:var(--bg);background-color:var(--bg);color:var(--text);line-height:1.35;padding-bottom:calc(86px + 18px + env(safe-area-inset-bottom))}
     .wrap{max-width:760px;margin:0 auto}
     .card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px;margin:12px 0;box-sizing:border-box}
-    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0}
-    .topbar .inner{max-width:760px;margin:0 auto;padding:0 14px;display:flex;align-items:center;justify-content:space-between}
+    .topbar{position:sticky;top:-1px;z-index:10;padding:12px 0;background:var(--bg);background-color:var(--bg)}
+    .topbar .inner{max-width:760px;margin:0 auto;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;background:var(--card);border:2px solid var(--border);border-radius:20px;box-sizing:border-box}
     .top-title{font-weight:900;font-size:18px}
     .top-sub{opacity:.75;font-size:12px;margin-top:2px}
     h1{font-size:18px;margin:0}
-    .muted{opacity:.78}
+    .muted{opacity:.78;overflow-wrap:anywhere;word-break:break-word}
     .list{margin-top:10px;display:flex;flex-direction:column;gap:10px}
-    .item{padding:12px;border:2px solid rgba(10, 92, 47, 0.22);border-radius:18px;background:var(--card2)}
+    .item{padding:12px;border:2px solid rgba(10, 92, 47, 0.22);border-radius:18px;background:var(--card2);overflow-wrap:anywhere;word-break:break-word}
     .item.delivered{opacity:.72;border-color:rgba(255,255,255,0.14)}
     button{font-size:16px;padding:15px 18px;border-radius:20px;border:0;background:var(--verde);color:#fff;font-weight:900;cursor:pointer}
     button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
-    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box}
+    a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
     .top-actions{display:none}
 
     #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
@@ -180,7 +180,8 @@ def register_logistica_routes(app: Flask) -> None:
 
     @media (max-width: 520px) {
       body{padding:12px;padding-bottom:calc(66px + 18px + env(safe-area-inset-bottom))}
-      .topbar .inner{padding:0 12px}
+      .topbar{padding:10px 0}
+      .topbar .inner{padding:10px 12px;margin:0 12px}
       button{padding:14px 14px}
       #bottomBar{height:66px}
       #bottomBarInner{width:92%;gap:6px}
@@ -214,11 +215,6 @@ def register_logistica_routes(app: Flask) -> None:
       <div id="toast" class="card" style="display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);"></div>
       <div class="muted" id="corrida_meta">Carregando...</div>
       <div class="list" id="corrida_itens"></div>
-      <div class="top-actions" style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
-        <button id="btn_start" type="button" class="secondary">Iniciar Corrida</button>
-        <button id="btn_finish" type="button" class="secondary">Finalizar Corrida</button>
-        <button id="btn_new" type="button" class="secondary">Nova Corrida</button>
-      </div>
     </div>
   </div>
   <script>
