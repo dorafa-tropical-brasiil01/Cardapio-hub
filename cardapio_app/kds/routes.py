@@ -83,10 +83,10 @@ def register_kds_routes(app: Flask) -> None:
             return denied
 
         html = r"""<!doctype html>
-<html lang=\"pt-BR\">
+<html lang="pt-BR">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Cozinha</title>
   <style>
     :root{
@@ -149,9 +149,9 @@ def register_kds_routes(app: Flask) -> None:
     </div>
   </div>
 
-  <div class=\"wrap\">
+  <div class="wrap">
 
-    <div class=\"card\" id=\"pedido\">
+    <div class="card" id="pedido">
       <div class="muted" id="stats">Carregando...</div>
       <div style="margin-top:10px" id="pedido_box"></div>
       <div style="margin-top:10px" id="wa_box"></div>

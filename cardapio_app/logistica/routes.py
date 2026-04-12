@@ -198,24 +198,24 @@ def register_logistica_routes(app: Flask) -> None:
     </div>
   </div>
 
-  <div class=\"wrap\">
+  <div class="wrap">
 
-    <div class=\"card\">
-      <div class=\"muted\">Pedidos prontos para entrega:</div>
-      <div class=\"list\">
-        <div class=\"muted\" id=\"prontos\">Carregando...</div>
+    <div class="card">
+      <div class="muted">Pedidos prontos para entrega:</div>
+      <div class="list">
+        <div class="muted" id="prontos">Carregando...</div>
       </div>
     </div>
 
-    <div class=\"card\">
-      <div style=\"font-weight:900\">Minha Corrida</div>
-      <div id=\"toast\" class=\"card\" style=\"display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);\"></div>
-      <div class=\"muted\" id=\"corrida_meta\">Carregando...</div>
-      <div class=\"list\" id=\"corrida_itens\"></div>
-      <div style=\"margin-top:10px;display:flex;gap:10px;flex-wrap:wrap\">
-        <button id=\"btn_start\" type=\"button\" class=\"secondary\">Iniciar Corrida</button>
-        <button id=\"btn_finish\" type=\"button\" class=\"secondary\">Finalizar Corrida</button>
-        <button id=\"btn_new\" type=\"button\" class=\"secondary\">Nova Corrida</button>
+    <div class="card">
+      <div style="font-weight:900">Minha Corrida</div>
+      <div id="toast" class="card" style="display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);"></div>
+      <div class="muted" id="corrida_meta">Carregando...</div>
+      <div class="list" id="corrida_itens"></div>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">
+        <button id="btn_start" type="button" class="secondary">Iniciar Corrida</button>
+        <button id="btn_finish" type="button" class="secondary">Finalizar Corrida</button>
+        <button id="btn_new" type="button" class="secondary">Nova Corrida</button>
       </div>
     </div>
   </div>
