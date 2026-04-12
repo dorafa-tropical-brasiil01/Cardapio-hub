@@ -171,6 +171,7 @@ def register_logistica_routes(app: Flask) -> None:
     button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
     a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box}
+    .top-actions{display:none}
 
     #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
     #bottomBarInner{width:min(920px, 92%);margin:0 auto;display:flex;gap:10px;align-items:center;justify-content:stretch}
@@ -184,7 +185,6 @@ def register_logistica_routes(app: Flask) -> None:
       #bottomBar{height:66px}
       #bottomBarInner{width:92%;gap:6px}
       .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
-      .top-actions{display:none}
       a.wa{padding:13px 14px;font-size:14px;border-radius:16px}
     }
   </style>
