@@ -764,6 +764,28 @@ def register_logistica_routes(app: Flask) -> None:
         });
       });
 
+      corridaItens.querySelectorAll('button[data-flag-clear]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const sid = btn.getAttribute('data-flag-clear');
+          if (!sid) return;
+          const pwd = prompt('Desmarcar SINALIZADO (apenas admin).\n\nDigite a senha do administrador:');
+          if (!pwd || !String(pwd).trim()) return;
+          btn.disabled = true;
+          try {
+            await api('/api/logistica/pedido/dessinalizar', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({solicitacao_id: sid, password: String(pwd)})
+            });
+            await load();
+          } catch (e) {
+            showToast((e && e.error) ? e.error : 'Falha ao desmarcar.');
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+
       corridaItens.querySelectorAll('a[data-maps]').forEach(a => {
         a.addEventListener('click', async () => {
           try {

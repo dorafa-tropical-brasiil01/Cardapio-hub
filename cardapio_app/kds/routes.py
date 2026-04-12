@@ -255,9 +255,6 @@ def register_kds_routes(app: Flask) -> None:
       if (addr && addr.text) {
         pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(addr.text).replace(/\n/g,'<br/>') + '</div></div>';
       }
-      if (addr && addr.maps) {
-        pedidoBox.innerHTML += '<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + safeText(addr.maps) + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>';
-      }
       if (obs) {
         pedidoBox.innerHTML += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
       }
