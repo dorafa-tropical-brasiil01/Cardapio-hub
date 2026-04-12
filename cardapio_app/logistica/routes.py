@@ -171,6 +171,7 @@ def register_logistica_routes(app: Flask) -> None:
     button.secondary{background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);font-weight:900}
     button:disabled{opacity:.55}
     a.wa{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:#2f9e44;color:#fff;padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
+    a.maps{display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;background:rgba(10, 92, 47, 0.08);border:2px solid rgba(10, 92, 47, 0.35);color:var(--verde);padding:15px 18px;border-radius:20px;font-weight:900;width:100%;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;text-align:center}
     .top-actions{display:none}
 
     #bottomBar{position:fixed;left:0;right:0;bottom:0;height:86px;background:var(--verde);z-index:998;display:flex;align-items:center;padding:10px 12px;padding-bottom:calc(10px + env(safe-area-inset-bottom));box-sizing:border-box}
@@ -187,6 +188,7 @@ def register_logistica_routes(app: Flask) -> None:
       #bottomBarInner{width:92%;gap:6px}
       .bottom-action{height:42px;font-size:12.5px;padding:0 8px;gap:6px;border-radius:12px}
       a.wa{padding:13px 14px;font-size:14px;border-radius:16px}
+      a.maps{padding:13px 14px;font-size:14px;border-radius:16px}
     }
   </style>
 </head>
@@ -291,6 +293,30 @@ def register_logistica_routes(app: Flask) -> None:
       return url;
     }
 
+    function parseEndereco(enderecoRaw) {
+      if (!enderecoRaw) return {text: '', maps: ''};
+      if (typeof enderecoRaw === 'string') {
+        const t = String(enderecoRaw || '').trim();
+        return {text: t, maps: ''};
+      }
+      if (typeof enderecoRaw !== 'object') return {text: '', maps: ''};
+      const maps = String(enderecoRaw.maps_url || enderecoRaw.maps || enderecoRaw.localizacao || '').trim();
+      const rua = String(enderecoRaw.rua || '').trim();
+      const numero = String(enderecoRaw.numero || '').trim();
+      const bairro = String(enderecoRaw.bairro || '').trim();
+      const cidade = String(enderecoRaw.cidade || '').trim();
+      const ref = String(enderecoRaw.referencia || '').trim();
+      const parts = [];
+      if (rua || numero) parts.push((rua + (numero ? (', ' + numero) : '')).trim());
+      if (bairro) parts.push(bairro);
+      if (cidade) parts.push(cidade);
+      const line = parts.join(' - ').trim();
+      const out = [];
+      if (line) out.push(line);
+      if (ref) out.push('Ref: ' + ref);
+      return {text: out.join(' | ').trim(), maps: maps};
+    }
+
     async function api(url, opts) {
       const resp = await fetch(url, opts || {method:'GET'});
 
@@ -384,27 +410,9 @@ def register_logistica_routes(app: Flask) -> None:
         const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
         const enderecoRaw = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))) || null;
-        const endereco = (() => {
-          if (!enderecoRaw) return '';
-          if (typeof enderecoRaw === 'string') return String(enderecoRaw);
-          if (typeof enderecoRaw !== 'object') return '';
-          const maps = String(enderecoRaw.maps_url || enderecoRaw.maps || enderecoRaw.localizacao || '').trim();
-          const rua = String(enderecoRaw.rua || '').trim();
-          const numero = String(enderecoRaw.numero || '').trim();
-          const bairro = String(enderecoRaw.bairro || '').trim();
-          const cidade = String(enderecoRaw.cidade || '').trim();
-          const ref = String(enderecoRaw.referencia || '').trim();
-          const parts = [];
-          if (rua || numero) parts.push((rua + (numero ? (', ' + numero) : '')).trim());
-          if (bairro) parts.push(bairro);
-          if (cidade) parts.push(cidade);
-          const line = parts.join(' - ').trim();
-          const out = [];
-          if (line) out.push(line);
-          if (ref) out.push('Ref: ' + ref);
-          if (maps) out.push(maps);
-          return out.join(' | ').trim();
-        })();
+        const addr = parseEndereco(enderecoRaw);
+        const endereco = addr.text;
+        const maps = addr.maps;
         const itens = Array.isArray(p && p.itens) ? p.itens : [];
         const itensHtml = itens.slice(0, 20).map(it => {
           const nome = (it && it.nome) ? String(it.nome) : '';
@@ -415,6 +423,7 @@ def register_logistica_routes(app: Flask) -> None:
         }).join('');
         const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
+        const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
         return '<div class="item">'
           + '<div style="font-weight:900">Pedido ' + id + '</div>'
           + (cliente ? ('<div class="muted">Cliente: ' + cliente + '</div>') : '')
@@ -422,6 +431,7 @@ def register_logistica_routes(app: Flask) -> None:
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + waHtml
+          + mapsHtml
           + '<div style="margin-top:10px"><button type="button" data-id="' + id + '">Aceitar</button></div>'
           + '</div>';
       }).join('');
@@ -493,9 +503,10 @@ def register_logistica_routes(app: Flask) -> None:
         const cliente = (p && p.cliente_nome) ? String(p.cliente_nome) : '';
         const whatsapp = (p && p.cliente_whatsapp) ? String(p.cliente_whatsapp) : '';
         const obs = (p && (p.observacoes || p.obs || p.observacao)) ? String(p.observacoes || p.obs || p.observacao) : '';
-        const endereco = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco)))
-          ? String(p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))
-          : '';
+        const enderecoRaw = (p && (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco))) || null;
+        const addr = parseEndereco(enderecoRaw);
+        const endereco = addr.text;
+        const maps = addr.maps;
         const itens = Array.isArray(p && p.itens) ? p.itens : [];
         const itensHtml = itens.slice(0, 20).map(it2 => {
           const nome = (it2 && it2.nome) ? String(it2.nome) : '';
@@ -508,6 +519,7 @@ def register_logistica_routes(app: Flask) -> None:
 
         const wa = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         const waHtml = wa ? ('<div style="margin-top:10px"><a class="wa" target="_blank" rel="noopener" href="' + wa + '"><span style="opacity:.9">WA</span><span>Falar com o Cliente</span></a></div>') : '';
+        const mapsHtml = maps ? ('<div style="margin-top:10px"><a class="maps" target="_blank" rel="noopener" href="' + maps + '"><span style="opacity:.9">MAPS</span><span>Abrir Localização</span></a></div>') : '';
 
         const btnLabel = isRunning ? 'Devolver' : 'Remover';
         const btnAttr = isRunning ? 'data-return' : 'data-remove';
@@ -527,6 +539,7 @@ def register_logistica_routes(app: Flask) -> None:
           + (obs ? ('<div class="muted">Obs: ' + obs + '</div>') : '')
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + waHtml
+          + mapsHtml
           + deliveredHtml
           + '<div style="margin-top:10px"><button type="button" class="secondary" ' + btnAttr + '="' + sid + '">' + btnLabel + '</button></div>'
           + '</div>';
