@@ -6,6 +6,7 @@ from flask import Flask, jsonify, make_response, redirect, request, session
 
 from .store import auth_user, ensure_default_admin_if_empty
 from .. import core
+import os
 
 
 def register_ops_auth_routes(app: Flask) -> None:
@@ -83,6 +84,11 @@ def require_ops_login(*, role: str | None = None) -> Any:
             return jsonify({"error": "unauthorized"}), 401
         return redirect("/ops/login?next=" + path, code=302)
     if role is not None:
+        admin_username = str(os.environ.get("OPS_ADMIN_USERNAME") or "").strip().lower()
+        if admin_username:
+            got_user = str(session.get("ops_username") or "").strip().lower()
+            if got_user == admin_username:
+                return None
         got = str(session.get("ops_role") or "").strip().upper()
         if got != str(role).strip().upper():
             path = str(request.path or "/")
