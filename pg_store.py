@@ -1148,6 +1148,17 @@ def logistica_run_return_order(*, ops_user_id: int, solicitacao_id: str) -> dict
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM log_run_items WHERE run_id=%s AND solicitacao_id=%s AND delivered_em IS NULL", (run_id, sid))
+
+            # Se a corrida ficou vazia, finaliza automaticamente para destravar o fluxo
+            # (principalmente quando o frontend não exibe botões de rodapé).
+            cur.execute("SELECT COUNT(*) FROM log_run_items WHERE run_id=%s", (run_id,))
+            remaining = int((cur.fetchone() or [0])[0] or 0)
+            if remaining == 0:
+                finished = _now_iso()
+                cur.execute(
+                    "UPDATE log_runs SET status='FINALIZADA', finished_em=%s WHERE id=%s AND ops_user_id=%s",
+                    (finished, run_id, uid),
+                )
     return logistica_get_or_create_draft_run(ops_user_id=uid)
 
 

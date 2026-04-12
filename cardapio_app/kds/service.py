@@ -120,29 +120,22 @@ def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
 
     pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
     cliente = str(pedido.get("cliente_nome") or "").strip()
-    whatsapp = str(pedido.get("cliente_whatsapp") or "").strip()
-    tipo = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
-    taxa = pedido.get("taxa_entrega")
-    try:
-        taxa_f = float(taxa) if taxa is not None else None
-    except Exception:
-        taxa_f = None
+    tipo_raw = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
+    tipo_up = tipo_raw.upper().replace(" ", "_")
+    if tipo_up in ("DELIVERY", "ENTREGA"):
+        tipo = "DELIVERY"
+    elif tipo_up in ("RETIRADA", "RETIRAR", "PICKUP"):
+        tipo = "RETIRADA"
+    else:
+        tipo = tipo_raw
 
     link = base + "/cozinha"
     msg_lines: list[str] = []
-    msg_lines.append("NOVO PEDIDO NA COZINHA")
-    msg_lines.append(f"Pedido: {sid}")
+    msg_lines.append("ALERTA: NOVO PEDIDO")
     if cliente:
         msg_lines.append(f"Cliente: {cliente}")
-    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message=core.whatsapp_default_message(context="kds"))
-    if wa_url:
-        msg_lines.append(f"Falar com o cliente: {wa_url}")
     if tipo:
         msg_lines.append(f"Tipo: {tipo}")
-    if taxa_f is not None:
-        msg_lines.append(f"Taxa de entrega: R$ {taxa_f:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    msg_lines.append("")
-    msg_lines.append("Acesse o painel:")
     msg_lines.append(link)
     msg = "\n".join(msg_lines).strip()
 

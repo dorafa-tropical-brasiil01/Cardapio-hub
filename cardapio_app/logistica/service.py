@@ -195,22 +195,22 @@ def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) 
 
     pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
     cliente = str(pedido.get("cliente_nome") or "").strip()
-    whatsapp = str(pedido.get("cliente_whatsapp") or "").strip()
-    tipo = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
+    tipo_raw = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
+    tipo_up = tipo_raw.upper().replace(" ", "_")
+    if tipo_up in ("DELIVERY", "ENTREGA"):
+        tipo = "DELIVERY"
+    elif tipo_up in ("RETIRADA", "RETIRAR", "PICKUP"):
+        tipo = "RETIRADA"
+    else:
+        tipo = tipo_raw
 
     link = base + "/entregas"
     msg_lines: list[str] = []
-    msg_lines.append("PEDIDO PRONTO PARA ENTREGA")
-    msg_lines.append(f"Pedido: {sid}")
+    msg_lines.append("ALERTA: PEDIDO PRONTO")
     if cliente:
         msg_lines.append(f"Cliente: {cliente}")
-    wa_url = core.whatsapp_wa_me_url(phone=whatsapp, message=core.whatsapp_default_message(context="entrega"))
-    if wa_url:
-        msg_lines.append(f"Falar com o cliente: {wa_url}")
     if tipo:
         msg_lines.append(f"Tipo: {tipo}")
-    msg_lines.append("")
-    msg_lines.append("Acesse o painel:")
     msg_lines.append(link)
     msg = "\n".join(msg_lines).strip()
 
