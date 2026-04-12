@@ -232,12 +232,13 @@ def register_logistica_routes(app: Flask) -> None:
     const toastEl = document.getElementById('toast');
 
     try {
-      if (prontosEl && String(prontosEl.innerText || '').trim() === 'Carregando...') {
-        prontosEl.innerText = 'Iniciando...';
-      }
-      if (corridaMeta && String(corridaMeta.innerText || '').trim() === 'Carregando...') {
-        corridaMeta.innerText = 'Iniciando...';
-      }
+      const looksLikeLoading = (t) => {
+        const s = String(t || '').trim();
+        if (!s) return true;
+        return s.toLowerCase().indexOf('carregando') >= 0;
+      };
+      if (prontosEl && looksLikeLoading(prontosEl.innerText)) prontosEl.innerText = 'Iniciando...';
+      if (corridaMeta && looksLikeLoading(corridaMeta.innerText)) corridaMeta.innerText = 'Iniciando...';
     } catch (e) {
     }
 
@@ -294,10 +295,23 @@ def register_logistica_routes(app: Flask) -> None:
 
     async function api(url, opts) {
       const resp = await fetch(url, opts || {method:'GET'});
-      const j = await resp.json().catch(()=>({}));
+
+      const ctype = String(resp.headers.get('content-type') || '').toLowerCase();
+      let j = null;
+      let raw = '';
+
+      if (ctype.indexOf('application/json') >= 0) {
+        j = await resp.json().catch(() => null);
+      } else {
+        raw = await resp.text().catch(() => '');
+      }
+
       if (!resp.ok) {
-        const err = (j && j.error) ? j.error : 'erro';
-        throw {error: err};
+        const err = (j && j.error) ? j.error : (raw ? raw.slice(0, 220) : ('http_' + resp.status));
+        throw {error: err, status: resp.status};
+      }
+      if (j === null) {
+        throw {error: raw ? ('Resposta não-JSON: ' + raw.slice(0, 220)) : 'Resposta não-JSON vazia.'};
       }
       return j;
     }
@@ -574,14 +588,18 @@ def register_logistica_routes(app: Flask) -> None:
         const p = await api('/api/logistica/prontos');
         renderProntos(p.pedidos);
       } catch (e) {
-        prontosEl.innerText = 'Falha ao carregar prontos.';
+        const msg = (e && e.error) ? e.error : 'Falha ao carregar prontos.';
+        prontosEl.innerText = msg;
+        showToast(msg);
       }
 
       try {
         const c = await api('/api/logistica/corrida');
         renderCorrida(c.corrida);
       } catch (e) {
-        corridaMeta.innerText = 'Falha ao carregar corrida.';
+        const msg2 = (e && e.error) ? e.error : 'Falha ao carregar corrida.';
+        corridaMeta.innerText = msg2;
+        showToast(msg2);
       }
     }
 
