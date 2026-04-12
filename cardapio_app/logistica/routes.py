@@ -5,6 +5,7 @@ import os
 from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
+from ..ops_auth.store import auth_user
 from .service import (
     corrida_add,
     corrida_devolver,
@@ -22,11 +23,21 @@ from .service import (
 
 
 def register_logistica_routes(app: Flask) -> None:
-    def _admin_password_configured() -> str:
-        pwd = str(os.environ.get("OPS_ADMIN_PASSWORD") or "").strip()
-        if pwd:
-            return pwd
-        return str(os.environ.get("PDV_KEY") or "").strip()
+    def _verify_admin_password(password: str) -> bool:
+        pwd = str(password or "")
+        if not pwd:
+            return False
+
+        configured_pwd = str(os.environ.get("OPS_ADMIN_PASSWORD") or "").strip()
+        if configured_pwd:
+            return pwd == configured_pwd
+
+        admin_username = str(os.environ.get("OPS_ADMIN_USERNAME") or "").strip().lower()
+        if admin_username:
+            rec = auth_user(username=admin_username, password=pwd)
+            return rec is not None
+
+        return False
 
     @app.get("/api/logistica/prontos")
     def api_logistica_prontos():
@@ -173,10 +184,7 @@ def register_logistica_routes(app: Flask) -> None:
         if not sid:
             return jsonify({"error": "solicitacao_id_ausente"}), 400
 
-        adm = _admin_password_configured()
-        if not adm:
-            return jsonify({"error": "admin_password_nao_configurada"}), 400
-        if pwd != adm:
+        if not _verify_admin_password(pwd):
             return jsonify({"error": "senha_invalida"}), 403
         try:
             pedido_dessinalizar(ops_user_id=uid, solicitacao_id=sid, note=note)
@@ -197,10 +205,7 @@ def register_logistica_routes(app: Flask) -> None:
         if not sid:
             return jsonify({"error": "solicitacao_id_ausente"}), 400
 
-        adm = _admin_password_configured()
-        if not adm:
-            return jsonify({"error": "admin_password_nao_configurada"}), 400
-        if pwd != adm:
+        if not _verify_admin_password(pwd):
             return jsonify({"error": "senha_invalida"}), 403
         try:
             pedido_cancelar_definitivo(ops_user_id=uid, solicitacao_id=sid, note=note)
