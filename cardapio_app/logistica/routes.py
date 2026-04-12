@@ -16,13 +16,17 @@ from .service import (
     listar_prontos,
     obter_corrida_atual,
     pedido_cancelar_definitivo,
+    pedido_dessinalizar,
     pedido_sinalizar,
 )
 
 
 def register_logistica_routes(app: Flask) -> None:
     def _admin_password_configured() -> str:
-        return str(os.environ.get("OPS_ADMIN_PASSWORD") or "").strip()
+        pwd = str(os.environ.get("OPS_ADMIN_PASSWORD") or "").strip()
+        if pwd:
+            return pwd
+        return str(os.environ.get("PDV_KEY") or "").strip()
 
     @app.get("/api/logistica/prontos")
     def api_logistica_prontos():
@@ -152,6 +156,30 @@ def register_logistica_routes(app: Flask) -> None:
             return jsonify({"error": "solicitacao_id_ausente"}), 400
         try:
             pedido_sinalizar(ops_user_id=uid, solicitacao_id=sid, note=note)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True})
+
+    @app.post("/api/logistica/pedido/dessinalizar")
+    def api_logistica_pedido_dessinalizar():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        sid = str(body.get("solicitacao_id") or "").strip()
+        pwd = str(body.get("password") or "")
+        note = str(body.get("note") or "").strip() or None
+        if not sid:
+            return jsonify({"error": "solicitacao_id_ausente"}), 400
+
+        adm = _admin_password_configured()
+        if not adm:
+            return jsonify({"error": "admin_password_nao_configurada"}), 400
+        if pwd != adm:
+            return jsonify({"error": "senha_invalida"}), 403
+        try:
+            pedido_dessinalizar(ops_user_id=uid, solicitacao_id=sid, note=note)
         except RuntimeError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True})
@@ -465,10 +493,7 @@ def register_logistica_routes(app: Flask) -> None:
           + (itensHtml ? ('<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + itensHtml + '</div>') : '')
           + waHtml
           + flagHtml
-          + '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">'
-          + '<button type="button" data-id="' + id + '"' + acceptDisabledAttr + '>Aceitar</button>'
-          + '<button type="button" class="secondary" data-cancel="' + id + '">Cancelar</button>'
-          + '</div>'
+          + '<div style="margin-top:10px"><button type="button" data-id="' + id + '"' + acceptDisabledAttr + '>Aceitar</button></div>'
           + '</div>';
       }).join('');
       prontosEl.innerHTML = head + prontosEl.innerHTML;
@@ -481,27 +506,27 @@ def register_logistica_routes(app: Flask) -> None:
             await api('/api/logistica/corrida/add', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({solicitacao_id: sid})});
             await load();
           } catch (e) {
-            showToast((e && e.error) ? e.error : 'Falha ao aceitar pedido.');
-          } finally {
-            btn.disabled = false;
-          }
-        });
-      });
-
-      prontosEl.querySelectorAll('button[data-cancel]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = btn.getAttribute('data-cancel');
-          if (!sid) return;
-          btn.disabled = true;
-          try {
-            await api('/api/logistica/pedido/sinalizar', {
-              method:'POST',
-              headers:{'Content-Type':'application/json'},
-              body: JSON.stringify({solicitacao_id: sid, note: 'cancelado_sem_senha'})
-            });
-            await load();
-          } catch (e) {
-            showToast((e && e.error) ? e.error : 'Falha ao cancelar.');
+            const err = (e && e.error) ? String(e.error) : 'Falha ao aceitar pedido.';
+            if (err === 'pedido_sinalizado') {
+              const pwd = prompt('Pedido SINALIZADO.\n\nSe você for administrador, digite a senha para DES-SINALIZAR e reativar o aceite.');
+              if (pwd && String(pwd).trim()) {
+                try {
+                  await api('/api/logistica/pedido/dessinalizar', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({solicitacao_id: sid, password: String(pwd)})
+                  });
+                  await load();
+                  return;
+                } catch (e2) {
+                  showToast((e2 && e2.error) ? e2.error : 'Falha ao des-sinalizar.');
+                  return;
+                }
+              }
+              showToast('Pedido sinalizado: apenas admin pode reativar.');
+              return;
+            }
+            showToast(err);
           } finally {
             btn.disabled = false;
           }

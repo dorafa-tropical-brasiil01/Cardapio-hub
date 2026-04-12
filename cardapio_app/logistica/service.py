@@ -142,6 +142,16 @@ def pedido_cancelar_definitivo(*, ops_user_id: int, solicitacao_id: str, note: s
     )
 
 
+def pedido_dessinalizar(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    core.pg_store.logistica_flag_clear(
+        ops_user_id=int(ops_user_id),
+        solicitacao_id=str(solicitacao_id or "").strip(),
+        note=note,
+    )
+
+
 def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) -> None:
     if not core.pg_enabled():
         return

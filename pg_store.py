@@ -859,6 +859,21 @@ def logistica_flag_signal(*, ops_user_id: int, solicitacao_id: str, note: str | 
             )
 
 
+def logistica_flag_clear(*, ops_user_id: int, solicitacao_id: str, note: str | None = None) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    uid = int(ops_user_id)
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    nt = str(note or "").strip() or None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM log_order_flags WHERE solicitacao_id=%s", (sid,))
+    logistica_event_add(ops_user_id=uid, solicitacao_id=sid, event="DESINALIZADO", note=nt)
+
+
 def logistica_event_add(*, ops_user_id: int, solicitacao_id: str, event: str, note: str | None = None) -> None:
     if not is_enabled():
         return
