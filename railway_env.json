@@ -1,0 +1,10 @@
+{
+  "CARDAPIO_PUBLIC_BASE_URL": "https://dorafatropicalbrasil.com.br",
+  "OPS_ADMIN_PASSWORD": "admin",
+  "OPS_ADMIN_USERNAME": "admin",
+  "PDV_KEY": "3952293a679cfab00672c961ffc520d0",
+  "PROMO_ENABLED": "true",
+  "PROMO_HMAC_SECRET": "Consagre_ao_Senhor_tudo_o_que_voce_faz_e_os_seus_planos_serao_bem_sucedidos",
+  "TELEGRAM_BOT_TOKEN": "8695484448:AAFVPFdp1EZOOSf4X2lWymaZPHQkpRNHPgA",
+  "TELEGRAM_CHAT_ID": "-1003887220673"
+}
