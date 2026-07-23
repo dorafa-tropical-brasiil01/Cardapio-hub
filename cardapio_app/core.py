@@ -391,7 +391,13 @@ def is_valid_whatsapp(value: Any) -> bool:
 
 
 def whatsapp_digits(value: Any) -> str:
-    return re.sub(r"\D+", "", str(value or "").strip())
+    digits = re.sub(r"\D+", "", str(value or "").strip())
+    if not digits:
+        return ""
+    # Add Brazilian country code (55) if not present
+    if not digits.startswith("55"):
+        digits = "55" + digits
+    return digits
 
 
 def whatsapp_default_message(*, context: str | None = None) -> str:
