@@ -209,6 +209,159 @@ def register_routes(app: Flask) -> None:
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
+    @app.get("/status/<access_token>")
+    def status_page(access_token: str):
+        if not core.pg_enabled():
+            return make_response("Serviço indisponível", 503)
+
+        tok = str(access_token or "").strip()
+        if not tok:
+            return make_response("Token ausente", 404)
+
+        try:
+            rec = core.pg_store.get_solicitacao_by_access_token(access_token=tok)
+        except Exception:
+            return make_response("Pedido não encontrado", 404)
+
+        if not isinstance(rec, dict):
+            return make_response("Pedido não encontrado", 404)
+
+        solicitacao_id = str(rec.get("id") or "").strip()
+        if not solicitacao_id:
+            return make_response("Pedido não encontrado", 404)
+
+        tipo_entrega = str(rec.get("tipo_entrega") or "").strip().upper()
+        if tipo_entrega not in ("DELIVERY", "RETIRADA"):
+            tipo_entrega = "DELIVERY"
+
+        total_etapas = 6 if tipo_entrega == "DELIVERY" else 4
+
+        html = (
+            "<!doctype html>"
+            "<html lang=\"pt-BR\">"
+            "<head>"
+            "<meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            "<title>Status do Pedido</title>"
+            "<style>"
+            "body{font-family:Arial,Helvetica,sans-serif;max-width:680px;margin:0 auto;padding:18px;background:#f5f5f5;color:#333;}"
+            "h1{font-size:22px;margin:0 0 16px 0;color:#0a5c2f;}"
+            ".card{background:#fff;border-radius:12px;padding:20px;margin:10px 0;box-shadow:0 2px 8px rgba(0,0,0,0.1);}"
+            ".status-badge{display:inline-block;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:14px;margin:8px 0;}"
+            ".status-enviado{background:#e3f2fd;color:#1565c0;}"
+            ".status-aceito{background:#fff3e0;color:#e65100;}"
+            ".status-preparando{background:#fff9c4;color:#f57f17;}"
+            ".status-pronto{background:#c8e6c9;color:#2e7d32;}"
+            ".status-em_entrega{background:#e1bee7;color:#6a1b9a;}"
+            ".status-entregue{background:#c8e6c9;color:#1b5e20;}"
+            ".progress{display:flex;justify-content:space-between;margin:16px 0;}"
+            ".step{flex:1;text-align:center;padding:8px 4px;font-size:11px;color:#999;position:relative;}"
+            ".step.active{color:#0a5c2f;font-weight:bold;}"
+            ".step.completed{color:#2e7d32;}"
+            ".step::after{content:'';position:absolute;top:50%;right:0;width:100%;height:2px;background:#ddd;z-index:-1;}"
+            ".step:last-child::after{display:none;}"
+            ".step.active::after{background:#0a5c2f;}"
+            ".step.completed::after{background:#2e7d32;}"
+            ".message{margin:12px 0;font-size:15px;line-height:1.4;}"
+            ".muted{opacity:.6;font-size:13px;}"
+            ".loading{text-align:center;padding:20px;}"
+            ".error{color:#c62828;padding:12px;background:#ffebee;border-radius:8px;margin:10px 0;}"
+            "</style>"
+            "</head>"
+            "<body>"
+            "<h1>Status do Pedido</h1>"
+            "<div class=\"card\">"
+            "<div id=\"loading\" class=\"loading\">Carregando...</div>"
+            "<div id=\"error\" class=\"error\" style=\"display:none\"></div>"
+            "<div id=\"content\" style=\"display:none\">"
+            "<div><strong>Tipo:</strong> <span id=\"tipoEntrega\"></span></div>"
+            "<div style=\"margin-top:8px\"><strong>Status:</strong> <span id=\"statusBadge\" class=\"status-badge\"></span></div>"
+            "<div class=\"progress\" id=\"progress\"></div>"
+            "<div class=\"message\" id=\"message\"></div>"
+            "<div class=\"muted\" id=\"atualizadoEm\"></div>"
+            "</div>"
+            "</div>"
+            "<script>"
+            f"const SOLICITACAO_ID={json.dumps(solicitacao_id)};"
+            f"const ACCESS_TOKEN={json.dumps(tok)};"
+            f"const TIPO_ENTREGA={json.dumps(tipo_entrega)};"
+            f"const TOTAL_ETAPAS={total_etapas};"
+            "const ETAPAS_DELIVERY=['ENVIADO','ACEITO','PREPARANDO','PRONTO','EM_ENTREGA','ENTREGUE'];"
+            "const ETAPAS_RETIRADA=['ENVIADO','ACEITO','PREPARANDO','PRONTO'];"
+            "const MENSAGENS={"
+            "'ENVIADO':'Pedido enviado ao estabelecimento.',"
+            "'ACEITO':'Pedido aceito pelo estabelecimento.',"
+            "'PREPARANDO':'Pedido em preparo.',"
+            "'PRONTO_DELIVERY':'Pedido pronto para entrega.',"
+            "'PRONTO_RETIRADA':'Seu pedido está pronto para retirada no estabelecimento.',"
+            "'EM_ENTREGA':'Pedido em rota de entrega.',"
+            "'ENTREGUE':'Seu pedido foi entregue.'"
+            "};"
+            "let timer=null;"
+            "function renderStatus(data){"
+            "  const loading=document.getElementById('loading');"
+            "  const error=document.getElementById('error');"
+            "  const content=document.getElementById('content');"
+            "  if(!data){loading.style.display='none';error.style.display='block';error.innerText='Erro ao carregar status.';return;}"
+            "  loading.style.display='none';error.style.display='none';content.style.display='block';"
+            "  const tipo=data.tipo_entrega||TIPO_ENTREGA;"
+            "  const status=data.status_publico||'';"
+            "  document.getElementById('tipoEntrega').innerText=tipo==='DELIVERY'?'Delivery':'Retirada';"
+            "  const badge=document.getElementById('statusBadge');"
+            "  badge.className='status-badge status-'+status.toLowerCase().replace('_','-');"
+            "  badge.innerText=status;"
+            "  const etapas=tipo==='DELIVERY'?ETAPAS_DELIVERY:ETAPAS_RETIRADA;"
+            "  const progress=document.getElementById('progress');"
+            "  progress.innerHTML='';"
+            "  let idx=etapas.indexOf(status);"
+            "  if(idx<0)idx=0;"
+            "  etapas.forEach((e,i)=>{"
+            "    const step=document.createElement('div');"
+            "    step.className='step';"
+            "    if(i<idx)step.classList.add('completed');"
+            "    if(i===idx)step.classList.add('active');"
+            "    step.innerText=(i+1)+' de '+etapas.length;"
+            "    progress.appendChild(step);"
+            "  });"
+            "  let msg=MENSAGENS[status];"
+            "  if(status==='PRONTO'&&tipo==='RETIRADA')msg=MENSAGENS['PRONTO_RETIRADA'];"
+            "  else if(status==='PRONTO'&&tipo==='DELIVERY')msg=MENSAGENS['PRONTO_DELIVERY'];"
+            "  document.getElementById('message').innerText=msg||'';"
+            "  const atualizado=data.atualizado_em||'';"
+            "  if(atualizado){"
+            "    const d=new Date(atualizado);"
+            "    document.getElementById('atualizadoEm').innerText='Atualizado: '+d.toLocaleString('pt-BR');"
+            "  }"
+            "  return status;"
+            "}"
+            "async function fetchStatus(){"
+            "  try{"
+            "    const resp=await fetch('/api/public/pedidos/'+encodeURIComponent(SOLICITACAO_ID)+'/status?token='+encodeURIComponent(ACCESS_TOKEN));"
+            "    if(resp.status===404||resp.status===401){"
+            "      if(timer)clearInterval(timer);"
+            "      document.getElementById('loading').style.display='none';"
+            "      document.getElementById('error').style.display='block';"
+            "      document.getElementById('error').innerText='Pedido não encontrado ou token inválido.';"
+            "      return;"
+            "    }"
+            "    const data=await resp.json().catch(()=>null);"
+            "    if(!data){return;}"
+            "    const status=renderStatus(data);"
+            "    if(status==='ENTREGUE'||status==='PRONTO'){"
+            "      if(timer)clearInterval(timer);"
+            "    }"
+            "  }catch(e){}"
+            "}"
+            "fetchStatus();"
+            "timer=setInterval(fetchStatus,2500);"
+            "</script>"
+            "</body>"
+            "</html>"
+        )
+        resp = make_response(html, 200)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     @app.get("/api/promo/info")
     def api_promo_info():
         if not core.promo_enabled():
@@ -1376,6 +1529,34 @@ def register_routes(app: Flask) -> None:
         if not expected or token != expected:
             return jsonify({"error": "unauthorized"}), 401
         return jsonify(s)
+
+    @app.get("/api/public/pedidos/<solicitacao_id>/status")
+    def api_public_get_pedido_status(solicitacao_id: str):
+        token = (request.args.get("token") or "").strip()
+        if not token:
+            return jsonify({"error": "token_ausente"}), 401
+
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        try:
+            rec = core.pg_store.get_solicitacao(solicitacao_id=solicitacao_id)
+        except Exception:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        if not isinstance(rec, dict):
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        expected = str(rec.get("access_token") or "").strip()
+        if not expected or token != expected:
+            return jsonify({"error": "unauthorized"}), 401
+
+        resultado = core.pg_store.calcular_status_publico(solicitacao_id=solicitacao_id)
+        resultado["solicitacao_id"] = solicitacao_id
+        resultado["tipo_entrega"] = str(rec.get("tipo_entrega") or "").strip().upper()
+        resultado["status"] = str(rec.get("status") or "").strip().upper()
+
+        return jsonify(resultado)
 
     @app.get("/api/pdv/solicitacoes")
     def api_pdv_list_solicitacoes():

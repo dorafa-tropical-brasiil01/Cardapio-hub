@@ -1380,6 +1380,33 @@ def get_solicitacao(*, solicitacao_id: str) -> dict[str, Any] | None:
             return dict(rec) if isinstance(rec, dict) else None
 
 
+def get_solicitacao_by_access_token(*, access_token: str) -> dict[str, Any] | None:
+    """
+    Localiza um pedido pelo access_token público.
+    Retorna o record completo do pedido ou None se não encontrado.
+    """
+    if not is_enabled():
+        return None
+
+    tok = str(access_token or "").strip()
+    if not tok:
+        return None
+
+    _ensure_db_ready()
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT record FROM cardapio_solicitacoes WHERE record->>'access_token' = %s",
+                (tok,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            rec = row.get("record")
+            return dict(rec) if isinstance(rec, dict) else None
+
+
 def save_asset(*, path: str, content: bytes, content_type: str | None = None) -> None:
     if not is_enabled():
         return
@@ -1515,6 +1542,158 @@ def update_solicitacao_status(*, solicitacao_id: str, pdv_status: str) -> None:
     rec["pdv_status"] = st
     rec["pdv_status_em"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     save_solicitacao(record=rec)
+
+
+def calcular_status_publico(*, solicitacao_id: str) -> dict[str, Any]:
+    """
+    Calcula o status público de um pedido com base nos estados operacionais.
+
+    Regras:
+    - DELIVERY: ENVIADO -> ACEITO -> PREPARANDO -> PRONTO -> EM_ENTREGA -> ENTREGUE
+    - RETIRADA: ENVIADO -> ACEITO -> PREPARANDO -> PRONTO (termina aqui)
+
+    Para DELIVERY, ENTREGUE depende de log_run_items.delivered_em IS NOT NULL.
+    Para RETIRADA, o fluxo termina em PRONTO (não existe evento de retirada física).
+    """
+    if not is_enabled():
+        return {"status_publico": "DESCONHECIDO", "finalizado": False}
+
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return {"status_publico": "DESCONHECIDO", "finalizado": False}
+
+    _ensure_db_ready()
+
+    # Obter o pedido
+    rec = get_solicitacao(solicitacao_id=sid)
+    if not isinstance(rec, dict):
+        return {"status_publico": "DESCONHECIDO", "finalizado": False}
+
+    # Obter tipo_entrega
+    tipo_entrega = str(rec.get("tipo_entrega") or "").strip().upper()
+    status_cardapio = str(rec.get("status") or "").strip().upper()
+
+    # Obter status do KDS
+    kds_status = None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM kds_orders WHERE solicitacao_id=%s", (sid,))
+            row = cur.fetchone()
+            if row:
+                kds_status = str(row[0] if row else "").strip().upper()
+
+    # Aplicar regras por tipo de entrega
+    if tipo_entrega == "DELIVERY":
+        # REGRA 1: ENTREGUE (se delivered_em existe)
+        with _conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT delivered_em
+                    FROM log_run_items
+                    WHERE solicitacao_id=%s
+                      AND delivered_em IS NOT NULL
+                    LIMIT 1
+                    """,
+                    (sid,),
+                )
+                if cur.fetchone():
+                    return {
+                        "status_publico": "ENTREGUE",
+                        "finalizado": True,
+                        "atualizado_em": _now_iso(),
+                    }
+
+        # REGRA 2: EM_ENTREGA (se corrida está EM_ANDAMENTO)
+        with _conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT r.status
+                    FROM log_runs r
+                    JOIN log_run_items i ON i.run_id = r.id
+                    WHERE i.solicitacao_id=%s
+                      AND r.status = 'EM_ANDAMENTO'
+                    LIMIT 1
+                    """,
+                    (sid,),
+                )
+                if cur.fetchone():
+                    return {
+                        "status_publico": "EM_ENTREGA",
+                        "finalizado": False,
+                        "atualizado_em": _now_iso(),
+                    }
+
+        # REGRA 3: PRONTO
+        if kds_status == "PRONTO":
+            return {
+                "status_publico": "PRONTO",
+                "finalizado": False,
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 4: PREPARANDO
+        if kds_status == "EM_PREPARO":
+            return {
+                "status_publico": "PREPARANDO",
+                "finalizado": False,
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 5: ACEITO
+        if status_cardapio == "EM_ATENDIMENTO":
+            return {
+                "status_publico": "ACEITO",
+                "finalizado": False,
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 6: ENVIADO (padrão)
+        return {
+            "status_publico": "ENVIADO",
+            "finalizado": False,
+            "atualizado_em": _now_iso(),
+        }
+
+    elif tipo_entrega == "RETIRADA":
+        # REGRA 1: PRONTO (estado final para RETIRADA nesta versão)
+        if kds_status == "PRONTO":
+            return {
+                "status_publico": "PRONTO",
+                "finalizado": False,  # NÃO é finalizado fisicamente
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 2: PREPARANDO
+        if kds_status == "EM_PREPARO":
+            return {
+                "status_publico": "PREPARANDO",
+                "finalizado": False,
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 3: ACEITO
+        if status_cardapio == "EM_ATENDIMENTO":
+            return {
+                "status_publico": "ACEITO",
+                "finalizado": False,
+                "atualizado_em": _now_iso(),
+            }
+
+        # REGRA 4: ENVIADO (padrão)
+        return {
+            "status_publico": "ENVIADO",
+            "finalizado": False,
+            "atualizado_em": _now_iso(),
+        }
+
+    # Tipo de entrega não reconhecido
+    return {
+        "status_publico": "DESCONHECIDO",
+        "finalizado": False,
+        "atualizado_em": _now_iso(),
+    }
 
 
 def upsert_promo_inscricao_emitida(

@@ -400,9 +400,18 @@ def whatsapp_digits(value: Any) -> str:
     return digits
 
 
-def whatsapp_default_message(*, context: str | None = None) -> str:
+def whatsapp_default_message(*, context: str | None = None, record: dict[str, Any] | None = None) -> str:
     _ = str(context or "").strip().lower()
-    return "Olá! 😊 Estamos entrando em contato sobre seu pedido."
+    base_msg = "Olá! 😊 Estamos entrando em contato sobre seu pedido, você pode acompanhar o status dele pelo link."
+    
+    if record and isinstance(record, dict):
+        access_token = str(record.get("access_token") or "").strip()
+        if access_token:
+            base_url = promo_base_url()
+            tracking_url = f"{base_url}/status/{urllib.parse.quote(access_token)}"
+            base_msg += f"\n\nAcompanhe seu pedido:\n{tracking_url}"
+    
+    return base_msg
 
 
 def whatsapp_wa_me_url(*, phone: Any, message: str | None = None) -> str:
@@ -553,7 +562,7 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append(f"Cliente: {cliente_nome}")
     lines.append(f"WhatsApp: {whatsapp}")
 
-    wa_url = whatsapp_wa_me_url(phone=whatsapp, message=whatsapp_default_message(context="pedido"))
+    wa_url = whatsapp_wa_me_url(phone=whatsapp, message=whatsapp_default_message(context="pedido", record=record))
     if wa_url:
         lines.append(f"Falar com o cliente: {wa_url}")
     lines.append("")
@@ -636,6 +645,15 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append("ID do pedido:")
     lines.append(rid)
+
+    # Adicionar link de acompanhamento se houver access_token
+    access_token = str(record.get("access_token") or "").strip()
+    if access_token:
+        base_url = promo_base_url()
+        tracking_url = f"{base_url}/status/{urllib.parse.quote(access_token)}"
+        lines.append("")
+        lines.append("Acompanhar pedido:")
+        lines.append(tracking_url)
 
     return "\n".join(lines).strip()
 

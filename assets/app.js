@@ -1202,6 +1202,8 @@
         const floating = document.getElementById("floatingActions");
         const whatsFloat = document.getElementById("whatsFloat");
         const img = document.getElementById("postOrderImage");
+        const statusLinkDiv = document.getElementById("postOrderStatusLink");
+        const statusLink = document.getElementById("statusLink");
 
         state.postOrderActive = true;
 
@@ -1243,6 +1245,22 @@
             }
         } catch {
             if (img) img.style.display = "none";
+        }
+
+        // Exibir link de acompanhamento se houver access_token
+        try {
+            const pedido = getPedidoAtual();
+            if (pedido && pedido.access_token && statusLinkDiv && statusLink) {
+                const baseUrl = window.location.origin;
+                statusLink.href = `${baseUrl}/status/${encodeURIComponent(pedido.access_token)}`;
+                statusLinkDiv.style.display = "block";
+            } else if (statusLinkDiv) {
+                statusLinkDiv.style.display = "none";
+            }
+        } catch {
+            if (statusLinkDiv) {
+                statusLinkDiv.style.display = "none";
+            }
         }
     }
 
