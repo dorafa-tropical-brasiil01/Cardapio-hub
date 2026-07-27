@@ -1,6 +1,7 @@
     const STORAGE_KEYS = {
         carrinho: "cardapio.cart.v1",
         pedido: "cardapio.lastPedido.v1",
+        trackingPedido: "cardapio.trackingPedido.v1",
         payMethod: "cardapio.payMethod.v1",
         clientName: "cardapio.clientName.v1",
         clientWhatsapp: "cardapio.clientWhatsapp.v1",
@@ -972,6 +973,26 @@
         }
     }
 
+    function saveTrackingPedido(tracking) {
+        localStorage.setItem(STORAGE_KEYS.trackingPedido, JSON.stringify(tracking));
+    }
+
+    function getTrackingPedido() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEYS.trackingPedido);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
+    }
+
+    function clearTrackingPedido() {
+        try {
+            localStorage.removeItem(STORAGE_KEYS.trackingPedido);
+        } catch {
+        }
+    }
+
     function safeClearPedidoAtual() {
         const p = getPedidoAtual();
         if (!p) {
@@ -990,6 +1011,8 @@
         if (state.carrinho.length === 0) return;
 
         if (state.sending) return;
+
+        clearTrackingPedido();
 
         const pagamento_preferido = String(state.payMethod || "DINHEIRO").toUpperCase();
 
@@ -1130,6 +1153,17 @@
             total: getCartTotal()
         };
 
+        // Salvar tracking para acompanhamento na tela de agradecimento
+        if (!isSalao && out.token) {
+            const tracking = {
+                id: out.id,
+                access_token: out.token,
+                kind,
+                tipo_entrega: String(state.deliveryType || "DELIVERY").toUpperCase()
+            };
+            saveTrackingPedido(tracking);
+        }
+
         // Fluxo simplificado: após enviar, permite novo pedido imediatamente.
         // O pedido NÃO some do PDV; apenas não mantemos "pedido atual" nesta tela.
         clearPedidoAtual();
@@ -1156,6 +1190,7 @@
         const whatsFloat = document.getElementById("whatsFloat");
 
         stopStatusPublicoPolling();
+        clearTrackingPedido();
         state.postOrderActive = false;
         if (post) post.style.display = "none";
         if (header) header.style.display = "flex";
@@ -1250,10 +1285,10 @@
 
         // Exibir link de acompanhamento se houver access_token
         try {
-            const pedido = getPedidoAtual();
-            if (pedido && pedido.access_token && statusLinkDiv && statusLink) {
+            const tracking = getTrackingPedido();
+            if (tracking && tracking.access_token && statusLinkDiv && statusLink) {
                 const baseUrl = window.location.origin;
-                statusLink.href = `${baseUrl}/status/${encodeURIComponent(pedido.access_token)}`;
+                statusLink.href = `${baseUrl}/status/${encodeURIComponent(tracking.access_token)}`;
                 statusLinkDiv.style.display = "block";
             } else if (statusLinkDiv) {
                 statusLinkDiv.style.display = "none";
@@ -1266,11 +1301,11 @@
 
         // Exibir área de status público e iniciar polling
         try {
-            const pedido = getPedidoAtual();
+            const tracking = getTrackingPedido();
             const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
-            if (pedido && pedido.access_token && statusPublicoDiv) {
+            if (tracking && tracking.access_token && statusPublicoDiv) {
                 statusPublicoDiv.style.display = "block";
-                renderStatusPublicoNaTela("ENVIADO", pedido.tipo_entrega);
+                renderStatusPublicoNaTela("ENVIADO", tracking.tipo_entrega);
                 startStatusPublicoPolling();
             } else if (statusPublicoDiv) {
                 statusPublicoDiv.style.display = "none";
@@ -1324,14 +1359,14 @@
     }
 
     async function refreshStatusPublicoNaTela() {
-        const pedido = getPedidoAtual();
-        if (!pedido || !pedido.id || !pedido.access_token) return;
+        const tracking = getTrackingPedido();
+        if (!tracking || !tracking.id || !tracking.access_token) return;
 
-        const kind = String(pedido.kind || "").toUpperCase();
+        const kind = String(tracking.kind || "").toUpperCase();
         if (kind !== "DELIVERY") return;
 
         try {
-            const url = `/api/public/pedidos/${encodeURIComponent(pedido.id)}/status?token=${encodeURIComponent(pedido.access_token)}`;
+            const url = `/api/public/pedidos/${encodeURIComponent(tracking.id)}/status?token=${encodeURIComponent(tracking.access_token)}`;
             const res = await fetch(url, { cache: "no-store" });
             if (!res.ok) return;
 
@@ -1344,6 +1379,7 @@
 
             if (finalizado === true) {
                 stopStatusPublicoPolling();
+                clearTrackingPedido();
             }
         } catch (e) {
         }
