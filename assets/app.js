@@ -1305,7 +1305,7 @@
             const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
             if (tracking && tracking.access_token && statusPublicoDiv) {
                 statusPublicoDiv.style.display = "block";
-                renderStatusPublicoNaTela("ENVIADO", tracking.tipo_entrega);
+                statusPublicoDiv.innerText = "Carregando status...";
                 startStatusPublicoPolling();
             } else if (statusPublicoDiv) {
                 statusPublicoDiv.style.display = "none";
@@ -1320,42 +1320,20 @@
 
     function renderStatusPublicoNaTela(statusPublico, tipoEntrega) {
         const statusDiv = document.getElementById("postOrderStatusPublico");
-        const stepsDiv = document.getElementById("statusSteps");
-        if (!statusDiv || !stepsDiv) return;
+        if (!statusDiv) return;
 
         const tipo = String(tipoEntrega || "").toUpperCase();
-        const steps = tipo === "DELIVERY"
-            ? ["ENVIADO", "ACEITO", "PREPARANDO", "PRONTO", "EM_ENTREGA", "ENTREGUE"]
-            : ["ENVIADO", "ACEITO", "PREPARANDO", "PRONTO"];
-
         const labels = {
             "ENVIADO": "Pedido enviado",
-            "ACEITO": "Pedido aceito pelo estabelecimento",
+            "ACEITO": "Pedido aceito",
             "PREPARANDO": "Pedido em preparo",
-            "PRONTO": tipo === "RETIRADA" ? "Seu pedido está pronto para retirada no estabelecimento." : "Pedido pronto para entrega",
-            "EM_ENTREGA": "Pedido em rota de entrega",
+            "PRONTO": tipo === "RETIRADA" ? "Pedido pronto para retirada" : "Pedido pronto",
+            "EM_ENTREGA": "Saiu para entrega",
             "ENTREGUE": "Pedido entregue"
         };
 
-        let html = "";
-        let foundCurrent = false;
-
-        steps.forEach((step, index) => {
-            const isCurrent = step === statusPublico;
-            const isPast = !foundCurrent && !isCurrent;
-            if (isCurrent) foundCurrent = true;
-
-            const icon = isPast ? "✓" : (isCurrent ? "●" : "○");
-            const color = isPast ? "#0a5c2f" : (isCurrent ? "#0a5c2f" : "#999");
-            const fontWeight = isCurrent ? "bold" : "normal";
-
-            html += `<div style="display:flex; align-items:center; margin-bottom:8px; color:${color}; font-weight:${fontWeight}">`;
-            html += `<span style="margin-right:8px; font-size:16px">${icon}</span>`;
-            html += `<span>${labels[step] || step}</span>`;
-            html += `</div>`;
-        });
-
-        stepsDiv.innerHTML = html;
+        const texto = labels[statusPublico] || statusPublico;
+        statusDiv.innerText = texto;
     }
 
     async function refreshStatusPublicoNaTela() {

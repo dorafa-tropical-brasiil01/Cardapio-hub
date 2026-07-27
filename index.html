@@ -1003,8 +1003,9 @@
 </div>
 
 <div id="postOrderScreen" style="display:none; padding:18px; max-width:900px; margin:0 auto">
-    <div style="display:flex; justify-content:flex-start; margin-bottom:14px">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
         <button type="button" onclick="voltarAoCardapio()">Voltar</button>
+        <div id="postOrderStatusPublico" style="display:none; font-size:14px; color:#555; font-weight:bold"></div>
     </div>
     <div style="display:flex; justify-content:center">
         <img id="postOrderImage" src="" alt="" style="max-width:100%; border-radius:16px; display:none" />
@@ -1014,10 +1015,6 @@
             <div style="font-size:14px; margin-bottom:8px; color:#555">Acompanhe seu pedido:</div>
             <a id="statusLink" href="#" target="_blank" style="display:inline-block; padding:10px 20px; background:#0a5c2f; color:#fff; text-decoration:none; border-radius:8px; font-weight:bold">Ver status do pedido</a>
         </div>
-    </div>
-    <div id="postOrderStatusPublico" style="display:none; margin-top:20px; background:rgba(255,255,255,0.8); border-radius:12px; padding:16px; border:1px solid rgba(0,0,0,0.1)">
-        <div style="font-size:14px; margin-bottom:12px; color:#555; font-weight:bold">Status do pedido:</div>
-        <div id="statusSteps"></div>
     </div>
 </div>
 
