@@ -1155,6 +1155,7 @@
         const floating = document.getElementById("floatingActions");
         const whatsFloat = document.getElementById("whatsFloat");
 
+        stopStatusPublicoPolling();
         state.postOrderActive = false;
         if (post) post.style.display = "none";
         if (header) header.style.display = "flex";
@@ -1262,6 +1263,106 @@
                 statusLinkDiv.style.display = "none";
             }
         }
+
+        // Exibir área de status público e iniciar polling
+        try {
+            const pedido = getPedidoAtual();
+            const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
+            if (pedido && pedido.access_token && statusPublicoDiv) {
+                statusPublicoDiv.style.display = "block";
+                renderStatusPublicoNaTela("ENVIADO", pedido.tipo_entrega);
+                startStatusPublicoPolling();
+            } else if (statusPublicoDiv) {
+                statusPublicoDiv.style.display = "none";
+            }
+        } catch {
+            const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
+            if (statusPublicoDiv) {
+                statusPublicoDiv.style.display = "none";
+            }
+        }
+    }
+
+    function renderStatusPublicoNaTela(statusPublico, tipoEntrega) {
+        const statusDiv = document.getElementById("postOrderStatusPublico");
+        const stepsDiv = document.getElementById("statusSteps");
+        if (!statusDiv || !stepsDiv) return;
+
+        const tipo = String(tipoEntrega || "").toUpperCase();
+        const steps = tipo === "DELIVERY"
+            ? ["ENVIADO", "ACEITO", "PREPARANDO", "PRONTO", "EM_ENTREGA", "ENTREGUE"]
+            : ["ENVIADO", "ACEITO", "PREPARANDO", "PRONTO"];
+
+        const labels = {
+            "ENVIADO": "Pedido enviado",
+            "ACEITO": "Pedido aceito pelo estabelecimento",
+            "PREPARANDO": "Pedido em preparo",
+            "PRONTO": tipo === "RETIRADA" ? "Seu pedido está pronto para retirada no estabelecimento." : "Pedido pronto para entrega",
+            "EM_ENTREGA": "Pedido em rota de entrega",
+            "ENTREGUE": "Pedido entregue"
+        };
+
+        let html = "";
+        let foundCurrent = false;
+
+        steps.forEach((step, index) => {
+            const isCurrent = step === statusPublico;
+            const isPast = !foundCurrent && !isCurrent;
+            if (isCurrent) foundCurrent = true;
+
+            const icon = isPast ? "✓" : (isCurrent ? "●" : "○");
+            const color = isPast ? "#0a5c2f" : (isCurrent ? "#0a5c2f" : "#999");
+            const fontWeight = isCurrent ? "bold" : "normal";
+
+            html += `<div style="display:flex; align-items:center; margin-bottom:8px; color:${color}; font-weight:${fontWeight}">`;
+            html += `<span style="margin-right:8px; font-size:16px">${icon}</span>`;
+            html += `<span>${labels[step] || step}</span>`;
+            html += `</div>`;
+        });
+
+        stepsDiv.innerHTML = html;
+    }
+
+    async function refreshStatusPublicoNaTela() {
+        const pedido = getPedidoAtual();
+        if (!pedido || !pedido.id || !pedido.access_token) return;
+
+        const kind = String(pedido.kind || "").toUpperCase();
+        if (kind !== "DELIVERY") return;
+
+        try {
+            const url = `/api/public/pedidos/${encodeURIComponent(pedido.id)}/status?token=${encodeURIComponent(pedido.access_token)}`;
+            const res = await fetch(url, { cache: "no-store" });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            const statusPublico = data.status_publico;
+            const finalizado = data.finalizado;
+            const tipoEntrega = data.tipo_entrega;
+
+            renderStatusPublicoNaTela(statusPublico, tipoEntrega);
+
+            if (finalizado === true) {
+                stopStatusPublicoPolling();
+            }
+        } catch (e) {
+        }
+    }
+
+    function startStatusPublicoPolling() {
+        if (state.statusPublicoTimer) {
+            clearInterval(state.statusPublicoTimer);
+        }
+        state.statusPublicoTimer = setInterval(async () => {
+            await refreshStatusPublicoNaTela();
+        }, 2500);
+    }
+
+    function stopStatusPublicoPolling() {
+        if (state.statusPublicoTimer) {
+            clearInterval(state.statusPublicoTimer);
+            state.statusPublicoTimer = null;
+        }
     }
 
     let _deliveryLeafletMap = null;
@@ -1340,6 +1441,7 @@
     }
 
     function voltarAoCardapio() {
+        stopStatusPublicoPolling();
         showMainScreen();
     }
 
