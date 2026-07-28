@@ -1238,8 +1238,6 @@
         const floating = document.getElementById("floatingActions");
         const whatsFloat = document.getElementById("whatsFloat");
         const img = document.getElementById("postOrderImage");
-        const statusLinkDiv = document.getElementById("postOrderStatusLink");
-        const statusLink = document.getElementById("statusLink");
 
         state.postOrderActive = true;
 
@@ -1283,30 +1281,17 @@
             if (img) img.style.display = "none";
         }
 
-        // Exibir link de acompanhamento se houver access_token
-        try {
-            const tracking = getTrackingPedido();
-            if (tracking && tracking.access_token && statusLinkDiv && statusLink) {
-                const baseUrl = window.location.origin;
-                statusLink.href = `${baseUrl}/status/${encodeURIComponent(tracking.access_token)}`;
-                statusLinkDiv.style.display = "block";
-            } else if (statusLinkDiv) {
-                statusLinkDiv.style.display = "none";
-            }
-        } catch {
-            if (statusLinkDiv) {
-                statusLinkDiv.style.display = "none";
-            }
-        }
-
         // Exibir área de status público e iniciar polling
         try {
             const tracking = getTrackingPedido();
             const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
             if (tracking && tracking.access_token && statusPublicoDiv) {
                 statusPublicoDiv.style.display = "block";
-                statusPublicoDiv.innerText = "Carregando status...";
-                startStatusPublicoPolling();
+                // Só definir texto inicial se polling não estiver ativo
+                if (!state.statusPublicoTimer) {
+                    statusPublicoDiv.innerText = "Carregando status...";
+                    startStatusPublicoPolling();
+                }
             } else if (statusPublicoDiv) {
                 statusPublicoDiv.style.display = "none";
             }
