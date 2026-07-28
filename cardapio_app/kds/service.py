@@ -55,26 +55,54 @@ def listar_preparando_ids(*, limit: int = 50) -> list[str]:
 
 
 def listar_fila_pedidos(*, limit: int = 20) -> list[dict[str, Any]]:
-    ids = listar_fila_ids(limit=int(limit))
+    if not core.pg_enabled():
+        return []
+    try:
+        kds_list = core.pg_store.kds_list_queue_with_status(limit=int(limit))
+    except Exception:
+        kds_list = []
+    
     out: list[dict[str, Any]] = []
-    for sid in ids:
-        pedido = get_solicitacao_by_id(solicitacao_id=str(sid))
+    for kds_item in kds_list:
+        sid = str(kds_item.get("solicitacao_id") or "")
+        pedido = get_solicitacao_by_id(solicitacao_id=sid)
         if isinstance(pedido, dict):
+            pedido["kds"] = {
+                "status": str(kds_item.get("status") or "AGUARDANDO"),
+                "created_em": kds_item.get("created_em"),
+                "started_em": kds_item.get("started_em"),
+                "done_em": kds_item.get("done_em"),
+                "ops_user_id": kds_item.get("ops_user_id"),
+            }
             out.append(pedido)
         else:
-            out.append({"id": str(sid)})
+            out.append({"id": sid, "kds": {"status": str(kds_item.get("status") or "AGUARDANDO")}})
     return out
 
 
 def listar_preparando_pedidos(*, limit: int = 20) -> list[dict[str, Any]]:
-    ids = listar_preparando_ids(limit=int(limit))
+    if not core.pg_enabled():
+        return []
+    try:
+        kds_list = core.pg_store.kds_list_preparing_with_status(limit=int(limit))
+    except Exception:
+        kds_list = []
+    
     out: list[dict[str, Any]] = []
-    for sid in ids:
-        pedido = get_solicitacao_by_id(solicitacao_id=str(sid))
+    for kds_item in kds_list:
+        sid = str(kds_item.get("solicitacao_id") or "")
+        pedido = get_solicitacao_by_id(solicitacao_id=sid)
         if isinstance(pedido, dict):
+            pedido["kds"] = {
+                "status": str(kds_item.get("status") or "EM_PREPARO"),
+                "created_em": kds_item.get("created_em"),
+                "started_em": kds_item.get("started_em"),
+                "done_em": kds_item.get("done_em"),
+                "ops_user_id": kds_item.get("ops_user_id"),
+            }
             out.append(pedido)
         else:
-            out.append({"id": str(sid)})
+            out.append({"id": sid, "kds": {"status": str(kds_item.get("status") or "EM_PREPARO")}})
     return out
 
 

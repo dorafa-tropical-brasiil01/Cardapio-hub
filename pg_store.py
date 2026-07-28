@@ -751,6 +751,39 @@ def kds_list_queue_ids(*, limit: int = 50) -> list[str]:
             return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
 
 
+def kds_list_queue_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    lim = int(limit) if int(limit) > 0 else 50
+    lim = min(lim, 200)
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.ops_user_id
+                FROM kds_orders k
+                WHERE k.status='AGUARDANDO'
+                ORDER BY k.created_em ASC
+                LIMIT %s
+                """,
+                (lim,),
+            )
+            rows = cur.fetchall() or []
+            return [
+                {
+                    "solicitacao_id": str(r[0]),
+                    "status": str(r[1]),
+                    "created_em": r[2],
+                    "started_em": r[3],
+                    "done_em": r[4],
+                    "ops_user_id": r[5],
+                }
+                for r in rows
+                if r and str(r[0] or "").strip()
+            ]
+
+
 def kds_list_preparing_ids(*, limit: int = 50) -> list[str]:
     if not is_enabled():
         return []
@@ -770,6 +803,39 @@ def kds_list_preparing_ids(*, limit: int = 50) -> list[str]:
                 (lim,),
             )
             return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
+
+
+def kds_list_preparing_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    lim = int(limit) if int(limit) > 0 else 50
+    lim = min(lim, 200)
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.ops_user_id
+                FROM kds_orders k
+                WHERE k.status='EM_PREPARO'
+                ORDER BY k.started_em ASC
+                LIMIT %s
+                """,
+                (lim,),
+            )
+            rows = cur.fetchall() or []
+            return [
+                {
+                    "solicitacao_id": str(r[0]),
+                    "status": str(r[1]),
+                    "created_em": r[2],
+                    "started_em": r[3],
+                    "done_em": r[4],
+                    "ops_user_id": r[5],
+                }
+                for r in rows
+                if r and str(r[0] or "").strip()
+            ]
 
 
 def kds_bump_queue_order(*, solicitacao_id: str) -> None:
