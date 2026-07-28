@@ -45,8 +45,29 @@ def listar_fila_ids(*, limit: int = 50) -> list[str]:
         return []
 
 
+def listar_preparando_ids(*, limit: int = 50) -> list[str]:
+    if not core.pg_enabled():
+        return []
+    try:
+        return core.pg_store.kds_list_preparing_ids(limit=int(limit))
+    except Exception:
+        return []
+
+
 def listar_fila_pedidos(*, limit: int = 20) -> list[dict[str, Any]]:
     ids = listar_fila_ids(limit=int(limit))
+    out: list[dict[str, Any]] = []
+    for sid in ids:
+        pedido = get_solicitacao_by_id(solicitacao_id=str(sid))
+        if isinstance(pedido, dict):
+            out.append(pedido)
+        else:
+            out.append({"id": str(sid)})
+    return out
+
+
+def listar_preparando_pedidos(*, limit: int = 20) -> list[dict[str, Any]]:
+    ids = listar_preparando_ids(limit=int(limit))
     out: list[dict[str, Any]] = []
     for sid in ids:
         pedido = get_solicitacao_by_id(solicitacao_id=str(sid))

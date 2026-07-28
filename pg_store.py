@@ -751,6 +751,27 @@ def kds_list_queue_ids(*, limit: int = 50) -> list[str]:
             return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
 
 
+def kds_list_preparing_ids(*, limit: int = 50) -> list[str]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    lim = int(limit) if int(limit) > 0 else 50
+    lim = min(lim, 200)
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT solicitacao_id
+                FROM kds_orders
+                WHERE status='EM_PREPARO'
+                ORDER BY started_em ASC
+                LIMIT %s
+                """,
+                (lim,),
+            )
+            return [str(r[0]) for r in (cur.fetchall() or []) if r and str(r[0] or "").strip()]
+
+
 def kds_bump_queue_order(*, solicitacao_id: str) -> None:
     if not is_enabled():
         return

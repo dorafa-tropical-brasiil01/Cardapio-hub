@@ -6,6 +6,7 @@ from ..ops_auth.routes import require_ops_login
 from .service import (
     get_pedido_atual,
     listar_fila_pedidos,
+    listar_preparando_pedidos,
     marcar_pronto,
     preparar_pedido,
     pular_pedido,
@@ -26,6 +27,17 @@ def register_kds_routes(app: Flask) -> None:
         except Exception:
             limit = 20
         return jsonify({"ok": True, "fila": listar_fila_pedidos(limit=limit)})
+
+    @app.get("/api/kds/preparando")
+    def api_kds_preparando():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_preparando_pedidos(limit=limit)})
 
     @app.post("/api/kds/<solicitacao_id>/pular")
     def api_kds_pular(solicitacao_id: str):
@@ -54,6 +66,14 @@ def register_kds_routes(app: Flask) -> None:
         st = stats_hoje()
         return jsonify({"ok": True, "pedido": pedido, "stats": st})
 
+    @app.get("/api/kds/stats")
+    def api_kds_stats():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        st = stats_hoje()
+        return jsonify({"ok": True, "stats": st})
+
     @app.post("/api/kds/<solicitacao_id>/preparar")
     def api_kds_preparar(solicitacao_id: str):
         denied = require_ops_login(role="KDS")
@@ -74,6 +94,15 @@ def register_kds_routes(app: Flask) -> None:
             notificar_entregadores_pedido_pronto(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
         except Exception:
             pass
+        return jsonify({"ok": True})
+
+    @app.post("/api/kds/<solicitacao_id>/entregar")
+    def api_kds_entregar(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        marcar_pronto(solicitacao_id=solicitacao_id, ops_user_id=uid)
         return jsonify({"ok": True})
 
     @app.get("/cozinha")
@@ -152,47 +181,53 @@ def register_kds_routes(app: Flask) -> None:
 
   <div class="wrap">
 
-    <div class="card" id="pedido">
-      <div class="muted" id="stats">Carregando...</div>
-      <div style="margin-top:10px" id="pedido_box"></div>
-      <div style="margin-top:10px" id="wa_box"></div>
-      <div style="margin-top:12px" id="fila_box"></div>
+    <div class="card" id="stats">
+      <div class="muted">Carregando...</div>
     </div>
-  </div>
-
-  <div id="bottomBar">
-    <div id="bottomBarInner">
-      <button id="btn_preparar" type="button" class="bottom-action">Preparar</button>
-      <button id="btn_pronto" type="button" class="bottom-action secondary">Pronto</button>
-      <button id="btn_proximo" type="button" class="bottom-action secondary">Próximo</button>
-    </div>
+    <div id="pedidos_box"></div>
   </div>
   <script>
-    let currentId = '';
     const statsEl = document.getElementById('stats');
-    const pedidoBox = document.getElementById('pedido_box');
-    const waBox = document.getElementById('wa_box');
-    const filaBox = document.getElementById('fila_box');
-    const btnPreparar = document.getElementById('btn_preparar');
-    const btnPronto = document.getElementById('btn_pronto');
-    const btnProximo = document.getElementById('btn_proximo');
-
-    function setButtons(disabled) {
-      btnPreparar.disabled = disabled;
-      btnPronto.disabled = disabled;
-      btnProximo.disabled = disabled;
-    }
+    const pedidosBox = document.getElementById('pedidos_box');
 
     function safeText(x) {
       return (x === null || x === undefined) ? '' : String(x);
     }
 
     function waUrl(phone, msg) {
-      const digits = String(phone || '').replace(/\\D+/g, '');
+      const originalPhone = phone;
+      const digits = String(phone || '').replace(/\D+/g, '');
+      console.log('[waUrl] input:', originalPhone, 'digits:', digits);
+      
       if (!digits) return '';
-      let url = 'https://wa.me/' + digits;
+      
+      // Validar comprimento mínimo (10 dígitos sem 55, 12 com 55)
+      if (digits.length < 10) {
+        console.log('[waUrl] invalid: too few digits:', digits.length);
+        return '';
+      }
+      if (digits.length > 13) {
+        console.log('[waUrl] invalid: too many digits:', digits.length);
+        return '';
+      }
+      
+      // Add Brazilian country code (55) if not present
+      let urlDigits = digits;
+      if (!digits.startsWith('55')) {
+        urlDigits = '55' + digits;
+      }
+      
+      // Validar comprimento final (12 ou 13 dígitos com 55)
+      if (urlDigits.length < 12 || urlDigits.length > 13) {
+        console.log('[waUrl] invalid: final length:', urlDigits.length);
+        return '';
+      }
+      
+      let url = 'https://wa.me/' + urlDigits;
       const m = String(msg || '').trim();
       if (m) url += '?text=' + encodeURIComponent(m);
+      
+      console.log('[waUrl] output:', url);
       return url;
     }
 
@@ -209,18 +244,13 @@ def register_kds_routes(app: Flask) -> None:
       return '<div style="margin-top:8px"><div style="font-weight:800">Itens</div>' + lines.join('') + '</div>';
     }
 
-    function renderPedido(p) {
-      if (!p || !p.id) {
-        currentId = '';
-        pedidoBox.innerHTML = '<div class="muted">Sem pedidos na fila.</div>';
-        if (waBox) waBox.innerHTML = '';
-        return;
-      }
-      currentId = String(p.id);
+    function renderPedidoCard(p) {
+      if (!p || !p.id) return '';
+      const id = String(p.id);
       const cliente = safeText(p.cliente_nome);
       const whatsapp = safeText(p.cliente_whatsapp);
       const tipo = safeText(p.tipo_entrega || p.kind);
-      const status = (p.kds && p.kds.status) ? String(p.kds.status) : '';
+      const status = (p.kds && p.kds.status) ? String(p.kds.status) : 'AGUARDANDO';
       const obs = safeText(p.observacoes || p.obs || p.observacao);
       const enderecoRaw = (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
       const addr = (() => {
@@ -243,121 +273,154 @@ def register_kds_routes(app: Flask) -> None:
         if (ref) out.push('Ref: ' + ref);
         return {text: out.join('\n').trim(), maps: safeText(maps).trim()};
       })();
-      const headLines = [];
-      headLines.push('<div style="font-weight:900;font-size:16px">Pedido</div>');
-      if (cliente) headLines.push('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>');
-      if (tipo) headLines.push('<div class="muted">Tipo: ' + tipo + '</div>');
-      if (status) headLines.push('<div class="muted">KDS: ' + status + '</div>');
-      if (whatsapp) headLines.push('<div class="muted">WhatsApp: ' + whatsapp + '</div>');
 
-      pedidoBox.innerHTML = headLines.join('');
+      let statusClass = '';
+      let statusLabel = status;
+      if (status === 'AGUARDANDO') {
+        statusClass = 'background:rgba(10, 92, 47, 0.08);border-color:rgba(10, 92, 47, 0.35);color:var(--verde)';
+        statusLabel = 'AGUARDANDO';
+      } else if (status === 'EM_PREPARO') {
+        statusClass = 'background:var(--amarelo);border-color:var(--verde);color:var(--verde)';
+        statusLabel = 'EM PREPARO';
+      } else if (status === 'PRONTO') {
+        statusClass = 'background:var(--verde);border-color:var(--verde);color:#fff';
+        statusLabel = 'PRONTO';
+      }
 
+      let buttons = '';
+      if (status === 'AGUARDANDO') {
+        buttons = '<button type="button" class="secondary" data-preparar="' + id + '">Preparar</button>';
+      } else if (status === 'EM_PREPARO') {
+        buttons = '<button type="button" class="secondary" data-pronto="' + id + '">Pronto</button>';
+      } else if (status === 'PRONTO') {
+        buttons = '<button type="button" class="secondary" data-entregar="' + id + '">Entregar</button>';
+      }
+
+      let html = '<div class="card" data-pedido-id="' + id + '">';
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">';
+      html += '<div style="font-weight:900;font-size:16px">Pedido #' + id + '</div>';
+      html += '<span class="pill" style="' + statusClass + '">' + statusLabel + '</span>';
+      html += '</div>';
+      if (cliente) html += '<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>';
+      if (tipo) html += '<div class="muted">Tipo: ' + tipo + '</div>';
       if (addr && addr.text) {
-        pedidoBox.innerHTML += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(addr.text).replace(/\n/g,'<br/>') + '</div></div>';
+        html += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(addr.text).replace(/\n/g,'<br/>') + '</div></div>';
       }
       if (obs) {
-        pedidoBox.innerHTML += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
+        html += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
       }
-      pedidoBox.innerHTML += '<div style="margin-top:10px">' + renderItens(p.itens) + '</div>';
-
-      if (waBox) {
+      html += '<div style="margin-top:10px">' + renderItens(p.itens) + '</div>';
+      
+      if (whatsapp) {
         const url = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
         if (url) {
-          waBox.innerHTML = '<a class="wa discreet" target="_blank" rel="noopener" href="' + url + '">'
+          html += '<div style="margin-top:10px"><a class="wa discreet" target="_blank" rel="noopener" href="' + url + '">'
             + '<span aria-hidden="true" style="font-size:16px">🟢</span>'
             + '<span>Falar com o Cliente</span>'
-            + '</a>';
-        } else {
-          waBox.innerHTML = '';
+            + '</a></div>';
         }
       }
-    }
 
-    function renderFila(fila) {
-      const arr = Array.isArray(fila) ? fila : [];
-      if (arr.length === 0) {
-        filaBox.innerHTML = '';
-        return;
+      if (buttons) {
+        html += '<div class="btns" style="margin-top:10px">' + buttons + '</div>';
       }
-      const top = arr.slice(0, 8);
-      filaBox.innerHTML = '<div style="margin-top:8px"><div style="font-weight:900">Fila</div>'
-        + top.map(p => {
-          const id = (p && p.id) ? String(p.id) : '';
-          const cliente = safeText(p && p.cliente_nome);
-          const isSel = (currentId && id && String(id) === String(currentId));
-          const pill = isSel ? '<span class="pill sel" style="margin-left:8px">SELECIONADO</span>' : '';
-          return '<div class="queue-item' + (isSel ? ' selected' : '') + '">'
-            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
-            + '<div style="font-weight:900">Pedido' + pill + '</div>'
-            + '</div>'
-            + (cliente ? ('<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>') : '')
-            + '<div class="btns" style="margin-top:10px">'
-            + '<button type="button" class="secondary" data-select="' + id + '"' + (isSel ? ' disabled' : '') + '>Selecionar</button>'
-            + '<button type="button" class="secondary" data-skip="' + id + '">Pular</button>'
-            + '</div>'
-            + '</div>';
-        }).join('')
-        + '</div>';
 
-      filaBox.querySelectorAll('button[data-select]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = btn.getAttribute('data-select');
-          if (!sid) return;
-          btn.disabled = true;
-          try {
-            currentId = String(sid);
-            await fetch('/api/kds/' + encodeURIComponent(sid) + '/selecionar', {method: 'POST'});
-            await load();
-          } finally {
-            btn.disabled = false;
-          }
-        });
-      });
-
-      filaBox.querySelectorAll('button[data-skip]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const sid = btn.getAttribute('data-skip');
-          if (!sid) return;
-          btn.disabled = true;
-          try {
-            await fetch('/api/kds/' + encodeURIComponent(sid) + '/pular', {method: 'POST'});
-            await load();
-          } finally {
-            btn.disabled = false;
-          }
-        });
-      });
+      html += '</div>';
+      return html;
     }
 
     async function load() {
       try {
-        const resp = await fetch('/api/kds/pedido_atual', {method: 'GET'});
+        const [resp, prepResp] = await Promise.all([
+          fetch('/api/kds/fila?limit=50', {method: 'GET'}),
+          fetch('/api/kds/preparando?limit=50', {method: 'GET'})
+        ]);
+        
         const j = await resp.json().catch(() => ({}));
+        const prepJ = await prepResp.json().catch(() => ({}));
+        
         if (!resp.ok || !j || j.ok !== true) {
-          const err = (j && (j.error || j.message)) ? String(j.error || j.message) : ('HTTP ' + resp.status);
-          statsEl.innerText = 'Falha ao carregar: ' + err;
+          statsEl.innerHTML = '<div class="muted">Falha ao carregar</div>';
+          pedidosBox.innerHTML = '';
           return;
         }
-        const st = j.stats || {};
-        const pend = (st && st.pendentes !== undefined && st.pendentes !== null) ? st.pendentes : 0;
-        const conc = (st && st.concluidos !== undefined && st.concluidos !== null) ? st.concluidos : 0;
-        statsEl.innerText = 'Pendentes: ' + pend + ' | Concluídos hoje: ' + conc;
-        if (currentId && (!j.pedido || String(j.pedido.id) !== String(currentId))) {
-          // mantém seleção manual se existir (quando usuário escolhe na fila)
-          // tenta buscar a fila para renderizar e mostrar o selecionado
+
+        const stResp = await fetch('/api/kds/stats', {method: 'GET'});
+        const stJ = await stResp.json().catch(() => ({}));
+        if (stResp.ok && stJ && stJ.ok === true) {
+          const st = stJ.stats || {};
+          const pend = (st && st.pendentes !== undefined && st.pendentes !== null) ? st.pendentes : 0;
+          const conc = (st && st.concluidos !== undefined && st.concluidos !== null) ? st.concluidos : 0;
+          statsEl.innerHTML = '<div class="muted">Pendentes: ' + pend + ' | Concluídos hoje: ' + conc + '</div>';
         }
-        renderPedido(j.pedido);
-        try {
-          const fr = await fetch('/api/kds/fila?limit=20', {method: 'GET'});
-          const fj = await fr.json().catch(() => ({}));
-          if (fr.ok && fj && fj.ok === true) {
-            renderFila(fj.fila);
-          }
-        } catch (e) {
-          // ignore
+
+        const fila = j.fila || [];
+        const preparando = (prepJ && prepJ.ok === true) ? (prepJ.fila || []) : [];
+        
+        let html = '';
+        
+        if (fila.length > 0) {
+          html += '<div style="font-weight:900;font-size:16px;margin:12px 0 8px 0">AGUARDANDO</div>';
+          html += fila.map(p => renderPedidoCard(p)).join('');
         }
+        
+        if (preparando.length > 0) {
+          html += '<div style="font-weight:900;font-size:16px;margin:20px 0 8px 0">EM PREPARO</div>';
+          html += preparando.map(p => renderPedidoCard(p)).join('');
+        }
+        
+        if (fila.length === 0 && preparando.length === 0) {
+          pedidosBox.innerHTML = '<div class="muted">Nenhum pedido na fila.</div>';
+          return;
+        }
+
+        pedidosBox.innerHTML = html;
+
+        pedidosBox.querySelectorAll('button[data-preparar]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-preparar');
+            if (!sid) return;
+            btn.disabled = true;
+            try {
+              await fetch('/api/kds/' + encodeURIComponent(sid) + '/preparar', {method: 'POST'});
+              await load();
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        pedidosBox.querySelectorAll('button[data-pronto]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-pronto');
+            if (!sid) return;
+            btn.disabled = true;
+            try {
+              await fetch('/api/kds/' + encodeURIComponent(sid) + '/pronto', {method: 'POST'});
+              await load();
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        pedidosBox.querySelectorAll('button[data-entregar]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const sid = btn.getAttribute('data-entregar');
+            if (!sid) return;
+            btn.disabled = true;
+            try {
+              await fetch('/api/kds/' + encodeURIComponent(sid) + '/entregar', {method: 'POST'});
+              await load();
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
       } catch (e) {
-        statsEl.innerText = 'Falha ao carregar: erro de rede.';
+        statsEl.innerHTML = '<div class="muted">Falha ao carregar: erro de rede.</div>';
+        pedidosBox.innerHTML = '';
       }
     }
 
@@ -370,42 +433,6 @@ def register_kds_routes(app: Flask) -> None:
       } catch (e) {
       }
     }
-
-    btnPreparar.addEventListener('click', async () => {
-      if (!currentId) return;
-      setButtons(true);
-      try {
-        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/preparar', {method: 'POST'});
-      } finally {
-        setButtons(false);
-        load();
-      }
-    });
-
-    btnPronto.addEventListener('click', async () => {
-      if (!currentId) return;
-      setButtons(true);
-      try {
-        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/pronto', {method: 'POST'});
-      } finally {
-        setButtons(false);
-        load();
-      }
-    });
-
-    btnProximo.addEventListener('click', async () => {
-      if (!currentId) {
-        load();
-        return;
-      }
-      setButtons(true);
-      try {
-        await fetch('/api/kds/' + encodeURIComponent(currentId) + '/pular', {method: 'POST'});
-      } finally {
-        setButtons(false);
-        load();
-      }
-    });
 
     startAutoRefresh();
   </script>
