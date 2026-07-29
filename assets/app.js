@@ -1313,7 +1313,7 @@
             "ACEITO": "Pedido aceito",
             "PREPARANDO": "Pedido em preparo",
             "PRONTO": tipo === "RETIRADA" ? "Pedido pronto para retirada" : "Pedido pronto",
-            "EM_ENTREGA": "Saiu para entrega",
+            "EM_ENTREGA": "EM ROTA",
             "ENTREGUE": "Pedido entregue"
         };
 

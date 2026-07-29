@@ -293,6 +293,11 @@ def register_logistica_routes(app: Flask) -> None:
       <div id="toast" class="card" style="display:none;margin-top:10px;background:#2a1b1b;border-color:rgba(255,0,0,0.25);"></div>
       <div class="muted" id="corrida_meta">Carregando...</div>
       <div class="list" id="corrida_itens"></div>
+      <div style="margin-top:15px;display:flex;gap:10px;flex-wrap:wrap">
+        <button type="button" id="btn_start">Iniciar Corrida</button>
+        <button type="button" id="btn_finish">Finalizar Corrida</button>
+        <button type="button" id="btn_new" class="secondary">Nova Corrida</button>
+      </div>
     </div>
   </div>
   <script>

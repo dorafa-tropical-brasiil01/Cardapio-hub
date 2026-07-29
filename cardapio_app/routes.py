@@ -282,7 +282,7 @@ def register_routes(app: Flask) -> None:
             "'PREPARANDO':'Pedido em preparo.',"
             "'PRONTO_DELIVERY':'Pedido pronto para entrega.',"
             "'PRONTO_RETIRADA':'Seu pedido está pronto para retirada no estabelecimento.',"
-            "'EM_ENTREGA':'Pedido em rota de entrega.',"
+            "'EM_ENTREGA':'EM ROTA.',"
             "'ENTREGUE':'Seu pedido foi entregue.'"
             "};"
             "let timer=null;"
