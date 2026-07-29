@@ -868,7 +868,9 @@ def logistica_list_ready_order_ids() -> list[str]:
                 """
                 SELECT k.solicitacao_id
                 FROM kds_orders k
+                JOIN cardapio_solicitacoes s ON s.id = k.solicitacao_id
                 WHERE k.status='PRONTO'
+                  AND s.record->>'tipo_entrega' = 'DELIVERY'
                   AND NOT EXISTS (
                     SELECT 1
                     FROM log_run_items i
@@ -901,8 +903,10 @@ def logistica_list_ready_orders() -> list[dict[str, Any]]:
                     k.solicitacao_id,
                     COALESCE(f.flag,'') AS flag
                 FROM kds_orders k
+                JOIN cardapio_solicitacoes s ON s.id = k.solicitacao_id
                 LEFT JOIN log_order_flags f ON f.solicitacao_id=k.solicitacao_id
                 WHERE k.status='PRONTO'
+                  AND s.record->>'tipo_entrega' = 'DELIVERY'
                   AND NOT EXISTS (
                     SELECT 1
                     FROM log_run_items i
