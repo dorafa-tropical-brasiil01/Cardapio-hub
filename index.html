@@ -1784,9 +1784,16 @@
             if (img) img.style.display = "none";
         }
 
+        // Remover infoDiv existente se houver (evita duplicação)
+        const existingInfo = post.querySelector('[data-salao-info="true"]');
+        if (existingInfo) {
+            existingInfo.remove();
+        }
+
         // Mostrar informações básicas do pedido para pedidos de mesa
         if (pedidoInfo && pedidoInfo.kind === "SALAO" && pedidoInfo.mesa) {
             const infoDiv = document.createElement("div");
+            infoDiv.setAttribute("data-salao-info", "true");
             infoDiv.style.marginTop = "20px";
             infoDiv.style.padding = "16px";
             infoDiv.style.background = "rgba(10, 92, 47, 0.08)";
