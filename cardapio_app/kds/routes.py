@@ -303,6 +303,7 @@ def register_kds_routes(app: Flask) -> None:
       html += '</div>';
       if (cliente) html += '<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>';
       if (tipo) html += '<div class="muted">Tipo: ' + tipo + '</div>';
+      if (p.mesa) html += '<div class="muted">Mesa: ' + p.mesa + '</div>';
       if (addr && addr.text) {
         html += '<div style="margin-top:8px"><div style="font-weight:800">Endereço</div><div class="muted">' + safeText(addr.text).replace(/\n/g,'<br/>') + '</div></div>';
       }

@@ -1676,7 +1676,7 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        showPostOrderScreen();
+        showPostOrderScreen({ kind, mesa: isSalao ? state.mesa : null });
     }
 
     function showMainScreen() {
@@ -1726,7 +1726,7 @@
         return "/assets/" + s;
     }
 
-    function showPostOrderScreen() {
+    function showPostOrderScreen(pedidoInfo) {
         const post = document.getElementById("postOrderScreen");
         const header = document.querySelector("header");
         const search = document.querySelector(".search-bar");
@@ -1782,6 +1782,27 @@
             }
         } catch {
             if (img) img.style.display = "none";
+        }
+
+        // Mostrar informações básicas do pedido para pedidos de mesa
+        if (pedidoInfo && pedidoInfo.kind === "SALAO" && pedidoInfo.mesa) {
+            const infoDiv = document.createElement("div");
+            infoDiv.style.marginTop = "20px";
+            infoDiv.style.padding = "16px";
+            infoDiv.style.background = "rgba(10, 92, 47, 0.08)";
+            infoDiv.style.borderRadius = "12px";
+            infoDiv.style.border = "1px solid rgba(10, 92, 47, 0.35)";
+            infoDiv.innerHTML = `
+                <div style="font-weight:900;font-size:18px;color:#0a5c2f">Pedido enviado!</div>
+                <div style="margin-top:8px;color:#0a5c2f">
+                    <div style="margin-bottom:4px"><strong>Tipo:</strong> SALÃO</div>
+                    <div><strong>Mesa:</strong> ${pedidoInfo.mesa}</div>
+                </div>
+                <div class="muted" style="margin-top:8px">Seu pedido foi enviado para a cozinha.</div>
+            `;
+            if (post && post.parentNode) {
+                post.insertBefore(infoDiv, post.firstChild);
+            }
         }
     }
 
