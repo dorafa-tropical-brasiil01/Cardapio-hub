@@ -1676,7 +1676,7 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        showPostOrderScreen({ kind, mesa: isSalao ? state.mesa : null });
+        showPostOrderScreen({ kind, mesa: isSalao ? state.mesa : null, cliente_nome: String(state.clientName || "").trim() });
     }
 
     function showMainScreen() {
@@ -1792,13 +1792,15 @@
             infoDiv.style.background = "rgba(10, 92, 47, 0.08)";
             infoDiv.style.borderRadius = "12px";
             infoDiv.style.border = "1px solid rgba(10, 92, 47, 0.35)";
+            const clienteHtml = pedidoInfo.cliente_nome ? `<div style="margin-bottom:4px"><strong>Cliente:</strong> ${pedidoInfo.cliente_nome}</div>` : "";
             infoDiv.innerHTML = `
                 <div style="font-weight:900;font-size:18px;color:#0a5c2f">Pedido enviado!</div>
                 <div style="margin-top:8px;color:#0a5c2f">
+                    ${clienteHtml}
                     <div style="margin-bottom:4px"><strong>Tipo:</strong> SALÃO</div>
                     <div><strong>Mesa:</strong> ${pedidoInfo.mesa}</div>
                 </div>
-                <div class="muted" style="margin-top:8px">Seu pedido foi enviado para a cozinha.</div>
+                <div class="muted" style="margin-top:8px">Seu pedido foi recebido pela cozinha. Aguarde o preparo.</div>
             `;
             if (post && post.parentNode) {
                 post.insertBefore(infoDiv, post.firstChild);
