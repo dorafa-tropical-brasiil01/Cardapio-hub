@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import sys
 from pathlib import Path
 
 from flask import Flask
@@ -18,12 +19,15 @@ from .taxa_entrega.routes import register_taxa_entrega_routes
 def create_app() -> Flask:
     ctx = build_context()
 
-    # Configurar logging para Railway
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        force=True
-    )
+    # Configurar logging para Railway (stdout)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    handler.setFormatter(formatter)
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
 
     app = Flask(
         __name__,
