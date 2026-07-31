@@ -1676,7 +1676,7 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        showPostOrderScreen({ kind, mesa: isSalao ? state.mesa : null, cliente_nome: String(state.clientName || "").trim() });
+        showPostOrderScreen({ kind, mesa: isSalao ? state.mesa : null, cliente_nome: String(state.clientName || "").trim(), solicitacao_id: out.id });
     }
 
     function showMainScreen() {
@@ -1726,6 +1726,8 @@
         return "/assets/" + s;
     }
 
+    let _kdsPollingTimer = null;
+
     function showPostOrderScreen(pedidoInfo) {
         const post = document.getElementById("postOrderScreen");
         const header = document.querySelector("header");
@@ -1743,6 +1745,12 @@
         const img = document.getElementById("postOrderImage");
 
         state.postOrderActive = true;
+
+        // Limpar timer anterior se existir
+        if (_kdsPollingTimer) {
+            clearInterval(_kdsPollingTimer);
+            _kdsPollingTimer = null;
+        }
 
         try {
             if (isModalOpen()) {
@@ -1807,10 +1815,54 @@
                     <div style="margin-bottom:4px"><strong>Tipo:</strong> SALÃO</div>
                     <div><strong>Mesa:</strong> ${pedidoInfo.mesa}</div>
                 </div>
+                <div id="kdsStatusArea" style="margin-top:12px;padding:12px;background:rgba(10,92,47,0.05);border-radius:8px">
+                    <div style="font-weight:bold;color:#0a5c2f">Status:</div>
+                    <div id="kdsStatusText" style="margin-top:4px;color:#0a5c2f">Pedido recebido</div>
+                </div>
                 <div class="muted" style="margin-top:8px">Seu pedido foi recebido pela cozinha. Aguarde o preparo.</div>
             `;
             if (post && post.parentNode) {
                 post.insertBefore(infoDiv, post.firstChild);
+            }
+
+            // Iniciar polling de status do KDS se solicitacao_id estiver disponível
+            if (pedidoInfo.solicitacao_id && state.token) {
+                const solicitacaoId = pedidoInfo.solicitacao_id;
+                const mesa = pedidoInfo.mesa;
+                const token = state.token;
+
+                const pollKdsStatus = async () => {
+                    try {
+                        const res = await fetch(`/api/solicitacoes/${solicitacaoId}/kds-status?mesa=${mesa}&token=${token}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            const status = data.status;
+                            const statusText = document.getElementById("kdsStatusText");
+                            if (statusText) {
+                                if (status === "AGUARDANDO") {
+                                    statusText.textContent = "Pedido recebido";
+                                } else if (status === "EM_PREPARO") {
+                                    statusText.textContent = "Seu pedido está sendo preparado";
+                                } else if (status === "PRONTO") {
+                                    statusText.textContent = "Seu pedido está pronto";
+                                    // Parar polling quando status for PRONTO
+                                    if (_kdsPollingTimer) {
+                                        clearInterval(_kdsPollingTimer);
+                                        _kdsPollingTimer = null;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        // Erro de polling não deve interromper a tela
+                        console.error("Erro ao consultar status KDS:", err);
+                    }
+                };
+
+                // Iniciar polling a cada 2.5 segundos
+                _kdsPollingTimer = setInterval(pollKdsStatus, 2500);
+                // Primeira consulta imediata
+                pollKdsStatus();
             }
         }
     }

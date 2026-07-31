@@ -683,6 +683,26 @@ def kds_mark_done(*, solicitacao_id: str, ops_user_id: int) -> None:
             )
 
 
+def kds_get_status(*, solicitacao_id: str) -> str | None:
+    """
+    Consulta o status de um pedido no KDS pelo solicitacao_id.
+    Retorna o status (AGUARDANDO, EM_PREPARO, PRONTO) ou None se não encontrado.
+    """
+    if not is_enabled():
+        return None
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return None
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM kds_orders WHERE solicitacao_id=%s", (sid,))
+            row = cur.fetchone()
+            if row:
+                return str(row[0] if row else "").strip().upper() or None
+    return None
+
+
 def kds_set_current_selection(*, ops_user_id: int, solicitacao_id: str) -> None:
     if not is_enabled():
         return

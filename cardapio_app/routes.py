@@ -1348,6 +1348,34 @@ def register_routes(app: Flask) -> None:
             return jsonify({"error": "forbidden"}), 403
         return jsonify(s)
 
+    @app.get("/api/solicitacoes/<solicitacao_id>/kds-status")
+    def api_get_solicitacao_kds_status(solicitacao_id: str):
+        mesa = request.args.get("mesa")
+        token = request.args.get("token")
+        ok, err = core.validate_table_token(ctx=_ctx(), mesa=mesa, token=token)
+        if not ok:
+            return jsonify({"error": err}), 401
+
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        data = core.ensure_solicitacoes_file(_ctx())
+        _, s = core.find_solicitacao(_ctx(), data, solicitacao_id)
+        if s is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+        if int(s.get("mesa") or 0) != int(mesa):
+            return jsonify({"error": "forbidden"}), 403
+
+        try:
+            status = core.pg_store.kds_get_status(solicitacao_id=solicitacao_id)
+        except Exception:
+            return jsonify({"error": "erro_interno"}), 500
+
+        if status is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        return jsonify({"status": status})
+
     @app.post("/api/public/pedidos")
     def api_public_create_pedido():
         body = request.get_json(silent=True)
