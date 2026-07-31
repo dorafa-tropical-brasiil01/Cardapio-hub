@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -16,6 +17,13 @@ from .taxa_entrega.routes import register_taxa_entrega_routes
 
 def create_app() -> Flask:
     ctx = build_context()
+
+    # Configurar logging para Railway
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        force=True
+    )
 
     app = Flask(
         __name__,
