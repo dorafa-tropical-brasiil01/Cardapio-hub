@@ -1313,12 +1313,14 @@ def register_routes(app: Flask) -> None:
         if core.pg_enabled():
             try:
                 core.pg_store.save_solicitacao(record=rec)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Erro ao salvar solicitacao no Postgres: {e}")
             try:
+                logger.info(f"Chamando kds_ensure_order_row para solicitacao_id={solicitacao_id}")
                 core.pg_store.kds_ensure_order_row(solicitacao_id=solicitacao_id)
-            except Exception:
-                pass
+                logger.info(f"kds_ensure_order_row executado com sucesso para solicitacao_id={solicitacao_id}")
+            except Exception as e:
+                logger.error(f"Erro ao chamar kds_ensure_order_row para solicitacao_id={solicitacao_id}: {e}")
         else:
             data["solicitacoes"].append(rec)
             core.save_solicitacoes(_ctx(), data)
