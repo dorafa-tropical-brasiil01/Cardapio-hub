@@ -1352,30 +1352,41 @@ def register_routes(app: Flask) -> None:
 
     @app.get("/api/solicitacoes/<solicitacao_id>/kds-status")
     def api_get_solicitacao_kds_status(solicitacao_id: str):
+        logger.info(f"api_get_solicitacao_kds_status chamado: solicitacao_id={solicitacao_id}")
         mesa = request.args.get("mesa")
         token = request.args.get("token")
+        logger.info(f"api_get_solicitacao_kds_status: mesa={mesa}, token_prefix={str(token or '')[:8]}")
         ok, err = core.validate_table_token(ctx=_ctx(), mesa=mesa, token=token)
         if not ok:
+            logger.info(f"api_get_solicitacao_kds_status: token validation failed: {err}")
             return jsonify({"error": err}), 401
 
         if not core.pg_enabled():
+            logger.info(f"api_get_solicitacao_kds_status: pg_disabled")
             return jsonify({"error": "pg_disabled"}), 500
 
         data = core.ensure_solicitacoes_file(_ctx())
         _, s = core.find_solicitacao(_ctx(), data, solicitacao_id)
         if s is None:
+            logger.info(f"api_get_solicitacao_kds_status: solicitacao not found in file")
             return jsonify({"error": "nao_encontrado"}), 404
         if int(s.get("mesa") or 0) != int(mesa):
+            logger.info(f"api_get_solicitacao_kds_status: mesa mismatch")
             return jsonify({"error": "forbidden"}), 403
 
         try:
+            logger.info(f"api_get_solicitacao_kds_status: chamando kds_get_status")
             status = core.pg_store.kds_get_status(solicitacao_id=solicitacao_id)
-        except Exception:
+            logger.info(f"api_get_solicitacao_kds_status: status retornado: {status}")
+        except Exception as e:
+            logger.error(f"api_get_solicitacao_kds_status: erro ao chamar kds_get_status: {e}")
             return jsonify({"error": "erro_interno"}), 500
 
         if status is None:
+            logger.info(f"api_get_solicitacao_kds_status: status is None")
             return jsonify({"error": "nao_encontrado"}), 404
 
+        logger.info(f"api_get_solicitacao_kds_status: retornando status={status}")
         return jsonify({"status": status})
 
     @app.post("/api/public/pedidos")
