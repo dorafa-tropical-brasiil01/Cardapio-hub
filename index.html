@@ -1826,16 +1826,23 @@
             }
 
             // Iniciar polling de status do KDS se solicitacao_id estiver disponível
+            console.log("showPostOrderScreen: pedidoInfo =", pedidoInfo);
+            console.log("showPostOrderScreen: state.token =", state.token);
             if (pedidoInfo.solicitacao_id && state.token) {
                 const solicitacaoId = pedidoInfo.solicitacao_id;
                 const mesa = pedidoInfo.mesa;
                 const token = state.token;
+                console.log("Iniciando polling KDS: solicitacaoId =", solicitacaoId, ", mesa =", mesa);
 
                 const pollKdsStatus = async () => {
                     try {
-                        const res = await fetch(`/api/solicitacoes/${solicitacaoId}/kds-status?mesa=${mesa}&token=${token}`);
+                        const url = `/api/solicitacoes/${solicitacaoId}/kds-status?mesa=${mesa}&token=${token}`;
+                        console.log("Polling KDS: fetch", url);
+                        const res = await fetch(url);
+                        console.log("Polling KDS: response status =", res.status, "ok =", res.ok);
                         if (res.ok) {
                             const data = await res.json();
+                            console.log("Polling KDS: response data =", data);
                             const status = data.status;
                             const statusText = document.getElementById("kdsStatusText");
                             if (statusText) {
@@ -1852,6 +1859,8 @@
                                     }
                                 }
                             }
+                        } else {
+                            console.error("Polling KDS: response not ok, status =", res.status);
                         }
                     } catch (err) {
                         // Erro de polling não deve interromper a tela
@@ -1863,6 +1872,8 @@
                 _kdsPollingTimer = setInterval(pollKdsStatus, 2500);
                 // Primeira consulta imediata
                 pollKdsStatus();
+            } else {
+                console.log("Polling KDS não iniciado: solicitacao_id =", pedidoInfo.solicitacao_id, ", token =", state.token);
             }
         }
     }
