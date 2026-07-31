@@ -195,7 +195,9 @@
         _lastDeliveryFeeMapsUrl: "",
         _skipFeeRefreshOnce: false,
         modalLockUntil: 0,
-        modalCloseLabel: "Voltar"
+        modalCloseLabel: "Voltar",
+        statusPublicoTimer: null,
+        kdsPollingTimer: null
     };
 
     async function refreshDeliveryFeePreview() {
@@ -1171,7 +1173,7 @@
         state.carrinho = [];
         saveLocal();
         updateCartBadge();
-        showPostOrderScreen();
+        showPostOrderScreen(pedido);
     }
 
     function showMainScreen() {
@@ -1190,6 +1192,7 @@
         const whatsFloat = document.getElementById("whatsFloat");
 
         stopStatusPublicoPolling();
+        stopKdsPolling();
         clearTrackingPedido();
         state.postOrderActive = false;
         if (post) post.style.display = "none";
@@ -1223,7 +1226,7 @@
         return "/assets/" + s;
     }
 
-    function showPostOrderScreen() {
+    function showPostOrderScreen(pedidoInfo) {
         const post = document.getElementById("postOrderScreen");
         const header = document.querySelector("header");
         const search = document.querySelector(".search-bar");
@@ -1281,24 +1284,42 @@
             if (img) img.style.display = "none";
         }
 
-        // Exibir área de status público e iniciar polling
-        try {
-            const tracking = getTrackingPedido();
+        // Fluxo SALAO: se pedidoInfo foi fornecido e kind === "SALAO"
+        if (pedidoInfo && pedidoInfo.kind === "SALAO") {
+            const solicitacaoId = pedidoInfo.id;
+            const mesa = pedidoInfo.mesa;
+            const token = pedidoInfo.token;
+            const kdsStatusArea = document.getElementById("kdsStatusArea");
+            const kdsStatusText = document.getElementById("kdsStatusText");
             const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
-            if (tracking && tracking.access_token && statusPublicoDiv) {
-                statusPublicoDiv.style.display = "block";
-                // Só definir texto inicial se polling não estiver ativo
-                if (!state.statusPublicoTimer) {
-                    statusPublicoDiv.innerText = "Carregando status...";
-                    startStatusPublicoPolling();
+
+            if (solicitacaoId && mesa && token && kdsStatusArea && kdsStatusText) {
+                kdsStatusArea.style.display = "block";
+                kdsStatusText.textContent = "Pedido recebido";
+                if (statusPublicoDiv) {
+                    statusPublicoDiv.style.display = "none";
                 }
-            } else if (statusPublicoDiv) {
-                statusPublicoDiv.style.display = "none";
+                startKdsPolling(solicitacaoId, mesa, token);
             }
-        } catch {
-            const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
-            if (statusPublicoDiv) {
-                statusPublicoDiv.style.display = "none";
+        } else {
+            // Fluxo DELIVERY: manter mecanismo existente de status público
+            try {
+                const tracking = getTrackingPedido();
+                const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
+                if (tracking && tracking.access_token && statusPublicoDiv) {
+                    statusPublicoDiv.style.display = "block";
+                    if (!state.statusPublicoTimer) {
+                        statusPublicoDiv.innerText = "Carregando status...";
+                        startStatusPublicoPolling();
+                    }
+                } else if (statusPublicoDiv) {
+                    statusPublicoDiv.style.display = "none";
+                }
+            } catch {
+                const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
+                if (statusPublicoDiv) {
+                    statusPublicoDiv.style.display = "none";
+                }
             }
         }
     }
@@ -1361,6 +1382,47 @@
         if (state.statusPublicoTimer) {
             clearInterval(state.statusPublicoTimer);
             state.statusPublicoTimer = null;
+        }
+    }
+
+    async function pollKdsStatus(solicitacaoId, mesa, token) {
+        try {
+            const url = `/api/solicitacoes/${solicitacaoId}/kds-status?mesa=${mesa}&token=${token}`;
+            const res = await fetch(url);
+            if (res.ok) {
+                const data = await res.json();
+                const status = data.status;
+                const statusText = document.getElementById("kdsStatusText");
+                if (statusText) {
+                    if (status === "AGUARDANDO") {
+                        statusText.textContent = "Pedido recebido";
+                    } else if (status === "EM_PREPARO") {
+                        statusText.textContent = "Seu pedido está sendo preparado";
+                    } else if (status === "PRONTO") {
+                        statusText.textContent = "Seu pedido está pronto";
+                        stopKdsPolling();
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao consultar status KDS:", err);
+        }
+    }
+
+    function startKdsPolling(solicitacaoId, mesa, token) {
+        if (state.kdsPollingTimer) {
+            clearInterval(state.kdsPollingTimer);
+        }
+        state.kdsPollingTimer = setInterval(async () => {
+            await pollKdsStatus(solicitacaoId, mesa, token);
+        }, 2500);
+        pollKdsStatus(solicitacaoId, mesa, token);
+    }
+
+    function stopKdsPolling() {
+        if (state.kdsPollingTimer) {
+            clearInterval(state.kdsPollingTimer);
+            state.kdsPollingTimer = null;
         }
     }
 
