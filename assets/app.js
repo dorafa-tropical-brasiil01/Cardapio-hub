@@ -197,7 +197,9 @@
         modalLockUntil: 0,
         modalCloseLabel: "Voltar",
         statusPublicoTimer: null,
-        kdsPollingTimer: null
+        kdsPollingTimer: null,
+        kdsPollingSid: null,
+        postOrderPedido: null
     };
 
     async function refreshDeliveryFeePreview() {
@@ -1164,6 +1166,13 @@
                 tipo_entrega: String(state.deliveryType || "DELIVERY").toUpperCase()
             };
             saveTrackingPedido(tracking);
+        } else if (isSalao) {
+            saveTrackingPedido({
+                id: out.id,
+                kind,
+                mesa: state.mesa,
+                token: state.token
+            });
         }
 
         // Fluxo simplificado: após enviar, permite novo pedido imediatamente.
@@ -1195,6 +1204,7 @@
         stopKdsPolling();
         clearTrackingPedido();
         state.postOrderActive = false;
+        state.postOrderPedido = null;
         if (post) post.style.display = "none";
         if (header) header.style.display = "flex";
         if (search) search.style.display = "block";
@@ -1227,6 +1237,12 @@
     }
 
     function showPostOrderScreen(pedidoInfo) {
+        if (pedidoInfo) {
+            state.postOrderPedido = pedidoInfo;
+        } else if (state.postOrderPedido) {
+            pedidoInfo = state.postOrderPedido;
+        }
+
         const post = document.getElementById("postOrderScreen");
         const header = document.querySelector("header");
         const search = document.querySelector(".search-bar");
@@ -1410,9 +1426,13 @@
     }
 
     function startKdsPolling(solicitacaoId, mesa, token) {
+        if (state.kdsPollingSid === String(solicitacaoId)) {
+            return;
+        }
         if (state.kdsPollingTimer) {
             clearInterval(state.kdsPollingTimer);
         }
+        state.kdsPollingSid = String(solicitacaoId);
         state.kdsPollingTimer = setInterval(async () => {
             await pollKdsStatus(solicitacaoId, mesa, token);
         }, 2500);
@@ -1424,6 +1444,7 @@
             clearInterval(state.kdsPollingTimer);
             state.kdsPollingTimer = null;
         }
+        state.kdsPollingSid = null;
     }
 
     let _deliveryLeafletMap = null;
@@ -2229,7 +2250,19 @@
             aplicarHorarioFuncionamento();
             render();
 
+            const trackingSalvo = getTrackingPedido();
             showMainScreen();
+
+            if (
+                trackingSalvo
+                && String(trackingSalvo.kind || "").toUpperCase() === "SALAO"
+                && trackingSalvo.id
+                && String(trackingSalvo.mesa || "") === String(state.mesa || "")
+                && String(trackingSalvo.token || "") === String(state.token || "")
+            ) {
+                saveTrackingPedido(trackingSalvo);
+                showPostOrderScreen(trackingSalvo);
+            }
 
             if (state.solicitacaoTimer) {
                 clearInterval(state.solicitacaoTimer);
