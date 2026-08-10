@@ -23,6 +23,8 @@ from typing import Any
 from flask import jsonify, make_response, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
+from . import payment_methods
+
 try:
     import pg_store
 except Exception as e:
@@ -35,7 +37,9 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 ALLOWED_COMPROVANTE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".pdf", ".jfif", ".heic", ".heif"}
-ALLOWED_PAYMENT_METHODS = {"PIX", "DINHEIRO", "CARTAO", "MISTO"}
+# Modalidades de pagamento: espelho da fonte única de verdade.
+# Ver cardapio_app/payment_methods.py e PDV/app/core/payment_methods.py
+ALLOWED_PAYMENT_METHODS = set(payment_methods.ALLOWED_PAYMENT_METHODS)
 
 
 @dataclass(frozen=True)
@@ -614,7 +618,7 @@ def format_telegram_new_order_message(record: dict[str, Any]) -> str:
     lines.append("")
     lines.append("")
     lines.append("Tipo de Pagamento:")
-    lines.append(pagamento)
+    lines.append(payment_methods.display_name(pagamento))
     if pagamento == "DINHEIRO":
         troco_para = record.get("troco_para")
         if troco_para is not None and str(troco_para).strip() != "":

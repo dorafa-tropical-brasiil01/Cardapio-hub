@@ -410,8 +410,7 @@
 
         try {
             const pm = localStorage.getItem(STORAGE_KEYS.payMethod);
-            const v = String(pm || "").toUpperCase();
-            if (v) state.payMethod = v;
+            if (pm) state.payMethod = normalizePayMethod(pm);
         } catch {
         }
 
@@ -634,15 +633,42 @@
         );
     }
 
+    // ESPELHO da fonte unica de verdade das modalidades de pagamento.
+    //   Original: PDV/app/core/payment_methods.py
+    //   Espelho Python: Cardapio/cardapio_app/payment_methods.py
+    // Ao alterar um codigo interno, altere os tres lugares.
+    // MISTO nao entra aqui de proposito: dividir um pagamento entre duas
+    // modalidades exige informar quanto vai em cada uma, e isso so acontece
+    // no PDV fisico, com o operador conferindo cada valor. No pedido online o
+    // cliente informa apenas a intencao de pagamento, e "Misto" nao informa
+    // nada de util para quem vai receber.
+    const PAYMENT_METHODS = [
+        { code: "DINHEIRO", label: "Dinheiro" },
+        { code: "PIX", label: "PIX" },
+        { code: "CARTAO_DEBITO", label: "Cartao de debito" },
+        { code: "CARTAO_CREDITO", label: "Cartao de credito" },
+    ];
+
+    // "CARTAO" era o codigo generico usado antes da separacao debito/credito.
+    // Pedidos e preferencias antigas sao migrados para credito.
+    // "MISTO" salvo em navegadores antigos cai no padrao, porque a modalidade
+    // deixou de ser ofertada online.
+    function normalizePayMethod(val) {
+        const code = String(val || "").trim().toUpperCase();
+        if (!code) return "DINHEIRO";
+        if (code === "CARTAO") return "CARTAO_CREDITO";
+        return PAYMENT_METHODS.some((m) => m.code === code) ? code : "DINHEIRO";
+    }
+
     function savePayMethod() {
         try {
-            localStorage.setItem(STORAGE_KEYS.payMethod, String(state.payMethod || "DINHEIRO"));
+            localStorage.setItem(STORAGE_KEYS.payMethod, normalizePayMethod(state.payMethod));
         } catch {
         }
     }
 
     function onPayMethodChange(val) {
-        state.payMethod = String(val || "DINHEIRO").toUpperCase();
+        state.payMethod = normalizePayMethod(val);
         savePayMethod();
         lockModalRender(1500);
     }
@@ -650,9 +676,8 @@
     function capturePayMethodFromDom() {
         const el = document.getElementById("payMethod");
         if (!el) return;
-        const v = String(el.value || "").toUpperCase();
-        if (!v) return;
-        state.payMethod = v;
+        if (!el.value) return;
+        state.payMethod = normalizePayMethod(el.value);
         savePayMethod();
     }
 
@@ -1018,7 +1043,7 @@
 
         clearTrackingPedido();
 
-        const pagamento_preferido = String(state.payMethod || "DINHEIRO").toUpperCase();
+        const pagamento_preferido = normalizePayMethod(state.payMethod);
 
         const isSalao = Boolean(state.mesa && state.token);
         const produtosMap = new Map((state.data?.produtos || []).map(p => [p.id, p]));
@@ -1719,7 +1744,7 @@
             </div>`
         );
 
-        const trocoUi = (!isSalao && String(state.payMethod||"").toUpperCase()==="DINHEIRO")
+        const trocoUi = (!isSalao && normalizePayMethod(state.payMethod) === "DINHEIRO")
             ? `<div style="margin-top:14px">
                     <div class="muted" style="margin-bottom:6px">Troco para (opcional):</div>
                     <input value="${String(state.deliveryTroco||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryTroco', this.value)" placeholder="Ex.: 100" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
@@ -1739,10 +1764,7 @@
                 <div style="margin-top:14px">
                     <div class="muted" style="margin-bottom:6px">Forma de pagamento (preferência):</div>
                     <select id="payMethod" onclick="lockModalRender(6000)" onfocus="lockModalRender(6000)" onchange="onPayMethodChange(this.value)" style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)">
-                        <option value="DINHEIRO" ${String(state.payMethod||"").toUpperCase()==="DINHEIRO" ? "selected" : ""}>Dinheiro</option>
-                        <option value="PIX" ${String(state.payMethod||"").toUpperCase()==="PIX" ? "selected" : ""}>PIX</option>
-                        <option value="CARTAO" ${String(state.payMethod||"").toUpperCase()==="CARTAO" ? "selected" : ""}>Cartão</option>
-                        <option value="MISTO" ${String(state.payMethod||"").toUpperCase()==="MISTO" ? "selected" : ""}>Misto</option>
+                        ${PAYMENT_METHODS.map((m) => `<option value="${m.code}" ${normalizePayMethod(state.payMethod) === m.code ? "selected" : ""}>${m.label}</option>`).join("")}
                     </select>
                 </div>
 
@@ -1813,7 +1835,7 @@
         // Após recriar o HTML, forçar o value do select para refletir o estado persistido
         try {
             const pm = document.getElementById("payMethod");
-            if (pm) pm.value = String(state.payMethod || "DINHEIRO").toUpperCase();
+            if (pm) pm.value = normalizePayMethod(state.payMethod);
         } catch {
         }
     }
