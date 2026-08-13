@@ -238,6 +238,126 @@ def init_db() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_solicitacao ON log_order_events(solicitacao_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_event ON log_order_events(event)")
 
+            # ------------------------------------------------------------------
+            # PAGAMENTOS EXTERNOS — Fase 1 (PIX via PagBank API Order)
+            #
+            # Tabela central de pagamentos eletrônicos processados por um PSP.
+            # O domínio (PaymentService) opera sobre esta tabela.
+            # O adapter (PagBankAdapter) traduz entre o PSP e esta tabela.
+            #
+            # Regras canônicas (Contrato 0D):
+            #   - status: PENDENTE → APROVADO / EXPIRADO / RECUSADO / CANCELADO
+            #   - EXPIRADO → APROVADO é permitido (PIX pago após expiração)
+            #   - Idempotência via last_event_id (não-regressão de estados terminais)
+            #   - claim: PDV reivindica o pagamento (claimed_by_pdv_id)
+            #   - application: PDV aplica à venda (applied_sale_id + applied_sale_payment_id)
+            #
+            # Nenhum campo específico de PIX ou PagBank existe aqui.
+            # ------------------------------------------------------------------
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS external_payments (
+                    id TEXT PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    provider_transaction_id TEXT NOT NULL,
+                    payment_method TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    currency TEXT NOT NULL DEFAULT 'BRL',
+                    status TEXT NOT NULL DEFAULT 'PENDENTE',
+                    reference_id TEXT,
+                    qr_code_payload TEXT,
+                    qr_code_image_base64 TEXT,
+                    qr_code_image_url TEXT,
+                    expires_at TIMESTAMPTZ,
+                    last_event_id TEXT,
+                    last_event_at TIMESTAMPTZ,
+                    claimed_by_pdv_id TEXT,
+                    claimed_at TIMESTAMPTZ,
+                    applied_sale_id INTEGER,
+                    applied_sale_payment_id INTEGER,
+                    applied_at TIMESTAMPTZ,
+                    metadata JSONB,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_external_payments_status ON external_payments(status)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_external_payments_provider_tx ON external_payments(provider_id, provider_transaction_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_external_payments_reference ON external_payments(reference_id)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_external_payments_claimed ON external_payments(claimed_by_pdv_id)"
+            )
+
+            # ------------------------------------------------------------------
+            # CONFIGURAÇÕES DO PSP
+            #
+            # Metadados não-secretos do provedor (endpoint base, default expiration).
+            # Credenciais secretas (token, webhook_token) ficam em variáveis de
+            # ambiente (Decisão 6), NÃO nesta tabela.
+            # ------------------------------------------------------------------
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS payment_provider_settings (
+                    provider_id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    environment TEXT NOT NULL DEFAULT 'SANDBOX',
+                    default_expires_in_seconds INTEGER,
+                    webhook_url TEXT,
+                    config_json JSONB,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            # Adicionar coluna environment se não existir (migração idempotente)
+            try:
+                cur.execute(
+                    "ALTER TABLE payment_provider_settings ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'SANDBOX'"
+                )
+            except Exception:
+                pass
+
+            # ------------------------------------------------------------------
+            # CREDENCIAIS DE PROVEDORES (secretas, criptografadas)
+            #
+            # Tabela separada de payment_provider_settings porque:
+            #   - settings = metadados não-secretos (URL, environment, is_active)
+            #   - credentials = segredos criptografados em nível de aplicação
+            #
+            # O token é criptografado com Fernet no PDV antes de enviar.
+            # A chave Fernet é derivada do MachineGuid da máquina (Windows)
+            # + um salt de aplicação, garantindo que credenciais só podem ser
+            # descriptografadas na mesma máquina que as criptografou.
+            #
+            # NUNCA logar o valor de encrypted_value.
+            # ------------------------------------------------------------------
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS payment_provider_credentials (
+                    id BIGSERIAL PRIMARY KEY,
+                    provider_id TEXT NOT NULL,
+                    credential_key TEXT NOT NULL,
+                    encrypted_value TEXT NOT NULL,
+                    hint TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE (provider_id, credential_key)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider ON payment_provider_credentials(provider_id)"
+            )
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -1805,6 +1925,427 @@ def calcular_status_publico(*, solicitacao_id: str) -> dict[str, Any]:
         "finalizado": False,
         "atualizado_em": _now_iso(),
     }
+
+
+# ---------------------------------------------------------------------------
+# PAGAMENTOS EXTERNOS — CRUD
+#
+# Funções de acesso à tabela external_payments.
+# O PaymentService usa estas funções; elas não contêm regras de domínio.
+# ---------------------------------------------------------------------------
+
+
+def create_external_payment(
+    *,
+    payment_id: str,
+    provider_id: str,
+    provider_transaction_id: str,
+    payment_method: str,
+    amount: float,
+    reference_id: str | None = None,
+    qr_code_payload: str | None = None,
+    qr_code_image_base64: str | None = None,
+    qr_code_image_url: str | None = None,
+    expires_at: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Cria um registro em external_payments. Retorna o registro criado."""
+    if not is_enabled():
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO external_payments
+                    (id, provider_id, provider_transaction_id, payment_method,
+                     amount, reference_id, qr_code_payload, qr_code_image_base64,
+                     qr_code_image_url, expires_at, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    payment_id,
+                    provider_id,
+                    provider_transaction_id,
+                    payment_method,
+                    amount,
+                    reference_id,
+                    qr_code_payload,
+                    qr_code_image_base64,
+                    qr_code_image_url,
+                    expires_at,
+                    psycopg2.extras.Json(metadata) if metadata else None,
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+
+
+def get_external_payment(*, payment_id: str) -> dict[str, Any] | None:
+    """Busca um external_payment por ID."""
+    if not is_enabled():
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM external_payments WHERE id = %s",
+                (payment_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def get_external_payment_by_provider_tx(
+    *, provider_id: str, provider_transaction_id: str
+) -> dict[str, Any] | None:
+    """Busca por (provider_id, provider_transaction_id). Para idempotência."""
+    if not is_enabled():
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM external_payments
+                WHERE provider_id = %s AND provider_transaction_id = %s
+                """,
+                (provider_id, provider_transaction_id),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def list_pending_external_payments() -> list[dict[str, Any]]:
+    """Lista pagamentos APROVADOS não aplicados (para o PDV descobrir via polling)."""
+    if not is_enabled():
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM external_payments
+                WHERE status = 'APROVADO'
+                  AND applied_sale_id IS NULL
+                ORDER BY updated_at ASC
+                """
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+def list_pending_by_reference(*, reference_id: str) -> list[dict[str, Any]]:
+    """Lista pagamentos pendentes por reference_id (solicitacao_id)."""
+    if not is_enabled():
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM external_payments
+                WHERE reference_id = %s
+                ORDER BY created_at ASC
+                """,
+                (reference_id,),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+def update_external_payment_status(
+    *,
+    payment_id: str,
+    status: str,
+    last_event_id: str | None = None,
+) -> bool:
+    """Atualiza o status de um external_payment.
+
+    Respeita a não-regressão de estados terminais:
+    APROVADO, RECUSADO, CANCELADO são terminais — não podem ser sobrescritos.
+
+    Retorna True se o status foi atualizado, False se foi bloqueado pela
+    não-regressão.
+    """
+    if not is_enabled():
+        return False
+
+    terminal_states = {"APROVADO", "RECUSADO", "CANCELADO"}
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            # Verificar estado atual para não-regressão
+            cur.execute(
+                "SELECT status FROM external_payments WHERE id = %s",
+                (payment_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return False
+
+            current_status = str(row[0])
+            if current_status in terminal_states and status != current_status:
+                # Não-regressão: estado terminal não pode mudar
+                # EXCEÇÃO: EXPIRADO → APROVADO é permitido (PIX pago após expiração)
+                if not (current_status == "EXPIRADO" and status == "APROVADO"):
+                    return False
+
+            cur.execute(
+                """
+                UPDATE external_payments
+                SET status = %s,
+                    last_event_id = COALESCE(%s, last_event_id),
+                    last_event_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (status, last_event_id, payment_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def claim_external_payment(
+    *, payment_id: str, pdv_id: str
+) -> dict[str, Any] | None:
+    """PDV reivindica um pagamento aprovado.
+
+    Retorna o registro atualizado, ou None se já foi reivindicado por outro PDV.
+    """
+    if not is_enabled():
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Atomic: só claim se claimed_by_pdv_id IS NULL
+            cur.execute(
+                """
+                UPDATE external_payments
+                SET claimed_by_pdv_id = %s,
+                    claimed_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                  AND claimed_by_pdv_id IS NULL
+                  AND status = 'APROVADO'
+                RETURNING *
+                """,
+                (pdv_id, payment_id),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+
+
+def apply_external_payment(
+    *,
+    payment_id: str,
+    sale_id: int,
+    sale_payment_id: int,
+) -> bool:
+    """PDV aplica o pagamento a uma venda (após claim)."""
+    if not is_enabled():
+        return False
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE external_payments
+                SET applied_sale_id = %s,
+                    applied_sale_payment_id = %s,
+                    applied_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = %s
+                  AND applied_sale_id IS NULL
+                """,
+                (sale_id, sale_payment_id, payment_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def expire_stale_pending_payments() -> int:
+    """Expira pagamentos PENDENTE cujo expires_at < NOW().
+
+    Retorna a quantidade de pagamentos expirados.
+    Usado pela reconciliação Cardápio → PSP (Bloco 3.7) e expiração local (Bloco 4.3b).
+    """
+    if not is_enabled():
+        return 0
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE external_payments
+                SET status = 'EXPIRADO',
+                    updated_at = NOW()
+                WHERE status = 'PENDENTE'
+                  AND expires_at IS NOT NULL
+                  AND expires_at < NOW()
+                """
+            )
+            count = cur.rowcount
+            conn.commit()
+            return count
+
+
+def get_provider_settings(*, provider_id: str) -> dict[str, Any] | None:
+    """Busca configurações não-secretas de um provedor."""
+    if not is_enabled():
+        return None
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM payment_provider_settings WHERE provider_id = %s",
+                (provider_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def upsert_provider_settings(
+    *,
+    provider_id: str,
+    display_name: str,
+    base_url: str,
+    environment: str = "SANDBOX",
+    default_expires_in_seconds: int | None = None,
+    webhook_url: str | None = None,
+    config_json: dict[str, Any] | None = None,
+    is_active: bool = True,
+) -> bool:
+    """Cria ou atualiza configurações de um provedor."""
+    if not is_enabled():
+        return False
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO payment_provider_settings
+                    (provider_id, display_name, base_url, environment,
+                     default_expires_in_seconds, webhook_url, config_json, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (provider_id) DO UPDATE SET
+                    display_name = EXCLUDED.display_name,
+                    base_url = EXCLUDED.base_url,
+                    environment = EXCLUDED.environment,
+                    default_expires_in_seconds = EXCLUDED.default_expires_in_seconds,
+                    webhook_url = EXCLUDED.webhook_url,
+                    config_json = EXCLUDED.config_json,
+                    is_active = EXCLUDED.is_active,
+                    updated_at = NOW()
+                """,
+                (
+                    provider_id,
+                    display_name,
+                    base_url,
+                    environment,
+                    default_expires_in_seconds,
+                    webhook_url,
+                    psycopg2.extras.Json(config_json) if config_json else None,
+                    is_active,
+                ),
+            )
+            conn.commit()
+            return True
+
+
+# ---------------------------------------------------------------------------
+# CREDENCIAIS DE PROVEDORES — CRUD (secretas, criptografadas)
+# ---------------------------------------------------------------------------
+
+def upsert_provider_credential(
+    *,
+    provider_id: str,
+    credential_key: str,
+    encrypted_value: str,
+    hint: str | None = None,
+) -> bool:
+    """Cria ou atualiza uma credencial criptografada de provedor.
+
+    O valor DEVE chegar já criptografado (Fernet) do PDV.
+    O Cardápio NÃO descriptografa — apenas armazena e devolve.
+    """
+    if not is_enabled():
+        return False
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO payment_provider_credentials
+                    (provider_id, credential_key, encrypted_value, hint)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (provider_id, credential_key) DO UPDATE SET
+                    encrypted_value = EXCLUDED.encrypted_value,
+                    hint = EXCLUDED.hint,
+                    updated_at = NOW()
+                """,
+                (provider_id, credential_key, encrypted_value, hint),
+            )
+            conn.commit()
+            return True
+
+
+def get_provider_credentials(*, provider_id: str) -> list[dict[str, Any]]:
+    """Lista credenciais criptografadas de um provedor.
+
+    Retorna encrypted_value (NÃO descriptografado). O PDV descriptografa.
+    """
+    if not is_enabled():
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT credential_key, encrypted_value, hint
+                FROM payment_provider_credentials
+                WHERE provider_id = %s
+                """,
+                (provider_id,),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+def delete_provider_credential(*, provider_id: str, credential_key: str) -> bool:
+    """Remove uma credencial específica."""
+    if not is_enabled():
+        return False
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM payment_provider_credentials
+                WHERE provider_id = %s AND credential_key = %s
+                """,
+                (provider_id, credential_key),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+
+def delete_all_provider_credentials(*, provider_id: str) -> bool:
+    """Remove todas as credenciais de um provedor."""
+    if not is_enabled():
+        return False
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM payment_provider_credentials WHERE provider_id = %s",
+                (provider_id,),
+            )
+            conn.commit()
+            return True
 
 
 def upsert_promo_inscricao_emitida(

@@ -1714,3 +1714,373 @@ def register_routes(app: Flask) -> None:
             core.save_solicitacoes(_ctx(), data)
 
         return jsonify({"ok": True})
+
+    # ==================================================================
+    # CONFIGURAÇÃO DE PROVEDORES DE PAGAMENTO
+    #
+    # Endpoints:
+    #   GET    /api/pdv/payment_providers/<provider_id>/config  — obter config
+    #   POST   /api/pdv/payment_providers/<provider_id>/config  — salvar config
+    #   POST   /api/pdv/payment_providers/<provider_id>/active  — ativar/desativar
+    # ==================================================================
+
+    @app.get("/api/pdv/payment_providers/<provider_id>/config")
+    def api_get_payment_provider_config(provider_id: str):
+        """Obtém a configuração de um provedor (metadados + credenciais criptografadas)."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        if not core.pg_enabled():
+            return jsonify({"error": "postgres_nao_habilitado"}), 500
+
+        settings = core.pg_store.get_provider_settings(provider_id=provider_id)
+        credentials = core.pg_store.get_provider_credentials(provider_id=provider_id)
+
+        if settings is None:
+            return jsonify({"configured": False, "credentials": []})
+
+        return jsonify({
+            "configured": True,
+            "provider_id": settings.get("provider_id"),
+            "display_name": settings.get("display_name"),
+            "base_url": settings.get("base_url"),
+            "environment": settings.get("environment") or "SANDBOX",
+            "is_active": bool(settings.get("is_active")),
+            "webhook_url": settings.get("webhook_url"),
+            "default_expires_in_seconds": settings.get("default_expires_in_seconds"),
+            "credentials": credentials or [],
+        })
+
+    @app.post("/api/pdv/payment_providers/<provider_id>/config")
+    def api_save_payment_provider_config(provider_id: str):
+        """Salva a configuração de um provedor (metadados + credenciais criptografadas)."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        if not core.pg_enabled():
+            return jsonify({"error": "postgres_nao_habilitado"}), 500
+
+        body = request.get_json(silent=True)
+        if body is None or not isinstance(body, dict):
+            return jsonify({"error": "json_invalido"}), 400
+
+        display_name = str(body.get("display_name") or provider_id)
+        base_url = str(body.get("base_url") or "")
+        environment = str(body.get("environment") or "SANDBOX").strip().upper()
+        is_active = bool(body.get("is_active", True))
+        webhook_url = body.get("webhook_url")
+        try:
+            default_expires = int(body.get("default_expires_in_seconds") or 0) or None
+        except (TypeError, ValueError):
+            default_expires = None
+
+        if not base_url:
+            return jsonify({"error": "base_url_obrigatorio"}), 400
+
+        # Salvar metadados
+        ok = core.pg_store.upsert_provider_settings(
+            provider_id=provider_id,
+            display_name=display_name,
+            base_url=base_url,
+            environment=environment,
+            default_expires_in_seconds=default_expires,
+            webhook_url=webhook_url,
+            is_active=is_active,
+        )
+        if not ok:
+            return jsonify({"error": "falha_ao_salvar_settings"}), 500
+
+        # Salvar credenciais (criptografar no Cardápio antes de armazenar)
+        credentials = body.get("credentials") or []
+        if isinstance(credentials, list):
+            from .credential_crypto import encrypt as cred_encrypt, mask as cred_mask
+
+            for cred in credentials:
+                if not isinstance(cred, dict):
+                    continue
+                cred_key = str(cred.get("credential_key") or "")
+                plaintext = str(cred.get("value") or "")
+
+                if not cred_key or not plaintext:
+                    continue
+
+                encrypted_value = cred_encrypt(plaintext)
+                hint = cred_mask(plaintext)
+
+                core.pg_store.upsert_provider_credential(
+                    provider_id=provider_id,
+                    credential_key=cred_key,
+                    encrypted_value=encrypted_value,
+                    hint=hint,
+                )
+
+        return jsonify({"ok": True})
+
+    @app.post("/api/pdv/payment_providers/<provider_id>/active")
+    def api_set_payment_provider_active(provider_id: str):
+        """Ativa ou desativa um provedor sem alterar credenciais."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        if not core.pg_enabled():
+            return jsonify({"error": "postgres_nao_habilitado"}), 500
+
+        body = request.get_json(silent=True) or {}
+        is_active = bool(body.get("is_active", True))
+
+        # Buscar config existente para preservar metadados
+        settings = core.pg_store.get_provider_settings(provider_id=provider_id)
+        if settings is None:
+            return jsonify({"error": "provedor_nao_configurado"}), 404
+
+        ok = core.pg_store.upsert_provider_settings(
+            provider_id=provider_id,
+            display_name=settings.get("display_name") or provider_id,
+            base_url=settings.get("base_url") or "",
+            environment=settings.get("environment") or "SANDBOX",
+            default_expires_in_seconds=settings.get("default_expires_in_seconds"),
+            webhook_url=settings.get("webhook_url"),
+            is_active=is_active,
+        )
+        if not ok:
+            return jsonify({"error": "falha_ao_atualizar"}), 500
+
+        return jsonify({"ok": True, "is_active": is_active})
+
+    # ==================================================================
+    # PAGAMENTOS EXTERNOS — Fase 1 (PIX via PagBank API Order)
+    #
+    # Endpoints:
+    #   POST   /api/payments              — criar cobrança PIX
+    #   GET    /api/payments/pending      — listar aprovados não aplicados (PDV polling)
+    #   GET    /api/payments/<id>         — obter pagamento por ID
+    #   POST   /api/payments/<id>/claim   — PDV reivindica pagamento
+    #   POST   /api/payments/<id>/application — PDV aplica à venda
+    #   POST   /api/payments/webhook      — webhook do PagBank
+    # ==================================================================
+
+    def _get_payment_service():
+        """Cria PaymentService com PagBankAdapter usando configuração salva no banco.
+
+        Prioridade:
+            1. Configuração salva em payment_provider_settings + credentials (banco)
+            2. Variáveis de ambiente (fallback para compatibilidade)
+        """
+        from .payments.domain import PaymentService
+        from .payments.adapter_contract import PaymentMethod
+        from .payments.pagbank_adapter import PagBankAdapter
+
+        provider_id = "PAGBANK"
+        token = ""
+        webhook_token = None
+        sandbox = True
+        base_url = None
+
+        # 1. Tentar ler do banco (configuração salva pela tela do PDV)
+        if core.pg_enabled():
+            settings = core.pg_store.get_provider_settings(provider_id=provider_id)
+            if settings and settings.get("is_active"):
+                env = str(settings.get("environment") or "SANDBOX").upper()
+                sandbox = env == "SANDBOX"
+                base_url = settings.get("base_url") or None
+
+                creds = core.pg_store.get_provider_credentials(provider_id=provider_id)
+                from .credential_crypto import decrypt as cred_decrypt
+
+                for cred in (creds or []):
+                    key = str(cred.get("credential_key") or "")
+                    encrypted = str(cred.get("encrypted_value") or "")
+                    if not encrypted:
+                        continue
+                    try:
+                        plaintext = cred_decrypt(encrypted)
+                    except Exception:
+                        logger.warning("_get_payment_service - falha ao descriptografar %s", key)
+                        continue
+
+                    if key == "PAGBANK_TOKEN":
+                        token = plaintext
+                    elif key == "PAGBANK_WEBHOOK_TOKEN":
+                        webhook_token = plaintext
+
+        # 2. Fallback: variáveis de ambiente (compatibilidade)
+        if not token:
+            token = os.environ.get("PAGBANK_TOKEN", "")
+            webhook_token = os.environ.get("PAGBANK_WEBHOOK_TOKEN")
+            sandbox = os.environ.get("PAGBANK_SANDBOX", "1") == "1"
+
+        if not token:
+            raise RuntimeError("PagBank não configurado. Use a tela de Provedores de Pagamento no PDV ou configure PAGBANK_TOKEN.")
+
+        adapter = PagBankAdapter(
+            token=token,
+            webhook_token=webhook_token,
+            sandbox=sandbox,
+            base_url=base_url,
+        )
+        return PaymentService(store=core.pg_store, adapter=adapter), PaymentMethod
+
+    @app.post("/api/payments")
+    def api_payments_create():
+        """Cria uma cobrança PIX.
+
+        Body: {
+            "payment_method": "PIX",
+            "amount": 100.00,
+            "reference_id": "solicitacao_id ou sale_id",
+            "description": "Pagamento pedido #123",
+            "expires_in_seconds": 1800
+        }
+        """
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        body = request.get_json(silent=True)
+        if body is None or not isinstance(body, dict):
+            return jsonify({"error": "json_invalido"}), 400
+
+        method_str = str(body.get("payment_method") or "").strip().upper()
+        if method_str != "PIX":
+            return jsonify({"error": "metodo_nao_suportado", "metodo": method_str}), 400
+
+        try:
+            amount = float(body.get("amount") or 0)
+        except (TypeError, ValueError):
+            return jsonify({"error": "valor_invalido"}), 400
+        if amount <= 0:
+            return jsonify({"error": "valor_invalido"}), 400
+
+        reference_id = str(body.get("reference_id") or "").strip() or None
+        description = str(body.get("description") or "").strip() or None
+        try:
+            expires_in = int(body.get("expires_in_seconds") or 0) or None
+        except (TypeError, ValueError):
+            expires_in = None
+
+        try:
+            service, PaymentMethod = _get_payment_service()
+            record = service.iniciar_pagamento(
+                payment_method=PaymentMethod.PIX,
+                amount=amount,
+                reference_id=reference_id,
+                description=description,
+                expires_in_seconds=expires_in,
+            )
+        except RuntimeError as e:
+            logger.exception("api_payments_create - erro")
+            return jsonify({"error": "erro_criacao", "detalhe": str(e)}), 500
+
+        if record is None:
+            return jsonify({"error": "falha_criacao"}), 500
+
+        return jsonify(record), 201
+
+    @app.get("/api/payments/pending")
+    def api_payments_pending():
+        """Lista pagamentos APROVADOS não aplicados (PDV polling)."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        if not core.pg_enabled():
+            return jsonify({"payments": []})
+
+        payments = core.pg_store.list_pending_external_payments()
+        return jsonify({"payments": payments})
+
+    @app.get("/api/payments/<payment_id>")
+    def api_payments_get(payment_id: str):
+        """Obtém um pagamento por ID."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        if not core.pg_enabled():
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        record = core.pg_store.get_external_payment(payment_id=payment_id)
+        if record is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        return jsonify(record)
+
+    @app.post("/api/payments/<payment_id>/claim")
+    def api_payments_claim(payment_id: str):
+        """PDV reivindica um pagamento aprovado."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        body = request.get_json(silent=True) or {}
+        pdv_id = str(body.get("pdv_id") or "").strip()
+        if not pdv_id:
+            return jsonify({"error": "pdv_id_obrigatorio"}), 400
+
+        if not core.pg_enabled():
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        record = core.pg_store.claim_external_payment(
+            payment_id=payment_id, pdv_id=pdv_id,
+        )
+        if record is None:
+            return jsonify({"error": "ja_reivindicado_ou_nao_aprovado"}), 409
+
+        return jsonify(record)
+
+    @app.post("/api/payments/<payment_id>/application")
+    def api_payments_apply(payment_id: str):
+        """PDV aplica o pagamento a uma venda (após claim)."""
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        body = request.get_json(silent=True) or {}
+        try:
+            sale_id = int(body.get("sale_id") or 0)
+            sale_payment_id = int(body.get("sale_payment_id") or 0)
+        except (TypeError, ValueError):
+            return jsonify({"error": "parametros_invalidos"}), 400
+
+        if sale_id <= 0 or sale_payment_id <= 0:
+            return jsonify({"error": "parametros_invalidos"}), 400
+
+        if not core.pg_enabled():
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        ok = core.pg_store.apply_external_payment(
+            payment_id=payment_id,
+            sale_id=sale_id,
+            sale_payment_id=sale_payment_id,
+        )
+        if not ok:
+            return jsonify({"error": "ja_aplicado_ou_nao_encontrado"}), 409
+
+        return jsonify({"ok": True})
+
+    @app.post("/api/payments/webhook")
+    def api_payments_webhook():
+        """Webhook do PagBank.
+
+        Não requer PDV_KEY — é autenticado via assinatura (x-authenticity-token).
+        O adapter valida a assinatura internamente.
+        """
+        raw_body = request.get_data() or b""
+        headers = {k.lower(): v for k, v in request.headers.items()}
+
+        try:
+            service, _ = _get_payment_service()
+            record = service.processar_webhook(headers=headers, body=raw_body)
+        except RuntimeError as e:
+            logger.exception("api_payments_webhook - erro")
+            return jsonify({"error": "erro_webhook", "detalhe": str(e)}), 500
+
+        if record is None:
+            # Webhook inválido ou pagamento não encontrado
+            # Retornar 200 para o PagBank não reenviar (idempotência)
+            return jsonify({"ok": False, "reason": "invalid_or_not_found"}), 200
+
+        return jsonify({"ok": True, "payment_id": record.get("id")}), 200
