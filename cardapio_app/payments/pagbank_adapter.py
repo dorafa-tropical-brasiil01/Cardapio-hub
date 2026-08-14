@@ -180,12 +180,13 @@ class PagBankAdapter(PaymentProviderAdapter):
             POST /orders
             Body: {
                 "reference_id": "...",
-                "customer": {...},  # opcional para PIX
+                "customer": {name, email, tax_id},  # obrigatorio
                 "items": [...],
                 "qr_codes": [{
                     "amount": { "value": <centavos> },
                     "expiration_date": "2026-08-13T15:00:00-03:00",
-                }]
+                }],
+                "notification_urls": [...],  # opcional
             }
             Response: {
                 "id": "ORDE_...",
@@ -212,6 +213,11 @@ class PagBankAdapter(PaymentProviderAdapter):
 
         body: dict[str, Any] = {
             "reference_id": request.reference_id,
+            "customer": {
+                "name": "Cliente PDV",
+                "email": "pdv@dorafatropicalbrasil.com.br",
+                "tax_id": "12345678909",
+            },
             "items": [
                 {
                     "name": request.description or "Pagamento",
