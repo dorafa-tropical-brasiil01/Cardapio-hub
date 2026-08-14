@@ -1,5 +1,6 @@
 {
   "CARDAPIO_PUBLIC_BASE_URL": "https://cardapio-production-c2d2.up.railway.app/",
+  "CARDAPIO_CREDENTIAL_SECRET": "RCaOEHP3XbvYP2wpo0nnnYjcb9dHJkislDaIJiRpm2i3MaelCmURhi6kFdFCxDhM",
   "OPS_ADMIN_PASSWORD": "admin",
   "OPS_ADMIN_USERNAME": "admin",
   "PDV_KEY": "3952293a679cfab00672c961ffc520d0",
