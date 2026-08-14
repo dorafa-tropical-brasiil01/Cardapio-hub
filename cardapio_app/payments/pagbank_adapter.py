@@ -149,6 +149,7 @@ class PagBankAdapter(PaymentProviderAdapter):
             "Authorization": f"Bearer {self._token}",
             "Content-Type": "application/json",
             "Accept": "application/json",
+            "User-Agent": "DoRafaPDV/2.0",
         }
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
