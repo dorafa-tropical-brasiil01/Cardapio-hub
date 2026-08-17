@@ -1332,8 +1332,18 @@
                 : "";
             if (img && src) {
                 img.src = src;
-                img.style.display = "block";
                 img.onerror = () => { img.style.display = "none"; };
+
+                // Enquanto o pagamento online ainda não foi confirmado, a imagem
+                // de agradecimento fica oculta para não empurrar o QR para fora
+                // da tela do celular. Ela reaparece após confirmação.
+                const estado = String(pedidoInfo?.estado_pagamento || "").toUpperCase();
+                const isPago = estado === "CONFIRMADO" || estado === "NAO_APLICAVEL";
+                if (pedidoInfo?.pagamento_online && !isPago) {
+                    img.style.display = "none";
+                } else {
+                    img.style.display = "block";
+                }
             } else if (img) {
                 img.style.display = "none";
             }
@@ -1458,14 +1468,21 @@
 
         const pagamentoOnline = Boolean(data && data.pagamento_online);
         const estado = String(data.estado_pagamento || "").toUpperCase();
+        const img = document.getElementById("postOrderImage");
 
-        // Pedido que nao cobra online, ou ja finalizado: esconde a area de pagamento.
+        // Pedido que nao cobra online, ou ja finalizado: esconde a area de pagamento
+        // e mostra a imagem de agradecimento (que agora fica abaixo do pagamento).
         if (!pagamentoOnline || estado === "NAO_APLICAVEL" || estado === "CONFIRMADO") {
             area.style.display = "none";
             header.innerHTML = "";
             body.innerHTML = "";
+            if (img) img.style.display = "block";
             return;
         }
+
+        // Enquanto o pagamento nao for confirmado, esconde a imagem para nao
+        // empurrar o QR para fora da tela no celular.
+        if (img) img.style.display = "none";
 
         area.style.display = "block";
 
@@ -1493,7 +1510,15 @@
             html += `<div class="payment-hint">Escaneie o QR Code com o app do seu banco ou copie o codigo PIX.</div>`;
 
             if (imageUrl) {
-                html += `<div class="qr-panel"><img src="${escapeHtml(imageUrl)}" alt="QR Code PIX" onerror="this.style.display='none'" /></div>`;
+                html += `<div class="qr-panel">` +
+                    `<img src="${escapeHtml(imageUrl)}" alt="QR Code PIX" ` +
+                    `onerror="this.style.display='none'; this.parentNode.querySelector('.qr-fallback').style.display='block';" ` +
+                    `onload="this.style.display='block'; this.parentNode.querySelector('.qr-fallback').style.display='none';" />` +
+                    `<div class="qr-fallback" style="display:none">` +
+                    `<div class="qr-fallback-qr"></div>` +
+                    `<p>Imagem do QR não carregou. Copie o código PIX abaixo.</p>` +
+                    `</div>` +
+                    `</div>`;
             }
 
             if (payload) {
@@ -2501,13 +2526,21 @@
             const trackingSalvo = getTrackingPedido();
             showMainScreen();
 
-            if (
+            const isSalao = (
                 trackingSalvo
                 && String(trackingSalvo.kind || "").toUpperCase() === "SALAO"
                 && trackingSalvo.id
                 && String(trackingSalvo.mesa || "") === String(state.mesa || "")
                 && String(trackingSalvo.token || "") === String(state.token || "")
-            ) {
+            );
+            const isDeliveryOnline = (
+                trackingSalvo
+                && trackingSalvo.id
+                && trackingSalvo.access_token
+                && String(trackingSalvo.kind || "DELIVERY").toUpperCase() !== "SALAO"
+            );
+
+            if (isSalao || isDeliveryOnline) {
                 saveTrackingPedido(trackingSalvo);
                 showPostOrderScreen(trackingSalvo);
             }
