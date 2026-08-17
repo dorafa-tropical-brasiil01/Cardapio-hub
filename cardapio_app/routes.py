@@ -129,6 +129,12 @@ def _resposta_publica_pedido(rec: dict[str, Any]) -> dict[str, Any]:
         "payment_window_expires_at": rec.get("payment_window_expires_at"),
         "payment_attempts": rec.get("payment_attempts"),
         "pagamento": pay_domain.filtrar_snapshot_publico(rec.get("pagamento")),
+        "itens": rec.get("itens"),
+        "cliente_nome": rec.get("cliente_nome"),
+        "cliente_whatsapp": rec.get("cliente_whatsapp"),
+        "tipo_entrega": str(rec.get("tipo_entrega") or "").strip().upper(),
+        "endereco": rec.get("endereco"),
+        "pagamento_preferido": rec.get("pagamento_preferido"),
     }
     out.update(pay_service.estado_publico(rec))
     return out
@@ -1929,11 +1935,17 @@ def register_routes(app: Flask) -> None:
         resultado["pagamento"] = pay_domain.filtrar_snapshot_publico(rec.get("pagamento"))
 
         # Esses campos sao usados pelo frontend para manter a area de pagamento
-        # visivel enquanto o QR aguarda confirmacao, sem alternar com a imagem
-        # de agradecimento.
+        # visivel enquanto o QR aguarda confirmacao e para exibir o resumo do pedido.
         resultado["pagamento_online"] = bool(rec.get("pagamento_online"))
-        resultado["total"] = rec.get("total")
+        resultado["subtotal"] = rec.get("subtotal_estimado")
+        resultado["taxa_entrega"] = rec.get("taxa_entrega")
+        resultado["total"] = rec.get("total_estimado")
         resultado["payment_window_expires_at"] = rec.get("payment_window_expires_at")
+        resultado["itens"] = rec.get("itens")
+        resultado["cliente_nome"] = rec.get("cliente_nome")
+        resultado["cliente_whatsapp"] = rec.get("cliente_whatsapp")
+        resultado["endereco"] = rec.get("endereco")
+        resultado["pagamento_preferido"] = rec.get("pagamento_preferido")
 
         return jsonify(resultado)
 

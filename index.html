@@ -941,6 +941,11 @@
 
 <body>
 
+<div id="postOrderBanner" style="display:none; background:#fffbe6; border-bottom:2px solid #d4c05e; padding:10px 16px; text-align:center; position:sticky; top:0; z-index:1001">
+    <span style="font-weight:700; color:#0a5c2f;">Pedido em andamento</span>
+    <button type="button" onclick="voltarAoPagamento()" style="margin-left:12px; padding:6px 12px; border-radius:8px; border:1px solid #0a5c2f; background:#0a5c2f; color:#fff; font-weight:700; cursor:pointer;">Voltar ao pagamento</button>
+</div>
+
 <header>
     <div class="brand">
         <img id="logoImg" src="" alt="Logo">
@@ -1003,19 +1008,25 @@
 </div>
 
 <div id="postOrderScreen" style="display:none; padding:18px; max-width:900px; margin:0 auto">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px">
-        <button type="button" onclick="voltarAoCardapio()">Voltar</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px">
+        <button type="button" onclick="voltarAoCardapio()">Voltar ao cardápio</button>
+        <button type="button" onclick="adicionarMaisItens()" style="background:#0a5c2f; color:#fff; border:1px solid #0a5c2f; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer;">Adicionar mais itens</button>
+    </div>
+    <div style="display:flex; justify-content:center; margin-bottom:14px">
         <div id="postOrderStatusPublico" style="display:none; padding:8px 16px; background:#e8f5e9; border:1px solid #4caf50; border-radius:8px; font-size:14px; color:#2e7d32; font-weight:bold"></div>
         <div id="kdsStatusArea" style="display:none; padding:8px 16px; background:#e8f5e9; border:1px solid #4caf50; border-radius:8px; font-size:14px; color:#2e7d32; font-weight:bold">
             <div id="kdsStatusText">Pedido recebido</div>
         </div>
     </div>
+
+    <div id="postOrderSummary" class="post-order-summary" style="display:none"></div>
+
     <div id="postOrderPaymentArea" class="payment-box" style="display:none">
         <div id="postOrderPaymentHeader" class="payment-header"></div>
         <div id="postOrderPaymentBody"></div>
     </div>
 
-    <div class="post-order-image-wrapper" id="postOrderImageWrapper" style="display:flex; justify-content:center; margin-top:18px; display:none">
+    <div class="post-order-image-wrapper" id="postOrderImageWrapper" style="display:none; justify-content:center; margin-top:18px">
         <img id="postOrderImage" src="" alt="" style="max-width:100%; border-radius:16px" />
     </div>
 </div>

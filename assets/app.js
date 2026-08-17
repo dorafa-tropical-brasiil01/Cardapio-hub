@@ -1175,7 +1175,7 @@
             cliente_nome: String(state.clientName || "").trim(),
             cliente_whatsapp: String(state.clientWhatsapp || "").trim() || null,
             tipo_entrega: !isSalao ? String(state.deliveryType || "DELIVERY").toUpperCase() : null,
-            endereco: null,
+            endereco: !isSalao ? payload.endereco : null,
             troco_para: !isSalao ? (String(state.deliveryTroco || "").trim() || null) : null,
             observacoes: null,
             pagamento_preferido,
@@ -1204,7 +1204,16 @@
                 pagamento_online: pagamentoOnline,
                 pagamento: out.pagamento || null,
                 estado_pagamento: out.estado_pagamento || null,
-                pode_retentar: Boolean(out.pode_retentar)
+                pode_retentar: Boolean(out.pode_retentar),
+                payment_window_expires_at: out.payment_window_expires_at || null,
+                cliente_nome: pedido.cliente_nome,
+                cliente_whatsapp: pedido.cliente_whatsapp,
+                endereco: payload.endereco || null,
+                pagamento_preferido,
+                itens: pedido.itens,
+                subtotal: Number(out.subtotal) || 0,
+                taxa_entrega: Number(out.taxa_entrega) || 0,
+                total: Number(out.total) || getCartTotal()
             };
             saveTrackingPedido(tracking);
         } else if (isSalao) {
@@ -1212,16 +1221,28 @@
                 id: out.id,
                 kind,
                 mesa: state.mesa,
-                token: state.token
+                token: state.token,
+                cliente_nome: pedido.cliente_nome,
+                cliente_whatsapp: pedido.cliente_whatsapp,
+                pagamento_preferido,
+                itens: pedido.itens,
+                total: Number(out.total) || getCartTotal()
             });
         }
 
-        // Fluxo simplificado: após enviar, permite novo pedido imediatamente.
-        // O pedido NÃO some do PDV; apenas não mantemos "pedido atual" nesta tela.
+        // Fluxo simplificado: após enviar, permite adicionar mais itens sem perder
+        // o carrinho. Para pedidos presenciais (SALAO) limpamos o carrinho porque
+        // o pagamento não é online e o PDV já recebeu o pedido. Para delivery,
+        // mantemos o carrinho para o cliente poder voltar ao cardápio e adicionar
+        // mais itens, gerando um novo QR com o total atualizado.
         clearPedidoAtual();
         state.sending = false;
-        state.carrinho = [];
-        saveLocal();
+        if (isSalao) {
+            state.carrinho = [];
+            saveLocal();
+        } else {
+            saveLocal();
+        }
         updateCartBadge();
         showPostOrderScreen(pedido);
     }
@@ -1241,9 +1262,9 @@
         const floating = document.getElementById("floatingActions");
         const whatsFloat = document.getElementById("whatsFloat");
 
-        stopStatusPublicoPolling();
-        stopKdsPolling();
-        clearTrackingPedido();
+        // Nao limpa o tracking nem para o polling: se houver um pagamento online
+        // pendente, o cliente pode voltar ao cardápio e adicionar mais itens sem
+        // perder o QR. O banner "Voltar ao pagamento" aparece para reabrir a tela.
         state.postOrderActive = false;
         state.postOrderPedido = null;
         if (post) post.style.display = "none";
@@ -1259,6 +1280,12 @@
         if (bottomBar) bottomBar.style.display = "flex";
         if (floating) floating.style.display = "none";
         if (whatsFloat) whatsFloat.style.display = "none";
+
+        const bannerEl = document.getElementById("postOrderBanner");
+        const tracking = getTrackingPedido();
+        if (bannerEl) {
+            bannerEl.style.display = (tracking && tracking.id) ? "block" : "none";
+        }
     }
 
     function normalizeAnyAssetUrl(v) {
@@ -1415,6 +1442,12 @@
                 }
             }
         }
+
+        // Esconde o banner do cardápio e mostra o resumo do pedido
+        const bannerEl = document.getElementById("postOrderBanner");
+        if (bannerEl) bannerEl.style.display = "none";
+        const tracking = getTrackingPedido();
+        renderResumoPedido(tracking && tracking.id ? tracking : pedidoInfo);
     }
 
     function renderStatusPublicoNaTela(statusPublico, tipoEntrega) {
@@ -1488,6 +1521,14 @@
             body.dataset.renderKey = "";
             if (imgWrapper) imgWrapper.style.display = "flex";
             if (img) img.style.display = "block";
+            if (estado === "CONFIRMADO") {
+                // Limpa o carrinho somente quando o pagamento online for confirmado,
+                // liberando o cliente para fazer um novo pedido depois.
+                state.carrinho = [];
+                saveLocal();
+                updateCartBadge();
+            }
+            renderResumoPedido(data);
             return;
         }
 
@@ -1566,6 +1607,81 @@
 
         header.innerHTML = escapeHtml(titulo);
         body.innerHTML = html;
+        renderResumoPedido(data);
+    }
+
+    function renderResumoPedido(data) {
+        const el = document.getElementById("postOrderSummary");
+        if (!el) return;
+        if (!data) {
+            el.style.display = "none";
+            return;
+        }
+
+        const itens = Array.isArray(data.itens) ? data.itens : [];
+        const taxa = Number(data.taxa_entrega) || 0;
+        const itemSubtotal = itens.reduce((acc, it) => {
+            const qty = Number(it.qty || it.quantidade || it.qtd || 1);
+            const preco = Number(it.unit_price || it.preco || 0);
+            return acc + (Number(it.line_total) || (preco * qty));
+        }, 0);
+        const subtotal = Number(data.subtotal) || itemSubtotal;
+        const total = Number(data.total) || (subtotal + taxa);
+        const cliente = String(data.cliente_nome || "").trim();
+        const whatsapp = String(data.cliente_whatsapp || "").trim();
+        const tipo = String(data.tipo_entrega || "").toUpperCase();
+        const pagamento = String(data.pagamento_preferido || "").toUpperCase();
+
+        let endereco = "";
+        if (data.endereco) {
+            if (typeof data.endereco === "object") {
+                const parts = [];
+                if (data.endereco.rua) parts.push(String(data.endereco.rua));
+                if (data.endereco.numero) parts.push(String(data.endereco.numero));
+                if (data.endereco.bairro) parts.push(String(data.endereco.bairro));
+                if (data.endereco.cidade) parts.push(String(data.endereco.cidade));
+                if (data.endereco.referencia) parts.push("Ref: " + String(data.endereco.referencia));
+                endereco = parts.join(", ");
+            } else {
+                endereco = String(data.endereco);
+            }
+        }
+
+        let itensHtml = "";
+        for (const it of itens) {
+            const nome = escapeHtml(String(it.nome || it.product_code || "Item").trim());
+            const qty = Number(it.qty || it.quantidade || it.qtd || 1);
+            const preco = Number(it.unit_price || it.preco || 0);
+            const totalLinha = Number(it.line_total || (preco * qty) || 0);
+            itensHtml += `<div class="summary-row"><span>${nome} x ${qty}</span><span>${formatBRL(totalLinha)}</span></div>`;
+        }
+
+        let entregaHtml = "";
+        if (data.kind === "SALAO" || tipo === "SALAO") {
+            const mesa = data.mesa || "";
+            entregaHtml = `<div class="summary-delivery"><strong>Mesa ${mesa}</strong></div>`;
+        } else if (tipo === "RETIRADA") {
+            entregaHtml = `<div class="summary-delivery"><strong>Retirada no balc&atilde;o</strong></div>`;
+        } else if (endereco) {
+            entregaHtml = `<div class="summary-delivery"><strong>Entrega em:</strong> ${escapeHtml(endereco)}</div>`;
+        }
+        if (cliente) {
+            entregaHtml += `<div class="summary-delivery"><strong>Cliente:</strong> ${escapeHtml(cliente)}${whatsapp ? " (" + escapeHtml(whatsapp) + ")" : ""}</div>`;
+        }
+
+        const pagamentoLabels = { "PIX": "PIX", "DINHEIRO": "Dinheiro", "CARTAO": "Cart&atilde;o" };
+        const pagamentoLabel = pagamentoLabels[pagamento] || escapeHtml(pagamento || "-");
+
+        el.innerHTML = `
+            <h3>Resumo do pedido</h3>
+            ${itensHtml}
+            <div class="summary-row"><span>Subtotal</span><span>${formatBRL(subtotal)}</span></div>
+            ${taxa > 0 ? `<div class="summary-row"><span>Taxa de entrega</span><span>${formatBRL(taxa)}</span></div>` : ""}
+            <div class="summary-row summary-total"><span>Total</span><span>${formatBRL(total)}</span></div>
+            <div class="summary-row"><span>Forma de pagamento</span><span>${pagamentoLabel}</span></div>
+            ${entregaHtml}
+        `;
+        el.style.display = "block";
     }
 
     async function pagarNovamente() {
@@ -1603,10 +1719,13 @@
             tracking.estado_pagamento = data.estado_pagamento || null;
             tracking.pode_retentar = Boolean(data.pode_retentar);
             tracking.payment_window_expires_at = data.payment_window_expires_at || null;
-            tracking.total = Number(data.total) || tracking.total;
+            tracking.subtotal = Number(data.subtotal) || tracking.subtotal || 0;
+            tracking.taxa_entrega = Number(data.taxa_entrega) || tracking.taxa_entrega || 0;
+            tracking.total = Number(data.total) || tracking.total || 0;
             saveTrackingPedido(tracking);
 
             renderPagamentoNaTela(data);
+            renderResumoPedido(data);
         } catch (e) {
             setModal("Pagamento", `<div><strong>Erro de conex&atilde;o.</strong></div><div class="muted">N&atilde;o foi poss&iacute;vel gerar o novo QR Code.</div>`);
             abrirModal();
@@ -1666,15 +1785,33 @@
             tracking.estado_pagamento = data.estado_pagamento || tracking.estado_pagamento || null;
             tracking.pode_retentar = Boolean(data.pode_retentar !== undefined ? data.pode_retentar : tracking.pode_retentar);
             tracking.payment_window_expires_at = data.payment_window_expires_at || tracking.payment_window_expires_at || null;
+            tracking.subtotal = Number(data.subtotal) || tracking.subtotal || 0;
+            tracking.taxa_entrega = Number(data.taxa_entrega) || tracking.taxa_entrega || 0;
             tracking.total = Number(data.total) || tracking.total || 0;
+            tracking.cliente_nome = data.cliente_nome || tracking.cliente_nome || null;
+            tracking.cliente_whatsapp = data.cliente_whatsapp || tracking.cliente_whatsapp || null;
+            tracking.endereco = data.endereco || tracking.endereco || null;
+            tracking.pagamento_preferido = data.pagamento_preferido || tracking.pagamento_preferido || null;
+            tracking.itens = data.itens || tracking.itens || [];
             saveTrackingPedido(tracking);
 
             renderStatusPublicoNaTela(statusPublico, tipoEntrega);
-            renderPagamentoNaTela(data);
+
+            // Se o pagamento for confirmado enquanto o cliente está no cardápio,
+            // volta a mostrar a tela de agradecimento automaticamente.
+            const estadoPagamento = String(data.estado_pagamento || "").toUpperCase();
+            if (estadoPagamento === "CONFIRMADO" && !state.postOrderActive) {
+                showPostOrderScreen(tracking);
+            } else {
+                renderPagamentoNaTela(data);
+                renderResumoPedido(data);
+            }
 
             if (finalizado === true) {
                 stopStatusPublicoPolling();
                 clearTrackingPedido();
+                const bannerEl = document.getElementById("postOrderBanner");
+                if (bannerEl) bannerEl.style.display = "none";
             }
         } catch (e) {
         }
@@ -1818,8 +1955,24 @@
     }
 
     function voltarAoCardapio() {
-        stopStatusPublicoPolling();
+        // Nao para o polling: o QR continua ativo e o banner "Voltar ao pagamento"
+        // fica disponível no cardápio.
         showMainScreen();
+    }
+
+    function adicionarMaisItens() {
+        // Abre o cardápio mantendo o carrinho e o pedido em andamento.
+        showMainScreen();
+        if (window.scrollTo) {
+            try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+        }
+    }
+
+    function voltarAoPagamento() {
+        const tracking = getTrackingPedido();
+        if (tracking) {
+            showPostOrderScreen(tracking);
+        }
     }
 
     async function refreshSolicitacao() {
