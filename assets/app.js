@@ -1476,6 +1476,7 @@
             area.style.display = "none";
             header.innerHTML = "";
             body.innerHTML = "";
+            body.dataset.renderKey = "";
             if (img) img.style.display = "block";
             return;
         }
@@ -1502,6 +1503,14 @@
             "FALHA": "Falha ao gerar pagamento"
         };
         const titulo = titulos[estado] || "Pagamento";
+
+        // Evita piscar/recriar o QR a cada poll: só re-renderiza quando
+        // os dados financeiros mudam realmente.
+        const renderKey = [estado, amount, imageUrl, payload, expiresAt, podeRetentar, windowExpiresAt, titulo].join("|");
+        if (body.dataset.renderKey === renderKey) {
+            return;
+        }
+        body.dataset.renderKey = renderKey;
 
         let html = "";
 
