@@ -1,6 +1,7 @@
 {
   "CARDAPIO_PUBLIC_BASE_URL": "https://www.dorafatropicalbrasil.com.br/",
   "CARDAPIO_CREDENTIAL_SECRET": "RCaOEHP3XbvYP2wpo0nnnYjcb9dHJkislDaIJiRpm2i3MaelCmURhi6kFdFCxDhM",
+  "CARDAPIO_PIX_ONLINE_ENABLED": "1",
   "OPS_ADMIN_PASSWORD": "admin",
   "OPS_ADMIN_USERNAME": "admin",
   "PAGBANK_SANDBOX": "1",
