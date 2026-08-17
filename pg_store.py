@@ -358,6 +358,35 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_provider_credentials_provider ON payment_provider_credentials(provider_id)"
             )
 
+            # ------------------------------------------------------------------
+            # IDEMPOTÊNCIA DE PEDIDOS PÚBLICOS
+            #
+            # Protege contra pedido duplicado quando o cliente reenvia a mesma
+            # requisição (toque duplo, retry de rede, refresh). A chave é gerada
+            # pelo navegador e é OPCIONAL: sem ela, o fluxo segue normal.
+            #
+            # request_hash permite detectar reuso de chave com corpo diferente,
+            # que é erro do cliente e não deve devolver a resposta antiga.
+            # ------------------------------------------------------------------
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public_pedidos_idempotency (
+                    idempotency_key TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    request_hash TEXT NOT NULL,
+                    solicitacao_id TEXT,
+                    response_json JSONB NOT NULL,
+                    status_code INTEGER NOT NULL DEFAULT 200,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    PRIMARY KEY (scope, idempotency_key)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_public_pedidos_idem_expires ON public_pedidos_idempotency(expires_at)"
+            )
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -2188,6 +2217,104 @@ def expire_stale_pending_payments() -> int:
                   AND expires_at < NOW()
                 """
             )
+            count = cur.rowcount
+            conn.commit()
+            return count
+
+
+# ---------------------------------------------------------------------------
+# IDEMPOTÊNCIA DE PEDIDOS PÚBLICOS
+#
+# Usada por POST /api/public/pedidos e POST /api/public/pedidos/<id>/pagar.
+# A chave é gerada pelo cliente e é opcional.
+# ---------------------------------------------------------------------------
+
+
+def idempotency_get(*, scope: str, idempotency_key: str) -> dict[str, Any] | None:
+    """Busca uma resposta cacheada ainda válida. Retorna None se ausente/expirada."""
+    if not is_enabled():
+        return None
+
+    key = str(idempotency_key or "").strip()
+    sc = str(scope or "").strip()
+    if not key or not sc:
+        return None
+
+    _ensure_db_ready()
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM public_pedidos_idempotency
+                WHERE scope = %s
+                  AND idempotency_key = %s
+                  AND expires_at > NOW()
+                """,
+                (sc, key),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def idempotency_put(
+    *,
+    scope: str,
+    idempotency_key: str,
+    request_hash: str,
+    response_json: dict[str, Any],
+    status_code: int = 200,
+    ttl_seconds: int = 600,
+    solicitacao_id: str | None = None,
+) -> None:
+    """Grava (ou substitui, se já expirada) a resposta associada à chave."""
+    if not is_enabled():
+        return
+
+    key = str(idempotency_key or "").strip()
+    sc = str(scope or "").strip()
+    if not key or not sc:
+        return
+
+    _ensure_db_ready()
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public_pedidos_idempotency
+                    (idempotency_key, scope, request_hash, solicitacao_id,
+                     response_json, status_code, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW() + (%s * INTERVAL '1 second'))
+                ON CONFLICT (scope, idempotency_key) DO UPDATE SET
+                    request_hash = EXCLUDED.request_hash,
+                    solicitacao_id = EXCLUDED.solicitacao_id,
+                    response_json = EXCLUDED.response_json,
+                    status_code = EXCLUDED.status_code,
+                    created_at = NOW(),
+                    expires_at = EXCLUDED.expires_at
+                """,
+                (
+                    key,
+                    sc,
+                    str(request_hash or ""),
+                    (str(solicitacao_id).strip() if solicitacao_id else None),
+                    psycopg2.extras.Json(response_json),
+                    int(status_code),
+                    int(ttl_seconds),
+                ),
+            )
+            conn.commit()
+
+
+def idempotency_purge_expired() -> int:
+    """Remove registros de idempotência expirados. Retorna a quantidade."""
+    if not is_enabled():
+        return 0
+
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM public_pedidos_idempotency WHERE expires_at <= NOW()")
             count = cur.rowcount
             conn.commit()
             return count

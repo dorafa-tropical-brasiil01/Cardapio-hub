@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import mimetypes
@@ -13,10 +14,124 @@ from typing import Any
 from flask import Flask, jsonify, make_response, request, send_from_directory
 from werkzeug.utils import secure_filename
 
-from . import core
+from . import core, rate_limit
 from .ops_auth.store import create_password_hash
+from .pagamento_online import domain as pay_domain
+from .pagamento_online import service as pay_service
+from .pedidos import domain as pedidos_domain
 
 logger = logging.getLogger(__name__)
+
+#: Limites de requisição dos endpoints públicos (chave, limite por minuto).
+#: Ver cardapio_app/rate_limit.py para a ressalva de contador por processo.
+RATE_LIMIT_CRIAR_PEDIDO = 5
+RATE_LIMIT_GERAR_PAGAMENTO = 3
+RATE_LIMIT_LER_PEDIDO = 30
+RATE_LIMIT_LER_STATUS = 60
+
+#: Validade da resposta cacheada por idempotency_key.
+IDEMPOTENCY_TTL_SECONDS = 600
+
+IDEMPOTENCY_SCOPE_CRIAR = "criar_pedido"
+IDEMPOTENCY_SCOPE_PAGAR = "gerar_pagamento"
+
+
+def _client_ip() -> str:
+    fwd = str(request.headers.get("X-Forwarded-For") or "").strip()
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return str(request.remote_addr or "").strip() or "desconhecido"
+
+
+def _rate_limited(*, key: str, limit: int) -> Any:
+    """Retorna a resposta 429 quando o limite é excedido, ou None."""
+    allowed, retry_after = rate_limit.check(key=key, limit=limit)
+    if allowed:
+        return None
+    return jsonify({"error": "rate_limit_exceeded", "retry_after": retry_after}), 429
+
+
+def _request_hash(payload: Any) -> str:
+    try:
+        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    except Exception:
+        canonical = repr(payload)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _idempotency_key_from(body: Any) -> str:
+    """Chave de idempotência informada pelo cliente. Opcional por contrato."""
+    if not isinstance(body, dict):
+        return ""
+    return str(body.get("idempotency_key") or "").strip()[:64]
+
+
+def _idempotency_lookup(*, scope: str, key: str, payload_hash: str) -> Any:
+    """Resposta cacheada, conflito de chave, ou None se não houver registro."""
+    if not key or not core.pg_enabled():
+        return None
+
+    try:
+        cached = core.pg_store.idempotency_get(scope=scope, idempotency_key=key)
+    except Exception:
+        logger.exception("idempotency_get - falha scope=%s", scope)
+        return None
+
+    if not isinstance(cached, dict):
+        return None
+
+    if str(cached.get("request_hash") or "") != payload_hash:
+        return jsonify({"error": "idempotency_key_conflito"}), 400
+
+    return jsonify(cached.get("response_json") or {}), int(cached.get("status_code") or 200)
+
+
+def _idempotency_store(
+    *,
+    scope: str,
+    key: str,
+    payload_hash: str,
+    response: dict[str, Any],
+    status_code: int,
+    solicitacao_id: str | None = None,
+) -> None:
+    if not key or not core.pg_enabled():
+        return
+    try:
+        core.pg_store.idempotency_put(
+            scope=scope,
+            idempotency_key=key,
+            request_hash=payload_hash,
+            response_json=response,
+            status_code=status_code,
+            ttl_seconds=IDEMPOTENCY_TTL_SECONDS,
+            solicitacao_id=solicitacao_id,
+        )
+    except Exception:
+        logger.exception("idempotency_put - falha scope=%s", scope)
+
+
+def _resposta_publica_pedido(rec: dict[str, Any]) -> dict[str, Any]:
+    """Monta a resposta pública de um pedido com pagamento online.
+
+    O objeto `pagamento` passa pela allowlist de campos públicos, de modo que
+    provider_transaction_id, claimed_by_pdv_id, applied_sale_id e afins nunca
+    chegam ao cliente.
+    """
+    out: dict[str, Any] = {
+        "id": rec.get("id"),
+        "token": rec.get("access_token"),
+        "status": rec.get("status"),
+        "pagamento_online": bool(rec.get("pagamento_online")),
+        "subtotal": rec.get("subtotal_estimado"),
+        "taxa_entrega": rec.get("taxa_entrega"),
+        "total": rec.get("total_estimado"),
+        "payment_window_expires_at": rec.get("payment_window_expires_at"),
+        "payment_attempts": rec.get("payment_attempts"),
+        "pagamento": pay_domain.filtrar_snapshot_publico(rec.get("pagamento")),
+    }
+    out.update(pay_service.estado_publico(rec))
+    return out
 
 
 def register_routes(app: Flask) -> None:
@@ -1391,9 +1506,23 @@ def register_routes(app: Flask) -> None:
 
     @app.post("/api/public/pedidos")
     def api_public_create_pedido():
+        limited = _rate_limited(
+            key=f"criar_pedido:{_client_ip()}", limit=RATE_LIMIT_CRIAR_PEDIDO
+        )
+        if limited is not None:
+            return limited
+
         body = request.get_json(silent=True)
         if not isinstance(body, dict):
             return jsonify({"error": "json_invalido"}), 400
+
+        idem_key = _idempotency_key_from(body)
+        idem_hash = _request_hash({k: v for k, v in body.items() if k != "idempotency_key"})
+        cached = _idempotency_lookup(
+            scope=IDEMPOTENCY_SCOPE_CRIAR, key=idem_key, payload_hash=idem_hash
+        )
+        if cached is not None:
+            return cached
 
         pagamento = str(body.get("pagamento_preferido") or "").strip().upper()
         if pagamento not in core.ALLOWED_PAYMENT_METHODS:
@@ -1463,19 +1592,43 @@ def register_routes(app: Flask) -> None:
                 }
             )
 
-        total_estimado = body.get("total_estimado")
-        try:
-            total_estimado_f = float(total_estimado) if total_estimado is not None else None
-        except Exception:
-            total_estimado_f = None
+        # Cobrança online exige preço vindo do catálogo: o valor cobrado nunca
+        # pode depender do que o navegador informou. Fora do fluxo online, o
+        # total continua sendo apenas uma estimativa exibida ao operador.
+        cobra_online = pay_domain.pix_online_enabled() and pay_domain.is_online_chargeable(pagamento)
+
+        if cobra_online:
+            published = core.read_catalogo_publicado(_ctx())
+            produtos = published.get("produtos") if isinstance(published, dict) else []
+            try:
+                subtotal_f, norm_items = pay_domain.calcular_subtotal(
+                    produtos=produtos, itens=norm_items
+                )
+            except pay_domain.ProdutoDesconhecidoError as e:
+                return (
+                    jsonify({"error": "produto_desconhecido", "product_code": e.product_code}),
+                    400,
+                )
+            total_estimado_f = subtotal_f
+        else:
+            total_estimado = body.get("total_estimado")
+            try:
+                total_estimado_f = float(total_estimado) if total_estimado is not None else None
+            except Exception:
+                total_estimado_f = None
 
         access_token = secrets.token_urlsafe(24)
         solicitacao_id = uuid.uuid4().hex
+        status_inicial = (
+            pedidos_domain.SOLICITACAO_STATUS_AGUARDANDO_PAGAMENTO
+            if cobra_online
+            else pedidos_domain.SOLICITACAO_STATUS_PENDENTE
+        )
         rec: dict[str, Any] = {
             "id": solicitacao_id,
             "kind": "DELIVERY",
             "access_token": access_token,
-            "status": "PENDENTE",
+            "status": status_inicial,
             "pagamento_preferido": pagamento,
             "cliente_nome": cliente_nome,
             "cliente_whatsapp": cliente_whatsapp,
@@ -1485,6 +1638,10 @@ def register_routes(app: Flask) -> None:
             "observacoes": str(body.get("observacoes") or "").strip() or None,
             "itens": norm_items,
             "total_estimado": total_estimado_f,
+            # apply_delivery_fee_to_order_record sobrescreve estes dois quando há
+            # taxa de entrega a calcular; para RETIRADA eles ficam como estão.
+            "subtotal_estimado": total_estimado_f,
+            "taxa_entrega": 0.0 if cobra_online else None,
             "criado_em": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
             "atendida_em": None,
             "respondida_em": None,
@@ -1495,6 +1652,15 @@ def register_routes(app: Flask) -> None:
             "sale_id": None,
             "resposta": None,
             "comprovante": None,
+            "pagamento_online": cobra_online,
+            "active_payment_id": None,
+            "payment_attempts": 0,
+            "payment_window_expires_at": (
+                pay_domain.window_deadline_iso() if cobra_online else None
+            ),
+            "pago_em": None,
+            "pagamento": None,
+            "ocorrencias_pagamento": [],
         }
 
         try:
@@ -1504,34 +1670,99 @@ def register_routes(app: Flask) -> None:
         except Exception:
             pass
 
-        if core.pg_enabled():
+        if not cobra_online:
+            # Fluxo legado preservado: pedido entra como PENDENTE e a cozinha é
+            # avisada na criação, sem qualquer etapa de pagamento.
+            if core.pg_enabled():
+                try:
+                    core.pg_store.save_solicitacao(record=rec)
+                except Exception:
+                    return jsonify({"error": "falha_ao_salvar"}), 500
+                try:
+                    core.pg_store.kds_ensure_order_row(solicitacao_id=solicitacao_id)
+                except Exception:
+                    pass
+            else:
+                data = core.ensure_solicitacoes_file(_ctx())
+                data["solicitacoes"].append(rec)
+                core.save_solicitacoes(_ctx(), data)
+
+            core.notify_telegram_new_order(rec)
+            try:
+                from .kds.service import notificar_kds_novo_pedido
+
+                notificar_kds_novo_pedido(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
+            except Exception:
+                pass
+
+            resposta = {"id": solicitacao_id, "token": access_token, "status": rec["status"]}
+            _idempotency_store(
+                scope=IDEMPOTENCY_SCOPE_CRIAR,
+                key=idem_key,
+                payload_hash=idem_hash,
+                response=resposta,
+                status_code=200,
+                solicitacao_id=solicitacao_id,
+            )
+            return jsonify(resposta)
+
+        if not core.pg_enabled():
+            # A cobrança vive em external_payments; sem Postgres não há como
+            # rastrear o pagamento e o pedido não deve ser aceito.
+            return jsonify({"error": "pg_disabled"}), 500
+
+        # A solicitação é salva ANTES de criar a cobrança. Se o webhook chegar
+        # muito rápido, o orquestrador precisa encontrar o pedido pelo
+        # reference_id; criar a cobrança primeiro abriria essa janela de corrida.
+        try:
+            core.pg_store.save_solicitacao(record=rec)
+        except Exception:
+            logger.exception("api_public_create_pedido - falha ao salvar sid=%s", solicitacao_id)
+            return jsonify({"error": "falha_ao_salvar"}), 500
+
+        try:
+            payment = pay_service.criar_cobranca_pix(
+                solicitacao_id=solicitacao_id,
+                amount=float(rec.get("total_estimado") or 0),
+                descricao=f"Pedido {solicitacao_id}",
+            )
+        except pay_service.CobrancaError as e:
+            rec = pay_service.registrar_falha_cobranca(rec, erro=str(e))
             try:
                 core.pg_store.save_solicitacao(record=rec)
             except Exception:
-                return jsonify({"error": "falha_ao_salvar"}), 500
-            try:
-                core.pg_store.kds_ensure_order_row(solicitacao_id=solicitacao_id)
-            except Exception:
-                pass
-        else:
-            data = core.ensure_solicitacoes_file(_ctx())
-            data["solicitacoes"].append(rec)
-            core.save_solicitacoes(_ctx(), data)
+                logger.exception("api_public_create_pedido - falha ao registrar erro de cobrança")
+            return jsonify({"error": "falha_criacao_pagamento", "detalhe": str(e)}), 502
 
-        core.notify_telegram_new_order(rec)
+        rec = pay_service.vincular_cobranca(rec, payment)
         try:
-            from .kds.service import notificar_kds_novo_pedido
-
-            notificar_kds_novo_pedido(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
+            core.pg_store.save_solicitacao(record=rec)
         except Exception:
-            pass
-        return jsonify({"id": solicitacao_id, "token": access_token, "status": "PENDENTE"})
+            logger.exception("api_public_create_pedido - falha ao vincular cobrança sid=%s", solicitacao_id)
+            return jsonify({"error": "falha_ao_salvar"}), 500
+
+        # O KDS NÃO é notificado aqui: a cozinha só recebe o pedido depois da
+        # confirmação do pagamento, feita pelo orquestrador do webhook.
+        resposta = _resposta_publica_pedido(rec)
+        _idempotency_store(
+            scope=IDEMPOTENCY_SCOPE_CRIAR,
+            key=idem_key,
+            payload_hash=idem_hash,
+            response=resposta,
+            status_code=201,
+            solicitacao_id=solicitacao_id,
+        )
+        return jsonify(resposta), 201
 
     @app.get("/api/public/pedidos/<solicitacao_id>")
     def api_public_get_pedido(solicitacao_id: str):
         token = (request.args.get("token") or "").strip()
         if not token:
             return jsonify({"error": "token_ausente"}), 401
+
+        limited = _rate_limited(key=f"ler_pedido:{token}", limit=RATE_LIMIT_LER_PEDIDO)
+        if limited is not None:
+            return limited
 
         data = core.ensure_solicitacoes_file(_ctx())
         _, s = core.find_solicitacao(_ctx(), data, solicitacao_id)
@@ -1544,13 +1775,136 @@ def register_routes(app: Flask) -> None:
         expected = str(s.get("access_token") or "").strip()
         if not expected or token != expected:
             return jsonify({"error": "unauthorized"}), 401
-        return jsonify(s)
+
+        out = dict(s)
+        # Reaplica a allowlist antes de responder. O snapshot já é gravado
+        # filtrado; isto protege registros antigos e falhas futuras.
+        out["pagamento"] = pay_domain.filtrar_snapshot_publico(s.get("pagamento"))
+        out.update(pay_service.estado_publico(s))
+        return jsonify(out)
+
+    @app.post("/api/public/pedidos/<solicitacao_id>/pagar")
+    def api_public_pagar_pedido(solicitacao_id: str):
+        """Gera uma nova cobrança PIX para um pedido que ainda não foi pago.
+
+        Usado tanto quando a cobrança anterior expirou quanto quando a criação
+        original falhou. Uma solicitação nunca tem duas cobranças ativas: a
+        anterior é marcada como EXPIRADA antes de criar a nova.
+        """
+        token = (request.args.get("token") or "").strip()
+        if not token:
+            return jsonify({"error": "token_ausente"}), 401
+
+        limited = _rate_limited(
+            key=f"pagar:{solicitacao_id}", limit=RATE_LIMIT_GERAR_PAGAMENTO
+        )
+        if limited is not None:
+            return limited
+
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        if not pay_domain.pix_online_enabled():
+            return jsonify({"error": "pagamento_online_desabilitado"}), 403
+
+        body = request.get_json(silent=True) or {}
+        idem_key = _idempotency_key_from(body)
+        idem_hash = _request_hash({"solicitacao_id": solicitacao_id})
+        cached = _idempotency_lookup(
+            scope=IDEMPOTENCY_SCOPE_PAGAR, key=idem_key, payload_hash=idem_hash
+        )
+        if cached is not None:
+            return cached
+
+        rec = core.pg_store.get_solicitacao(solicitacao_id=solicitacao_id)
+        if not isinstance(rec, dict):
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        expected = str(rec.get("access_token") or "").strip()
+        if not expected or token != expected:
+            return jsonify({"error": "unauthorized"}), 401
+
+        if not rec.get("pagamento_online"):
+            return jsonify({"error": "pedido_sem_pagamento_online"}), 409
+
+        status_atual = str(rec.get("status") or "").strip().upper()
+        if status_atual != pedidos_domain.SOLICITACAO_STATUS_AGUARDANDO_PAGAMENTO:
+            return jsonify({"error": "status_invalido", "status": status_atual}), 409
+
+        if pay_service.tem_cobranca_ativa_pendente(rec):
+            return jsonify({"error": "pagamento_ativo_pendente"}), 409
+
+        if not pay_domain.pode_retentar(solicitacao=rec):
+            return jsonify({"error": "janela_retentativa_encerrada"}), 403
+
+        # O QR anterior não pode ser cancelado no PagBank; marcamos como expirado
+        # localmente. Se o cliente pagar o QR antigo mais tarde, o orquestrador
+        # trata pela regra de unicidade financeira.
+        pay_service.expirar_cobranca_ativa(rec)
+
+        published = core.read_catalogo_publicado(_ctx())
+        produtos = published.get("produtos") if isinstance(published, dict) else []
+        try:
+            subtotal_f, _ = pay_domain.calcular_subtotal(
+                produtos=produtos, itens=rec.get("itens") or []
+            )
+        except pay_domain.ProdutoDesconhecidoError as e:
+            return (
+                jsonify({"error": "produto_desconhecido", "product_code": e.product_code}),
+                400,
+            )
+
+        taxa = rec.get("taxa_entrega")
+        try:
+            taxa_f = float(taxa) if taxa is not None else 0.0
+        except (TypeError, ValueError):
+            taxa_f = 0.0
+
+        total_f = round(subtotal_f + taxa_f + 1e-9, 2)
+        rec["subtotal_estimado"] = subtotal_f
+        rec["total_estimado"] = total_f
+
+        try:
+            payment = pay_service.criar_cobranca_pix(
+                solicitacao_id=solicitacao_id,
+                amount=total_f,
+                descricao=f"Pedido {solicitacao_id}",
+            )
+        except pay_service.CobrancaError as e:
+            rec = pay_service.registrar_falha_cobranca(rec, erro=str(e))
+            try:
+                core.pg_store.save_solicitacao(record=rec)
+            except Exception:
+                logger.exception("api_public_pagar_pedido - falha ao registrar erro")
+            return jsonify({"error": "falha_criacao_pagamento", "detalhe": str(e)}), 502
+
+        rec = pay_service.vincular_cobranca(rec, payment)
+        try:
+            core.pg_store.save_solicitacao(record=rec)
+        except Exception:
+            logger.exception("api_public_pagar_pedido - falha ao salvar sid=%s", solicitacao_id)
+            return jsonify({"error": "falha_ao_salvar"}), 500
+
+        resposta = _resposta_publica_pedido(rec)
+        _idempotency_store(
+            scope=IDEMPOTENCY_SCOPE_PAGAR,
+            key=idem_key,
+            payload_hash=idem_hash,
+            response=resposta,
+            status_code=200,
+            solicitacao_id=solicitacao_id,
+        )
+        return jsonify(resposta)
 
     @app.get("/api/public/pedidos/<solicitacao_id>/status")
     def api_public_get_pedido_status(solicitacao_id: str):
         token = (request.args.get("token") or "").strip()
         if not token:
             return jsonify({"error": "token_ausente"}), 401
+
+        limited = _rate_limited(key=f"ler_status:{token}", limit=RATE_LIMIT_LER_STATUS)
+        if limited is not None:
+            return limited
 
         if not core.pg_enabled():
             return jsonify({"error": "pg_disabled"}), 500
@@ -1567,10 +1921,12 @@ def register_routes(app: Flask) -> None:
         if not expected or token != expected:
             return jsonify({"error": "unauthorized"}), 401
 
-        resultado = core.pg_store.calcular_status_publico(solicitacao_id=solicitacao_id)
+        resultado = pay_service.status_publico(rec)
         resultado["solicitacao_id"] = solicitacao_id
         resultado["tipo_entrega"] = str(rec.get("tipo_entrega") or "").strip().upper()
         resultado["status"] = str(rec.get("status") or "").strip().upper()
+        resultado.update(pay_service.estado_publico(rec))
+        resultado["pagamento"] = pay_domain.filtrar_snapshot_publico(rec.get("pagamento"))
 
         return jsonify(resultado)
 
@@ -1579,11 +1935,24 @@ def register_routes(app: Flask) -> None:
         denied = core.require_pdv_key()
         if denied is not None:
             return denied
-        status = str(request.args.get("status") or "PENDENTE").strip().upper()
+        raw = str(request.args.get("status") or "PENDENTE").strip().upper()
+        statuses = [st.strip() for st in raw.split(",") if st.strip()]
+        if not statuses:
+            statuses = ["PENDENTE"]
 
         if core.pg_enabled():
             try:
-                out = core.pg_store.list_by_status(status=status)
+                out: list[dict[str, Any]] = []
+                seen: set[str] = set()
+                for st in statuses:
+                    for rec in (core.pg_store.list_by_status(status=st) or []):
+                        sid = str(rec.get("id") or "")
+                        if sid and sid not in seen:
+                            seen.add(sid)
+                            out.append(rec)
+                out.sort(
+                    key=lambda x: (x.get("criado_em") or ""), reverse=True,
+                )
             except Exception:
                 out = []
             return jsonify({"solicitacoes": out})
@@ -1592,7 +1961,8 @@ def register_routes(app: Flask) -> None:
         arr = data.get("solicitacoes")
         if not isinstance(arr, list):
             arr = []
-        out = [s for s in arr if isinstance(s, dict) and str(s.get("status") or "").upper() == status]
+        status_set = set(statuses)
+        out = [s for s in arr if isinstance(s, dict) and str(s.get("status") or "").upper() in status_set]
         return jsonify({"solicitacoes": out})
 
     @app.post("/api/pdv/solicitacoes/<solicitacao_id>/atender")
@@ -1613,8 +1983,54 @@ def register_routes(app: Flask) -> None:
             return jsonify({"error": "nao_encontrado"}), 404
 
         cur_status = str(s.get("status") or "").upper()
+        solicitacao_pdv_id = str(s.get("pdv_id") or "").strip()
+        request_pdv_id = str(body.get("pdv_id") or "").strip()
+        is_online = bool(s.get("pagamento_online")) is True
+        active_payment_id = str(s.get("active_payment_id") or "").strip() if is_online else ""
+
+        # Pedido online so pode ir para producao depois do pagamento confirmado.
+        if cur_status == "AGUARDANDO_PAGAMENTO":
+            return jsonify({"error": "aguardando_pagamento"}), 409
+
+        # Estados finais: nao se pode atender novamente.
+        if cur_status in ("RESPONDIDA", "FINALIZADA"):
+            return jsonify({"error": "status_invalido", "status": cur_status}), 409
+
+        if cur_status == "EM_ATENDIMENTO":
+            # Idempotencia com retomada: o mesmo PDV pode retomar.
+            if not (request_pdv_id and solicitacao_pdv_id and request_pdv_id == solicitacao_pdv_id):
+                return jsonify({"error": "em_atendimento_por_outro_pdv", "pdv_id": solicitacao_pdv_id}), 409
+            # Pedido online: verifica se o pagamento continua reivindicado por este PDV.
+            if is_online and active_payment_id and core.pg_enabled():
+                payment = core.pg_store.get_external_payment(payment_id=active_payment_id)
+                if payment is None:
+                    return jsonify({"error": "pagamento_nao_encontrado"}), 409
+                claimed_by = str(payment.get("claimed_by_pdv_id") or "").strip()
+                if claimed_by != request_pdv_id:
+                    return jsonify({"error": "pagamento_reivindicado_por_outro_pdv"}), 409
+            return jsonify(s)
+
         if cur_status != "PENDENTE":
             return jsonify({"error": "status_invalido", "status": cur_status}), 409
+
+        # Pedido online: reivindicar o pagamento aprovado antes de colocar em atendimento.
+        if is_online and active_payment_id:
+            if not core.pg_enabled():
+                return jsonify({"error": "pg_nao_habilitado"}), 500
+            payment = core.pg_store.get_external_payment(payment_id=active_payment_id)
+            if payment is None:
+                return jsonify({"error": "pagamento_nao_encontrado"}), 409
+            if str(payment.get("status") or "").upper() != "APROVADO":
+                return jsonify({"error": "pagamento_nao_aprovado"}), 409
+            claimed = str(payment.get("claimed_by_pdv_id") or "").strip()
+            if claimed and claimed != request_pdv_id:
+                return jsonify({"error": "pagamento_reivindicado_por_outro_pdv"}), 409
+            if not claimed:
+                claim = core.pg_store.claim_external_payment(
+                    payment_id=active_payment_id, pdv_id=request_pdv_id,
+                )
+                if claim is None:
+                    return jsonify({"error": "pagamento_ja_reivindicado"}), 409
 
         s["status"] = "EM_ATENDIMENTO"
         s["pdv_id"] = body.get("pdv_id")
@@ -1652,6 +2068,65 @@ def register_routes(app: Flask) -> None:
             return jsonify({"error": "nao_encontrado"}), 404
 
         s["sale_id"] = sale_id_i
+        if core.pg_enabled():
+            try:
+                core.pg_store.save_solicitacao(record=s)
+            except Exception:
+                return jsonify({"error": "falha_ao_salvar"}), 500
+        else:
+            data["solicitacoes"][idx] = s
+            core.save_solicitacoes(_ctx(), data)
+        return jsonify({"ok": True})
+
+    @app.post("/api/pdv/solicitacoes/<solicitacao_id>/conferir")
+    def api_pdv_conferir_solicitacao(solicitacao_id: str):
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+
+        body = request.get_json(silent=True)
+        if body is None:
+            body = {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "json_invalido"}), 400
+
+        data = core.ensure_solicitacoes_file(_ctx())
+        idx, s = core.find_solicitacao(_ctx(), data, solicitacao_id)
+        if s is None or idx is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        cur_status = str(s.get("status") or "").upper()
+        solicitacao_pdv_id = str(s.get("pdv_id") or "").strip()
+        request_pdv_id = str(body.get("pdv_id") or "").strip()
+
+        if cur_status == "RESPONDIDA":
+            if request_pdv_id and solicitacao_pdv_id and request_pdv_id == solicitacao_pdv_id:
+                return jsonify({"ok": True})
+            return jsonify({"error": "respondida_por_outro_pdv", "pdv_id": solicitacao_pdv_id}), 409
+
+        if cur_status != "EM_ATENDIMENTO":
+            return jsonify({"error": "status_invalido", "status": cur_status}), 409
+
+        if solicitacao_pdv_id and request_pdv_id and request_pdv_id != solicitacao_pdv_id:
+            return jsonify({"error": "em_atendimento_por_outro_pdv", "pdv_id": solicitacao_pdv_id}), 409
+
+        # Para pedido online, so pode conferir se o pagamento foi aplicado a uma venda.
+        is_online = bool(s.get("pagamento_online"))
+        active_payment_id = str(s.get("active_payment_id") or "").strip()
+        if is_online and active_payment_id:
+            if not core.pg_enabled():
+                return jsonify({"error": "pg_nao_habilitado"}), 500
+            payment = core.pg_store.get_external_payment(payment_id=active_payment_id)
+            if payment is None:
+                return jsonify({"error": "pagamento_nao_encontrado"}), 409
+            if not payment.get("applied_sale_id") or not payment.get("applied_sale_payment_id"):
+                return jsonify({"error": "pagamento_nao_aplicado"}), 409
+
+        s["status"] = "RESPONDIDA"
+        s["pdv_status"] = "FINALIZADA"
+        s["pdv_status_em"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+        s["respondida_em"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
+
         if core.pg_enabled():
             try:
                 core.pg_store.save_solicitacao(record=s)
@@ -1868,60 +2343,12 @@ def register_routes(app: Flask) -> None:
         Prioridade:
             1. Configuração salva em payment_provider_settings + credentials (banco)
             2. Variáveis de ambiente (fallback para compatibilidade)
+
+        A construção vive em pagamento_online/service.py para ser compartilhada
+        com a orquestração do pagamento online, sem duplicar a leitura de
+        credenciais. O comportamento é o mesmo já validado no Sandbox.
         """
-        from .payments.domain import PaymentService
-        from .payments.adapter_contract import PaymentMethod
-        from .payments.pagbank_adapter import PagBankAdapter
-
-        provider_id = "PAGBANK"
-        token = ""
-        webhook_token = None
-        sandbox = True
-        base_url = None
-
-        # 1. Tentar ler do banco (configuração salva pela tela do PDV)
-        if core.pg_enabled():
-            settings = core.pg_store.get_provider_settings(provider_id=provider_id)
-            if settings and settings.get("is_active"):
-                env = str(settings.get("environment") or "SANDBOX").upper()
-                sandbox = env == "SANDBOX"
-                base_url = settings.get("base_url") or None
-
-                creds = core.pg_store.get_provider_credentials(provider_id=provider_id)
-                from .credential_crypto import decrypt as cred_decrypt
-
-                for cred in (creds or []):
-                    key = str(cred.get("credential_key") or "")
-                    encrypted = str(cred.get("encrypted_value") or "")
-                    if not encrypted:
-                        continue
-                    try:
-                        plaintext = cred_decrypt(encrypted)
-                    except Exception:
-                        logger.warning("_get_payment_service - falha ao descriptografar %s", key)
-                        continue
-
-                    if key == "PAGBANK_TOKEN":
-                        token = plaintext
-                    elif key == "PAGBANK_WEBHOOK_TOKEN":
-                        webhook_token = plaintext
-
-        # 2. Fallback: variáveis de ambiente (compatibilidade)
-        if not token:
-            token = os.environ.get("PAGBANK_TOKEN", "")
-            webhook_token = os.environ.get("PAGBANK_WEBHOOK_TOKEN")
-            sandbox = os.environ.get("PAGBANK_SANDBOX", "1") == "1"
-
-        if not token:
-            raise RuntimeError("PagBank não configurado. Use a tela de Provedores de Pagamento no PDV ou configure PAGBANK_TOKEN.")
-
-        adapter = PagBankAdapter(
-            token=token,
-            webhook_token=webhook_token,
-            sandbox=sandbox,
-            base_url=base_url,
-        )
-        return PaymentService(store=core.pg_store, adapter=adapter), PaymentMethod
+        return pay_service.build_payment_service()
 
     @app.post("/api/payments")
     def api_payments_create():
@@ -2067,13 +2494,22 @@ def register_routes(app: Flask) -> None:
 
         Não requer PDV_KEY — é autenticado via assinatura (x-authenticity-token).
         O adapter valida a assinatura internamente.
+
+        O contrato externo é inalterado. Internamente, além de atualizar o
+        pagamento, a chamada passa pela orquestração do pagamento online: quando
+        houver transição real para APROVADO, a solicitação vinculada avança para
+        PENDENTE e a cozinha é notificada. A regra de unicidade financeira é
+        aplicada ali, não aqui.
         """
         raw_body = request.get_data() or b""
         headers = {k.lower(): v for k, v in request.headers.items()}
 
         try:
-            service, _ = _get_payment_service()
-            record = service.processar_webhook(headers=headers, body=raw_body)
+            record = pay_service.processar_webhook(
+                headers=headers,
+                body=raw_body,
+                base_url=str(request.host_url or ""),
+            )
         except RuntimeError as e:
             logger.exception("api_payments_webhook - erro")
             return jsonify({"error": "erro_webhook", "detalhe": str(e)}), 500

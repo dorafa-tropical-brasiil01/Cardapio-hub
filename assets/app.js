@@ -1158,6 +1158,12 @@
 
         const out = await res.json();
         const kind = isSalao ? "SALAO" : "DELIVERY";
+
+        // Na resposta pública de delivery, o backend retorna os campos financeiros
+        // quando o pedido é cobrado online (PIX).
+        const statusPublico = String(out.status || "").toUpperCase();
+        const pagamentoOnline = Boolean(out.pagamento_online);
+
         const pedido = {
             id: out.id,
             kind,
@@ -1165,7 +1171,7 @@
             token: isSalao ? state.token : null,
             access_token: (!isSalao && out.token) ? out.token : null,
             criadoEm: new Date().toISOString(),
-            status: "PENDENTE",
+            status: statusPublico || "PENDENTE",
             cliente_nome: String(state.clientName || "").trim(),
             cliente_whatsapp: String(state.clientWhatsapp || "").trim() || null,
             tipo_entrega: !isSalao ? String(state.deliveryType || "DELIVERY").toUpperCase() : null,
@@ -1173,13 +1179,18 @@
             troco_para: !isSalao ? (String(state.deliveryTroco || "").trim() || null) : null,
             observacoes: null,
             pagamento_preferido,
+            pagamento_online: pagamentoOnline,
+            pagamento: out.pagamento || null,
+            estado_pagamento: out.estado_pagamento || null,
+            pode_retentar: Boolean(out.pode_retentar),
+            payment_window_expires_at: out.payment_window_expires_at || null,
             itens: state.carrinho.map(it => ({
                 produtoId: it.produtoId,
                 nome: it.nome,
                 qtd: it.qtd,
                 preco: it.preco
             })),
-            total: getCartTotal()
+            total: Number(out.total) || getCartTotal()
         };
 
         // Salvar tracking para acompanhamento na tela de agradecimento
@@ -1188,7 +1199,12 @@
                 id: out.id,
                 access_token: out.token,
                 kind,
-                tipo_entrega: String(state.deliveryType || "DELIVERY").toUpperCase()
+                tipo_entrega: String(state.deliveryType || "DELIVERY").toUpperCase(),
+                status: pedido.status,
+                pagamento_online: pagamentoOnline,
+                pagamento: out.pagamento || null,
+                estado_pagamento: out.estado_pagamento || null,
+                pode_retentar: Boolean(out.pode_retentar)
             };
             saveTrackingPedido(tracking);
         } else if (isSalao) {
@@ -1333,6 +1349,11 @@
             const kdsStatusArea = document.getElementById("kdsStatusArea");
             const kdsStatusText = document.getElementById("kdsStatusText");
             const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
+            const paymentArea = document.getElementById("postOrderPaymentArea");
+
+            if (paymentArea) {
+                paymentArea.style.display = "none";
+            }
 
             if (solicitacaoId && mesa && token && kdsStatusArea && kdsStatusText) {
                 kdsStatusArea.style.display = "block";
@@ -1349,8 +1370,21 @@
                 const statusPublicoDiv = document.getElementById("postOrderStatusPublico");
                 if (tracking && tracking.access_token && statusPublicoDiv) {
                     statusPublicoDiv.style.display = "block";
+
+                    // Renderiza pagamento inicial com os dados do tracking (que ja
+                    // foram salvos com pagamento, estado_pagamento etc.)
+                    if (tracking.pagamento_online) {
+                        renderPagamentoNaTela(tracking);
+                        const status = String(tracking.estado_pagamento || "").toUpperCase();
+                        if (status && status !== "CONFIRMADO" && status !== "NAO_APLICAVEL") {
+                            statusPublicoDiv.innerText = "Aguardando pagamento";
+                        }
+                    }
+
                     if (!state.statusPublicoTimer) {
-                        statusPublicoDiv.innerText = "Carregando status...";
+                        if (!statusPublicoDiv.innerText) {
+                            statusPublicoDiv.innerText = "Carregando status...";
+                        }
                         startStatusPublicoPolling();
                     }
                 } else if (statusPublicoDiv) {
@@ -1376,11 +1410,192 @@
             "PREPARANDO": "Pedido em preparo",
             "PRONTO": tipo === "RETIRADA" ? "Pedido pronto para retirada" : "Pedido pronto",
             "EM_ENTREGA": "EM ROTA",
-            "ENTREGUE": "Pedido entregue"
+            "ENTREGUE": "Pedido entregue",
+            "AGUARDANDO_PAGAMENTO": "Aguardando pagamento",
+            "PAGAMENTO_EXPIRADO": "QR Code expirado",
+            "PAGAMENTO_RECUSADO": "Pagamento recusado",
+            "PAGAMENTO_FALHOU": "Falha no pagamento"
         };
 
         const texto = labels[statusPublico] || statusPublico;
         statusDiv.innerText = texto;
+    }
+
+    function _formatarDataHoraBr(iso) {
+        if (!iso) return "";
+        try {
+            const d = new Date(iso);
+            if (Number.isNaN(d.getTime())) return String(iso);
+            return d.toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+        } catch {
+            return String(iso);
+        }
+    }
+
+    function _qrCodeUrl(v) {
+        // Aceita caminhos relativos a /assets, URLs absolutas, ou strings base64.
+        const s = String(v || "").trim();
+        if (!s) return "";
+        if (s.startsWith("http://") || s.startsWith("https://")) return s;
+        if (s.startsWith("data:")) return s;
+        if (s.startsWith("/")) return s;
+        return "/assets/" + s;
+    }
+
+    function renderPagamentoNaTela(data) {
+        const area = document.getElementById("postOrderPaymentArea");
+        if (!area) return;
+
+        const header = document.getElementById("postOrderPaymentHeader");
+        const body = document.getElementById("postOrderPaymentBody");
+        if (!header || !body) return;
+
+        const pagamentoOnline = Boolean(data && data.pagamento_online);
+        const estado = String(data.estado_pagamento || "").toUpperCase();
+
+        // Pedido que nao cobra online, ou ja finalizado: esconde a area de pagamento.
+        if (!pagamentoOnline || estado === "NAO_APLICAVEL" || estado === "CONFIRMADO") {
+            area.style.display = "none";
+            header.innerHTML = "";
+            body.innerHTML = "";
+            return;
+        }
+
+        area.style.display = "block";
+
+        const pagamento = data.pagamento || {};
+        const amount = Number(pagamento.amount) || Number(data.total) || 0;
+        const payload = String(pagamento.qr_code_payload || "").trim();
+        const imageUrl = _qrCodeUrl(pagamento.qr_code_image_url);
+        const expiresAt = _formatarDataHoraBr(pagamento.expires_at);
+        const podeRetentar = Boolean(data.pode_retentar);
+        const windowExpiresAt = _formatarDataHoraBr(data.payment_window_expires_at);
+
+        const titulos = {
+            "NAO_INICIADO": "Aguardando pagamento",
+            "AGUARDANDO": "Aguardando pagamento",
+            "EXPIRADO": "QR Code expirado",
+            "RECUSADO": "Pagamento recusado",
+            "FALHA": "Falha ao gerar pagamento"
+        };
+        const titulo = titulos[estado] || "Pagamento";
+
+        let html = "";
+
+        if (estado === "AGUARDANDO" || estado === "NAO_INICIADO") {
+            html += `<div class="payment-amount">${formatBRL(amount)}</div>`;
+            html += `<div class="payment-hint">Escaneie o QR Code com o app do seu banco ou copie o codigo PIX.</div>`;
+
+            if (imageUrl) {
+                html += `<div class="qr-panel"><img src="${escapeHtml(imageUrl)}" alt="QR Code PIX" onerror="this.style.display='none'" /></div>`;
+            }
+
+            if (payload) {
+                html += `<textarea id="pixPayload" class="qr-payload" rows="3" readonly>${escapeHtml(payload)}</textarea>`;
+                html += `<div class="payment-actions"><button type="button" onclick="copiarPix()">Copiar codigo PIX</button></div>`;
+            } else if (!imageUrl) {
+                html += `<div class="payment-hint">Codigo PIX nao disponivel. Tente gerar novamente.</div>`;
+            }
+
+            if (expiresAt) {
+                html += `<div class="payment-countdown">V&aacute;lido at&eacute; ${escapeHtml(expiresAt)}</div>`;
+            }
+        } else if (estado === "EXPIRADO" || estado === "RECUSADO" || estado === "FALHA") {
+            html += `<div class="payment-amount">${formatBRL(amount)}</div>`;
+            html += `<div class="payment-hint">O pagamento anterior n&atilde;o foi conclu&iacute;do.</div>`;
+
+            if (podeRetentar) {
+                html += `<div class="payment-actions"><button type="button" onclick="pagarNovamente()">Gerar novo QR Code</button></div>`;
+                if (windowExpiresAt) {
+                    html += `<div class="payment-countdown">Voc&ecirc; pode gerar um novo QR at&eacute; ${escapeHtml(windowExpiresAt)}</div>`;
+                }
+            } else {
+                html += `<div class="payment-hint">Janela de retentativa encerrada. Entre em contato com o estabelecimento.</div>`;
+            }
+        }
+
+        header.innerHTML = escapeHtml(titulo);
+        body.innerHTML = html;
+    }
+
+    async function pagarNovamente() {
+        const tracking = getTrackingPedido();
+        if (!tracking || !tracking.id || !tracking.access_token) return;
+
+        const idempotency = (typeof crypto !== "undefined" && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : (`retentativa-` + Date.now() + "-" + Math.random().toString(36).slice(2));
+
+        try {
+            const url = `/api/public/pedidos/${encodeURIComponent(tracking.id)}/pagar?token=${encodeURIComponent(tracking.access_token)}`;
+            const res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idempotency_key: idempotency })
+            });
+
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                setModal("Pagamento", `<div><strong>N&atilde;o foi poss&iacute;vel gerar novo QR Code.</strong></div><div class="muted">${escapeHtml(j.error || "tente novamente mais tarde")}</div>`);
+                abrirModal();
+                return;
+            }
+
+            const data = await res.json();
+
+            // Atualiza o status publico para acompanhar a nova cobranca
+            renderStatusPublicoNaTela("AGUARDANDO_PAGAMENTO", tracking.tipo_entrega);
+
+            // Atualiza tracking com os novos dados financeiros
+            tracking.status = String(data.status || "AGUARDANDO_PAGAMENTO").toUpperCase();
+            tracking.pagamento_online = Boolean(data.pagamento_online);
+            tracking.pagamento = data.pagamento || null;
+            tracking.estado_pagamento = data.estado_pagamento || null;
+            tracking.pode_retentar = Boolean(data.pode_retentar);
+            tracking.payment_window_expires_at = data.payment_window_expires_at || null;
+            tracking.total = Number(data.total) || tracking.total;
+            saveTrackingPedido(tracking);
+
+            renderPagamentoNaTela(data);
+        } catch (e) {
+            setModal("Pagamento", `<div><strong>Erro de conex&atilde;o.</strong></div><div class="muted">N&atilde;o foi poss&iacute;vel gerar o novo QR Code.</div>`);
+            abrirModal();
+        }
+    }
+
+    function copiarPix() {
+        const el = document.getElementById("pixPayload");
+        if (!el || !el.value) return;
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(el.value).then(() => {
+                const original = el.value;
+                el.value = "Codigo copiado!";
+                setTimeout(() => { el.value = original; }, 1200);
+            }).catch(() => {
+                _copiarPixFallback(el);
+            });
+        } else {
+            _copiarPixFallback(el);
+        }
+    }
+
+    function _copiarPixFallback(el) {
+        try {
+            el.select();
+            el.setSelectionRange(0, el.value.length);
+            document.execCommand("copy");
+            const original = el.value;
+            el.value = "Codigo copiado!";
+            setTimeout(() => { el.value = original; }, 1200);
+        } catch {
+        }
     }
 
     async function refreshStatusPublicoNaTela() {
@@ -1400,7 +1615,18 @@
             const finalizado = data.finalizado;
             const tipoEntrega = data.tipo_entrega;
 
+            // Mescla dados novos no tracking para ter estado de pagamento atualizado
+            tracking.status = String(data.status || tracking.status || "").toUpperCase();
+            tracking.pagamento_online = Boolean(data.pagamento_online !== undefined ? data.pagamento_online : tracking.pagamento_online);
+            tracking.pagamento = data.pagamento || tracking.pagamento || null;
+            tracking.estado_pagamento = data.estado_pagamento || tracking.estado_pagamento || null;
+            tracking.pode_retentar = Boolean(data.pode_retentar !== undefined ? data.pode_retentar : tracking.pode_retentar);
+            tracking.payment_window_expires_at = data.payment_window_expires_at || tracking.payment_window_expires_at || null;
+            tracking.total = Number(data.total) || tracking.total || 0;
+            saveTrackingPedido(tracking);
+
             renderStatusPublicoNaTela(statusPublico, tipoEntrega);
+            renderPagamentoNaTela(data);
 
             if (finalizado === true) {
                 stopStatusPublicoPolling();
