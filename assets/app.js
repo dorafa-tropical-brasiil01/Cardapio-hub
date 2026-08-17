@@ -1298,6 +1298,7 @@
         const floating = document.getElementById("floatingActions");
         const whatsFloat = document.getElementById("whatsFloat");
         const img = document.getElementById("postOrderImage");
+        const imgWrapper = document.getElementById("postOrderImageWrapper");
 
         // Evita reconfigurar a imagem de agradecimento e repintar o pagamento
         // quando o catalogo atualiza a cada 5s, pois pedidoInfo pode estar defasado
@@ -1339,18 +1340,19 @@
                     : "";
                 if (src) {
                     img.src = src;
-                    img.onerror = () => { img.style.display = "none"; };
+                    img.style.display = "block";
+                    img.onerror = () => { if (imgWrapper) imgWrapper.style.display = "none"; };
 
                     // SALAO: mostra agradecimento. DELIVERY: deixa oculto e
-                    // renderPagamentoNaTela controla (QR enquanto pendente,
-                    // imagem só depois de confirmado).
+                    // renderPagamentoNaTela controla (QR dentro do bloco de pagamento,
+                    // imagem de agradecimento só depois de confirmado).
                     const isSalao = pedidoInfo?.kind === "SALAO" || state.postOrderPedido?.kind === "SALAO";
-                    img.style.display = isSalao ? "block" : "none";
+                    if (imgWrapper) imgWrapper.style.display = isSalao ? "flex" : "none";
                 } else {
-                    img.style.display = "none";
+                    if (imgWrapper) imgWrapper.style.display = "none";
                 }
             } catch {
-                img.style.display = "none";
+                if (imgWrapper) imgWrapper.style.display = "none";
             }
         }
 
@@ -1475,21 +1477,23 @@
         const pagamentoOnline = Boolean(data && data.pagamento_online);
         const estado = String(data.estado_pagamento || "").toUpperCase();
         const img = document.getElementById("postOrderImage");
+        const imgWrapper = document.getElementById("postOrderImageWrapper");
 
         // Pedido que nao cobra online, ou ja finalizado: esconde a area de pagamento
-        // e mostra a imagem de agradecimento (que agora fica abaixo do pagamento).
+        // e mostra a imagem de agradecimento abaixo do bloco de pagamento.
         if (!pagamentoOnline || estado === "NAO_APLICAVEL" || estado === "CONFIRMADO") {
             area.style.display = "none";
             header.innerHTML = "";
             body.innerHTML = "";
             body.dataset.renderKey = "";
+            if (imgWrapper) imgWrapper.style.display = "flex";
             if (img) img.style.display = "block";
             return;
         }
 
-        // Enquanto o pagamento nao for confirmado, esconde a imagem para nao
-        // empurrar o QR para fora da tela no celular.
-        if (img) img.style.display = "none";
+        // Enquanto o pagamento nao for confirmado, esconde a imagem de agradecimento
+        // para nao empurrar o QR para fora da tela no celular.
+        if (imgWrapper) imgWrapper.style.display = "none";
 
         area.style.display = "block";
 

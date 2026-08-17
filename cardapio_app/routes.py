@@ -1928,6 +1928,13 @@ def register_routes(app: Flask) -> None:
         resultado.update(pay_service.estado_publico(rec))
         resultado["pagamento"] = pay_domain.filtrar_snapshot_publico(rec.get("pagamento"))
 
+        # Esses campos sao usados pelo frontend para manter a area de pagamento
+        # visivel enquanto o QR aguarda confirmacao, sem alternar com a imagem
+        # de agradecimento.
+        resultado["pagamento_online"] = bool(rec.get("pagamento_online"))
+        resultado["total"] = rec.get("total")
+        resultado["payment_window_expires_at"] = rec.get("payment_window_expires_at")
+
         return jsonify(resultado)
 
     @app.get("/api/pdv/solicitacoes")
