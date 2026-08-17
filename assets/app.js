@@ -1299,6 +1299,10 @@
         const whatsFloat = document.getElementById("whatsFloat");
         const img = document.getElementById("postOrderImage");
 
+        // Evita reconfigurar a imagem de agradecimento e repintar o pagamento
+        // quando o catalogo atualiza a cada 5s, pois pedidoInfo pode estar defasado
+        // e pisar no estado que a rotina de polling ja ajustou.
+        const reativando = !state.postOrderActive;
         state.postOrderActive = true;
 
         try {
@@ -1322,36 +1326,35 @@
         if (whatsFloat) whatsFloat.style.display = "none";
         if (post) post.style.display = "block";
 
-        try {
-            const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem
-                || state.data?.ui?.banner?.imagens?.[0]
-                || state.data?.ui?.logo;
-            const srcRaw = normalizeAnyAssetUrl(raw);
-            const src = srcRaw
-                ? (srcRaw + (srcRaw.includes("?") ? "&" : "?") + "t=" + Date.now())
-                : "";
-            if (img && src) {
-                img.src = src;
-                img.onerror = () => { img.style.display = "none"; };
+        // Só monta a imagem de agradecimento na entrada real da tela. Repetições
+        // vindas de refreshCatalogo mantêm o src/display que já estão ajustados.
+        if (img && reativando) {
+            try {
+                const raw = state.data?.ui?.postOrderImage || state.data?.ui?.afterSendImage || state.data?.ui?.posEnvioImagem
+                    || state.data?.ui?.banner?.imagens?.[0]
+                    || state.data?.ui?.logo;
+                const srcRaw = normalizeAnyAssetUrl(raw);
+                const src = srcRaw
+                    ? (srcRaw + (srcRaw.includes("?") ? "&" : "?") + "t=" + Date.now())
+                    : "";
+                if (src) {
+                    img.src = src;
+                    img.onerror = () => { img.style.display = "none"; };
 
-                // Enquanto o pagamento online ainda não foi confirmado, a imagem
-                // de agradecimento fica oculta para não empurrar o QR para fora
-                // da tela do celular. Ela reaparece após confirmação.
-                const estado = String(pedidoInfo?.estado_pagamento || "").toUpperCase();
-                const isPago = estado === "CONFIRMADO" || estado === "NAO_APLICAVEL";
-                if (pedidoInfo?.pagamento_online && !isPago) {
-                    img.style.display = "none";
+                    // SALAO: mostra agradecimento. DELIVERY: deixa oculto e
+                    // renderPagamentoNaTela controla (QR enquanto pendente,
+                    // imagem só depois de confirmado).
+                    const isSalao = pedidoInfo?.kind === "SALAO" || state.postOrderPedido?.kind === "SALAO";
+                    img.style.display = isSalao ? "block" : "none";
                 } else {
-                    img.style.display = "block";
+                    img.style.display = "none";
                 }
-            } else if (img) {
+            } catch {
                 img.style.display = "none";
             }
-        } catch {
-            if (img) img.style.display = "none";
         }
 
-        // Fluxo SALAO: se pedidoInfo foi fornecido e kind === "SALAO"
+        // Fluxo SALAO: configuração só na entrada; refreshCatalogo apenas mantém.
         if (pedidoInfo && pedidoInfo.kind === "SALAO") {
             const solicitacaoId = pedidoInfo.id;
             const mesa = pedidoInfo.mesa;
@@ -1367,7 +1370,9 @@
 
             if (solicitacaoId && mesa && token && kdsStatusArea && kdsStatusText) {
                 kdsStatusArea.style.display = "block";
-                kdsStatusText.textContent = "Pedido recebido";
+                if (reativando) {
+                    kdsStatusText.textContent = "Pedido recebido";
+                }
                 if (statusPublicoDiv) {
                     statusPublicoDiv.style.display = "none";
                 }
@@ -1381,9 +1386,10 @@
                 if (tracking && tracking.access_token && statusPublicoDiv) {
                     statusPublicoDiv.style.display = "block";
 
-                    // Renderiza pagamento inicial com os dados do tracking (que ja
-                    // foram salvos com pagamento, estado_pagamento etc.)
-                    if (tracking.pagamento_online) {
+                    // Renderiza pagamento inicial na entrada, usando os dados do
+                    // tracking. Nas repetições (refreshCatalogo), a tela permanece
+                    // e o polling atualiza o pagamento corretamente.
+                    if (reativando && tracking.pagamento_online) {
                         renderPagamentoNaTela(tracking);
                         const status = String(tracking.estado_pagamento || "").toUpperCase();
                         if (status && status !== "CONFIRMADO" && status !== "NAO_APLICAVEL") {
