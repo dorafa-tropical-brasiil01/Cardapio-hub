@@ -1946,8 +1946,39 @@ def register_routes(app: Flask) -> None:
         resultado["cliente_whatsapp"] = rec.get("cliente_whatsapp")
         resultado["endereco"] = rec.get("endereco")
         resultado["pagamento_preferido"] = rec.get("pagamento_preferido")
+        resultado["cancelado"] = bool(rec.get("cancelado"))
 
         return jsonify(resultado)
+
+    @app.post("/api/public/pedidos/<solicitacao_id>/cancelar")
+    def api_public_cancelar_pedido(solicitacao_id: str):
+        token = (request.args.get("token") or "").strip()
+        if not token:
+            return jsonify({"error": "token_ausente"}), 401
+
+        limited = _rate_limited(key=f"cancelar_pedido:{token}", limit=RATE_LIMIT_LER_STATUS)
+        if limited is not None:
+            return limited
+
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+
+        try:
+            rec = core.pg_store.get_solicitacao(solicitacao_id=solicitacao_id)
+        except Exception:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        if not isinstance(rec, dict):
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        expected = str(rec.get("access_token") or "").strip()
+        if not expected or token != expected:
+            return jsonify({"error": "unauthorized"}), 401
+
+        res = pay_service.cancelar_pedido_publico(rec)
+        if not res.get("ok"):
+            return jsonify(res), 409
+        return jsonify(res)
 
     @app.get("/api/pdv/solicitacoes")
     def api_pdv_list_solicitacoes():

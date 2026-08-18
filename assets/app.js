@@ -541,6 +541,27 @@
         return "Não foi possível obter a localização.";
     }
 
+    async function preencherEndereco(lat, lng) {
+        try {
+            const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&zoom=18&addressdetails=1&accept-language=pt-BR`;
+            const res = await fetch(url, { headers: { "Accept-Language": "pt-BR" } });
+            if (!res.ok) throw new Error("nominatim " + res.status);
+            const data = await res.json();
+            const addr = data && data.address ? data.address : {};
+
+            state.deliveryRua = String(addr.road || addr.pedestrian || addr.footway || "").trim();
+            state.deliveryNumero = String(addr.house_number || "").trim();
+            state.deliveryBairro = String(addr.suburb || addr.neighbourhood || addr.district || "").trim();
+            state.deliveryCidade = String(addr.city || addr.town || addr.village || addr.municipality || "").trim();
+            saveDeliveryFields();
+
+            if (isModalOpen()) abrirCarrinho();
+        } catch (e) {
+            try { console.error("preencherEndereco", e); } catch {}
+            if (isModalOpen()) abrirCarrinho();
+        }
+    }
+
     function usarMinhaLocalizacao() {
         const btn = (() => {
             try {
@@ -593,6 +614,9 @@
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
                         setModal("Localização", `<div><strong>Não foi possível ler as coordenadas.</strong></div>`);
                         abrirModal();
+                        if (btn) {
+                            try { btn.disabled = false; btn.textContent = oldBtnText || "Usar minha localização"; } catch {}
+                        }
                         return;
                     }
                     _setDeliveryFromLatLng(lat, lng);
@@ -603,16 +627,12 @@
                         }
                     } catch {
                     }
+                    preencherEndereco(lat, lng);
                 } catch {
                     setModal("Localização", `<div><strong>Não foi possível obter a localização.</strong></div>`);
                     abrirModal();
-                }
-
-                if (btn) {
-                    try {
-                        btn.disabled = false;
-                        btn.textContent = oldBtnText || "Usar minha localização";
-                    } catch {
+                    if (btn) {
+                        try { btn.disabled = false; btn.textContent = oldBtnText || "Usar minha localização"; } catch {}
                     }
                 }
             },
@@ -671,6 +691,21 @@
         state.payMethod = normalizePayMethod(val);
         savePayMethod();
         lockModalRender(1500);
+        abrirCarrinho();
+    }
+
+    function onPaymentGroupChange(group) {
+        const g = String(group || "").trim().toUpperCase();
+        if (g === "DINHEIRO") {
+            state.payMethod = "DINHEIRO";
+        } else if (g === "ONLINE") {
+            if (state.payMethod === "DINHEIRO" || !state.payMethod || state.payMethod === "CARTAO_DEBITO" || state.payMethod === "CARTAO_CREDITO") {
+                state.payMethod = "PIX";
+            }
+        }
+        savePayMethod();
+        lockModalRender(1500);
+        abrirCarrinho();
     }
 
     function capturePayMethodFromDom() {
@@ -1044,6 +1079,12 @@
         clearTrackingPedido();
 
         const pagamento_preferido = normalizePayMethod(state.payMethod);
+
+        if (pagamento_preferido === "CARTAO_DEBITO" || pagamento_preferido === "CARTAO_CREDITO") {
+            setModal("Forma de pagamento", `<div><strong>Pagamento online com cartão ainda não está disponível.</strong></div><div class="muted" style="margin-top:8px">Escolha PIX para pagar online agora, ou Dinheiro para pagar na entrega/retirada.</div>`);
+            abrirModal();
+            return;
+        }
 
         const isSalao = Boolean(state.mesa && state.token);
         const produtosMap = new Map((state.data?.produtos || []).map(p => [p.id, p]));
@@ -1421,7 +1462,7 @@
                     if (reativando && tracking.pagamento_online) {
                         renderPagamentoNaTela(tracking);
                         const status = String(tracking.estado_pagamento || "").toUpperCase();
-                        if (status && status !== "CONFIRMADO" && status !== "NAO_APLICAVEL") {
+                        if (status && status !== "CONFIRMADO" && status !== "NAO_APLICAVEL" && status !== "CANCELADO") {
                             statusPublicoDiv.innerText = "Aguardando pagamento";
                         }
                     }
@@ -1465,7 +1506,8 @@
             "AGUARDANDO_PAGAMENTO": "Aguardando pagamento",
             "PAGAMENTO_EXPIRADO": "QR Code expirado",
             "PAGAMENTO_RECUSADO": "Pagamento recusado",
-            "PAGAMENTO_FALHOU": "Falha no pagamento"
+            "PAGAMENTO_FALHOU": "Falha no pagamento",
+            "PEDIDO_CANCELADO": "Pedido cancelado"
         };
 
         const texto = labels[statusPublico] || statusPublico;
@@ -1512,15 +1554,20 @@
         const img = document.getElementById("postOrderImage");
         const imgWrapper = document.getElementById("postOrderImageWrapper");
 
-        // Pedido que nao cobra online, ou ja finalizado: esconde a area de pagamento
-        // e mostra a imagem de agradecimento abaixo do bloco de pagamento.
-        if (!pagamentoOnline || estado === "NAO_APLICAVEL" || estado === "CONFIRMADO") {
+        // Pedido que nao cobra online, ja finalizado ou cancelado: esconde a area de pagamento.
+        // Confirmado mostra a imagem de agradecimento; cancelado mostra apenas o resumo.
+        if (!pagamentoOnline || estado === "NAO_APLICAVEL" || estado === "CONFIRMADO" || estado === "CANCELADO") {
             area.style.display = "none";
             header.innerHTML = "";
             body.innerHTML = "";
             body.dataset.renderKey = "";
-            if (imgWrapper) imgWrapper.style.display = "flex";
-            if (img) img.style.display = "block";
+            if (estado === "CONFIRMADO" || estado === "NAO_APLICAVEL") {
+                if (imgWrapper) imgWrapper.style.display = "flex";
+                if (img) img.style.display = "block";
+            } else {
+                if (imgWrapper) imgWrapper.style.display = "none";
+                if (img) img.style.display = "none";
+            }
             if (estado === "CONFIRMADO") {
                 // Limpa o carrinho somente quando o pagamento online for confirmado,
                 // liberando o cliente para fazer um novo pedido depois.
@@ -1642,6 +1689,10 @@
                 if (data.endereco.cidade) parts.push(String(data.endereco.cidade));
                 if (data.endereco.referencia) parts.push("Ref: " + String(data.endereco.referencia));
                 endereco = parts.join(", ");
+                if (!endereco && data.endereco.maps_url) {
+                    const url = escapeHtml(String(data.endereco.maps_url));
+                    endereco = `<a href="${url}" target="_blank" rel="noopener" style="color:#0a5c2f; text-decoration:underline">Ver localização no mapa</a>`;
+                }
             } else {
                 endereco = String(data.endereco);
             }
@@ -1663,13 +1714,20 @@
         } else if (tipo === "RETIRADA") {
             entregaHtml = `<div class="summary-delivery"><strong>Retirada no balc&atilde;o</strong></div>`;
         } else if (endereco) {
-            entregaHtml = `<div class="summary-delivery"><strong>Entrega em:</strong> ${escapeHtml(endereco)}</div>`;
+            const enderecoHtml = String(endereco).startsWith("<a") ? endereco : escapeHtml(endereco);
+            entregaHtml = `<div class="summary-delivery"><strong>Entrega em:</strong> ${enderecoHtml}</div>`;
         }
         if (cliente) {
             entregaHtml += `<div class="summary-delivery"><strong>Cliente:</strong> ${escapeHtml(cliente)}${whatsapp ? " (" + escapeHtml(whatsapp) + ")" : ""}</div>`;
         }
 
-        const pagamentoLabels = { "PIX": "PIX", "DINHEIRO": "Dinheiro", "CARTAO": "Cart&atilde;o" };
+        const pagamentoLabels = {
+            "PIX": "PIX",
+            "DINHEIRO": "Dinheiro",
+            "CARTAO": "Cart&atilde;o",
+            "CARTAO_DEBITO": "Cart&atilde;o de d&eacute;bito",
+            "CARTAO_CREDITO": "Cart&atilde;o de cr&eacute;dito"
+        };
         const pagamentoLabel = pagamentoLabels[pagamento] || escapeHtml(pagamento || "-");
 
         el.innerHTML = `
@@ -1906,6 +1964,15 @@
             const title = String(document.getElementById("modalTitle")?.innerText || "");
             if (title !== "Carrinho / Pedido") return;
 
+            if (String(state.deliveryType || "").toUpperCase() !== "DELIVERY") {
+                if (_deliveryLeafletMap) {
+                    try { _deliveryLeafletMap.remove(); } catch {}
+                    _deliveryLeafletMap = null;
+                    _deliveryLeafletMarker = null;
+                }
+                return;
+            }
+
             const el = document.getElementById("deliveryMap");
             if (!el) return;
             if (typeof L === "undefined") {
@@ -1958,6 +2025,31 @@
         // Nao para o polling: o QR continua ativo e o banner "Voltar ao pagamento"
         // fica disponível no cardápio.
         showMainScreen();
+    }
+
+    async function cancelarPedidoCliente() {
+        const tracking = getTrackingPedido();
+        if (!tracking || !tracking.id || !tracking.access_token) return;
+        if (!confirm("Cancelar este pedido?\n\nO QR Code não será mais válido.")) return;
+
+        try {
+            const url = `/api/public/pedidos/${encodeURIComponent(tracking.id)}/cancelar?token=${encodeURIComponent(tracking.access_token)}`;
+            const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" } });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                setModal("Cancelar pedido", `<div><strong>Não foi possível cancelar.</strong></div><div class="muted" style="margin-top:8px">${escapeHtml(data.error || "Tente novamente.")}</div>`);
+                abrirModal();
+                return;
+            }
+            clearTrackingPedido();
+            stopStatusPublicoPolling();
+            state.postOrderActive = false;
+            showMainScreen();
+            showToast("Pedido cancelado");
+        } catch (e) {
+            try { console.error(e); } catch {}
+            showToast("Erro ao cancelar pedido");
+        }
     }
 
     function adicionarMaisItens() {
@@ -2132,19 +2224,22 @@
                 </div>
               `;
 
+        const deliveryType = String(state.deliveryType || "DELIVERY").toUpperCase();
+        const showDeliveryFields = !isSalao && deliveryType === "DELIVERY";
+
         const deliveryUi = isSalao ? "" : (
             `${whatsappUi}
 
             <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Entrega:</div>
-                <select id="deliveryType" onclick="lockModalRender(6000)" onfocus="lockModalRender(6000)" onchange="onDeliveryTypeChange(this.value)" style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)">
-                    <option value="DELIVERY" ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "selected" : ""}>Delivery</option>
-                    <option value="RETIRADA" ${String(state.deliveryType||"").toUpperCase()==="RETIRADA" ? "selected" : ""}>Retirada</option>
-                </select>
+                <div class="muted" style="margin-bottom:6px">Como deseja receber?</div>
+                <div class="choice-row">
+                    <button type="button" class="choice-btn ${deliveryType==="DELIVERY" ? "active" : ""}" onclick="onDeliveryTypeChange('DELIVERY')">Entrega</button>
+                    <button type="button" class="choice-btn ${deliveryType==="RETIRADA" ? "active" : ""}" onclick="onDeliveryTypeChange('RETIRADA')">Retirada</button>
+                </div>
             </div>
 
-            <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Localização (Google Maps) ${String(state.deliveryType||"").toUpperCase()==="DELIVERY" ? "(obrigatório)" : "(opcional)"}:</div>
+            <div id="deliveryFields" style="display:${showDeliveryFields ? 'block' : 'none'}; margin-top:14px">
+                <div class="muted" style="margin-bottom:6px">Localização (obrigatório):</div>
                 <div style="margin-top:10px">
                     <div id="deliveryMap" style="width:100%; height:240px; border-radius:12px; overflow:hidden; border:1px solid rgba(10, 92, 47, 0.18); background: rgba(10, 92, 47, 0.06); display:flex; align-items:center; justify-content:center;">
                         <div class="muted" style="padding:10px; text-align:center">Carregando mapa...</div>
@@ -2153,21 +2248,40 @@
                 <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
                     <button type="button" onclick="usarMinhaLocalizacao()">Usar minha localização</button>
                 </div>
-                <div class="muted" style="margin-top:8px">Você pode ajustar o pino arrastando no mapa.</div>
-            </div>
+                <div class="muted" style="margin-top:8px; margin-bottom:14px">Você pode ajustar o pino arrastando no mapa.</div>
 
-            <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Referência do local (opcional):</div>
+                <div class="muted" style="margin-bottom:6px">Endereço:</div>
+                <input id="deliveryRua" value="${String(state.deliveryRua || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRua', this.value)" placeholder="Rua" style="display:block; width:100%; box-sizing:border-box; padding:10px; margin-bottom:8px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                <div style="display:flex; gap:10px; margin-bottom:8px">
+                    <input id="deliveryNumero" value="${String(state.deliveryNumero || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryNumero', this.value)" placeholder="Número" style="flex:1; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                    <input id="deliveryBairro" value="${String(state.deliveryBairro || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryBairro', this.value)" placeholder="Bairro" style="flex:2; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+                </div>
+                <input id="deliveryCidade" value="${String(state.deliveryCidade || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryCidade', this.value)" placeholder="Cidade" style="display:block; width:100%; box-sizing:border-box; padding:10px; margin-bottom:8px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
+
+                <div class="muted" style="margin-top:14px; margin-bottom:6px">Referência do local (opcional):</div>
                 <input id="deliveryRef" value="${String(state.deliveryRef || "").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryRef', this.value)" placeholder="Ex.: perto do mercado, portão azul" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
-            </div>
 
-            <div style="margin-top:14px">
-                <div class="muted" style="margin-bottom:6px">Observações (opcional):</div>
-                <textarea id="deliveryObs" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryObs', this.value)" placeholder="Ex.: sem cebola, troco, instruções para entrega" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35); min-height: 86px; resize: vertical">${escapeHtml(String(state.deliveryObs || ""))}</textarea>
+                <div style="margin-top:14px">
+                    <div class="muted" style="margin-bottom:6px">Observações (opcional):</div>
+                    <textarea id="deliveryObs" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryObs', this.value)" placeholder="Ex.: sem cebola, troco, instruções para entrega" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35); min-height: 86px; resize: vertical">${escapeHtml(String(state.deliveryObs || ""))}</textarea>
+                </div>
             </div>`
         );
 
-        const trocoUi = (!isSalao && normalizePayMethod(state.payMethod) === "DINHEIRO")
+        const payCode = normalizePayMethod(state.payMethod);
+        const paymentGroup = payCode === "DINHEIRO" ? "DINHEIRO" : "ONLINE";
+        const onlineOptions = [
+            { code: "PIX", label: "PIX" },
+            { code: "CARTAO_DEBITO", label: "Cartão de débito" },
+            { code: "CARTAO_CREDITO", label: "Cartão de crédito" },
+        ];
+        const onlineHint = payCode === "PIX"
+            ? "Você receberá um QR Code PIX após enviar o pedido."
+            : (payCode.startsWith("CARTAO_")
+                ? "Apenas PIX está disponível para pagamento online nesta fase. Cartão será integrado em breve."
+                : "Escolha como deseja pagar online.");
+
+        const trocoUi = (!isSalao && payCode === "DINHEIRO")
             ? `<div style="margin-top:14px">
                     <div class="muted" style="margin-bottom:6px">Troco para (opcional):</div>
                     <input value="${String(state.deliveryTroco||"").replace(/"/g, "&quot;")}" onfocus="lockModalRender(6000)" onclick="lockModalRender(6000)" oninput="onDeliveryFieldChange('deliveryTroco', this.value)" placeholder="Ex.: 100" style="display:block; width:100%; box-sizing:border-box; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)" />
@@ -2185,10 +2299,18 @@
                 ${deliveryUi}
 
                 <div style="margin-top:14px">
-                    <div class="muted" style="margin-bottom:6px">Forma de pagamento (preferência):</div>
-                    <select id="payMethod" onclick="lockModalRender(6000)" onfocus="lockModalRender(6000)" onchange="onPayMethodChange(this.value)" style="width:100%; padding:10px; border-radius:12px; border:1px solid rgba(10, 92, 47, 0.35)">
-                        ${PAYMENT_METHODS.map((m) => `<option value="${m.code}" ${normalizePayMethod(state.payMethod) === m.code ? "selected" : ""}>${m.label}</option>`).join("")}
-                    </select>
+                    <div class="muted" style="margin-bottom:6px">Forma de pagamento:</div>
+                    <div class="choice-row">
+                        <button type="button" class="choice-btn ${paymentGroup==="DINHEIRO" ? "active" : ""}" onclick="onPaymentGroupChange('DINHEIRO')">Pagar em dinheiro</button>
+                        <button type="button" class="choice-btn ${paymentGroup==="ONLINE" ? "active" : ""}" onclick="onPaymentGroupChange('ONLINE')">Pagar online</button>
+                    </div>
+
+                    <div id="onlineOptions" style="display:${paymentGroup==="ONLINE" ? 'block' : 'none'}">
+                        <div class="online-options choice-row">
+                            ${onlineOptions.map((m) => `<button type="button" class="choice-btn ${payCode===m.code ? "active" : ""} ${m.code!=="PIX" ? "soon" : ""}" onclick="onPayMethodChange('${m.code}')" ${m.code!=="PIX" ? "disabled" : ""}>${m.label}</button>`).join("")}
+                        </div>
+                        <div class="muted" style="font-size:13px; margin-top:4px; text-align:center">${onlineHint}</div>
+                    </div>
                 </div>
 
                 ${trocoUi}
@@ -2255,12 +2377,6 @@
         } catch {
         }
 
-        // Após recriar o HTML, forçar o value do select para refletir o estado persistido
-        try {
-            const pm = document.getElementById("payMethod");
-            if (pm) pm.value = normalizePayMethod(state.payMethod);
-        } catch {
-        }
     }
 
     function filtrarProdutos() {

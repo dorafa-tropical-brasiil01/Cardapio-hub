@@ -228,12 +228,82 @@ def expirar_cobranca_ativa(rec: dict[str, Any]) -> None:
         logger.exception("expirar_cobranca_ativa - falha payment_id=%s", payment_id)
 
 
+def cancelar_pedido_publico(rec: dict[str, Any]) -> dict[str, Any]:
+    """Cancela um pedido online antes do pagamento.
+
+    - Marca a solicitação como cancelada.
+    - Atualiza a cobrança ativa para CANCELADO, bloqueando futuros pagamentos.
+    - Registra ocorrência se houver tentativa de pagamento posterior.
+    """
+    solicitacao_id = str(rec.get("id") or "").strip()
+    if not solicitacao_id:
+        return {"ok": False, "error": "solicitacao_invalida"}
+
+    status = str(rec.get("status") or "").strip().upper()
+    if status != pedidos_domain.SOLICITACAO_STATUS_AGUARDANDO_PAGAMENTO:
+        return {"ok": False, "error": "status_nao_cancelavel"}
+
+    if not rec.get("pagamento_online"):
+        return {"ok": False, "error": "nao_e_pagamento_online"}
+
+    if rec.get("cancelado"):
+        return {"ok": True, "ja_cancelado": True}
+
+    # Não permite cancelar se o pagamento já foi confirmado.
+    estado = domain.derivar_estado_pagamento(solicitacao=rec)
+    if estado == domain.ESTADO_CONFIRMADO:
+        return {"ok": False, "error": "pagamento_ja_confirmado"}
+
+    payment_id = str(rec.get("active_payment_id") or "").strip()
+    if payment_id and core.pg_enabled():
+        try:
+            atual = core.pg_store.get_external_payment(payment_id=payment_id)
+            if isinstance(atual, dict):
+                current_status = str(atual.get("status") or "").strip().upper()
+                if current_status == domain.PAY_APROVADO:
+                    return {"ok": False, "error": "pagamento_ja_confirmado"}
+                if current_status not in (domain.PAY_APROVADO,):
+                    core.pg_store.update_external_payment_status(
+                        payment_id=payment_id, status=domain.PAY_CANCELADO
+                    )
+        except Exception:
+            logger.exception("cancelar_pedido_publico - falha ao cancelar payment_id=%s", payment_id)
+
+    snap = rec.get("pagamento")
+    if isinstance(snap, dict):
+        snap["status"] = domain.PAY_CANCELADO
+        snap["cancelado_em"] = _now_iso()
+        rec["pagamento"] = domain.filtrar_snapshot_publico(snap)
+
+    rec["cancelado"] = True
+    rec["cancelado_em"] = _now_iso()
+    rec["payment_window_expires_at"] = _now_iso()
+
+    registrar_ocorrencia(
+        rec,
+        tipo=domain.OCORRENCIA_PAGAMENTO_TARDIO_IGNORADO,
+        descricao="Pedido cancelado pelo cliente antes do pagamento.",
+        external_payment_id=payment_id or rec.get("active_payment_id"),
+    )
+
+    try:
+        core.pg_store.save_solicitacao(record=rec)
+    except Exception:
+        logger.exception("cancelar_pedido_publico - falha ao salvar solicitacao_id=%s", solicitacao_id)
+        return {"ok": False, "error": "falha_ao_salvar"}
+
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Estado derivado para respostas públicas
 # ---------------------------------------------------------------------------
 
 def estado_publico(rec: dict[str, Any]) -> dict[str, Any]:
     """Retorna estado_pagamento derivado e elegibilidade de retentativa."""
+    if rec.get("cancelado"):
+        return {"estado_pagamento": "CANCELADO", "pode_retentar": False}
+
     estado = domain.derivar_estado_pagamento(solicitacao=rec)
     return {
         "estado_pagamento": estado,
@@ -259,8 +329,16 @@ def status_publico(rec: dict[str, Any]) -> dict[str, Any]:
     operacional já existente (`pg_store.calcular_status_publico`).
     """
     solicitacao_id = str(rec.get("id") or "").strip()
-    estado = domain.derivar_estado_pagamento(solicitacao=rec)
     status_solicitacao = str(rec.get("status") or "").strip().upper()
+
+    if rec.get("cancelado"):
+        return {
+            "status_publico": "PEDIDO_CANCELADO",
+            "finalizado": True,
+            "atualizado_em": _now_iso(),
+        }
+
+    estado = domain.derivar_estado_pagamento(solicitacao=rec)
 
     if status_solicitacao == pedidos_domain.SOLICITACAO_STATUS_AGUARDANDO_PAGAMENTO:
         return {
@@ -385,6 +463,18 @@ def orquestrar_pagamento_aprovado(payment_record: dict[str, Any], *, base_url: s
             "orquestrar_pagamento_aprovado - sem solicitação vinculada payment_id=%s", payment_id
         )
         return "SEM_REFERENCIA" if not payment_record.get("reference_id") else "SOLICITACAO_NAO_ENCONTRADA"
+
+    # 0) Pedido cancelado pelo cliente: não aplica o pagamento.
+    if rec.get("cancelado"):
+        registrar_ocorrencia(
+            rec,
+            tipo=domain.OCORRENCIA_PAGAMENTO_TARDIO_IGNORADO,
+            descricao="Pagamento aprovado para pedido já cancelado. Nenhuma alteração automática foi feita.",
+            external_payment_id=payment_id,
+            amount=payment_record.get("amount"),
+        )
+        core.pg_store.save_solicitacao(record=rec)
+        return "CANCELADO"
 
     # 1) Unicidade financeira: já existe outro pagamento aprovado?
     outro = _outro_pagamento_aprovado(

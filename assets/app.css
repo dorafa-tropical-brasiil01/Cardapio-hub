@@ -802,6 +802,43 @@
             fill: currentColor;
         }
 
+        /* Botões de escolha expostos (entrega/retirada, pagamento) */
+        .choice-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 8px 0 12px;
+        }
+        .choice-btn {
+            flex: 1 1 0;
+            min-width: 120px;
+            padding: 12px 10px;
+            border: 1px solid rgba(10, 92, 47, 0.35);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.55);
+            color: #0a5c2f;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: center;
+        }
+        .choice-btn.active {
+            background: #0a5c2f;
+            color: #fff;
+            border-color: #0a5c2f;
+        }
+        .choice-btn:disabled,
+        .choice-btn.soon {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+        .online-options {
+            margin-top: 10px;
+            padding-left: 12px;
+            border-left: 3px solid #0a5c2f;
+        }
+
         @media (max-width: 768px) {
             :root {
                 --footer-h: 66px;

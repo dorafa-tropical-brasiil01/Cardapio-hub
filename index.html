@@ -1008,9 +1008,10 @@
 </div>
 
 <div id="postOrderScreen" style="display:none; padding:18px; max-width:900px; margin:0 auto">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px">
-        <button type="button" onclick="voltarAoCardapio()">Voltar ao cardápio</button>
-        <button type="button" onclick="adicionarMaisItens()" style="background:#0a5c2f; color:#fff; border:1px solid #0a5c2f; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer;">Adicionar mais itens</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap">
+        <button type="button" onclick="voltarAoCardapio()">Cardápio</button>
+        <button type="button" onclick="adicionarMaisItens()" style="background:#f0c24b; color:#0b2b0b; border:1px solid #d4a93b; padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer;">Carrinho</button>
+        <button type="button" onclick="cancelarPedidoCliente()" style="background:rgba(192,57,43,0.12); color:#c0392b; border:1px solid rgba(192,57,43,0.35); padding:8px 14px; border-radius:8px; font-weight:700; cursor:pointer;">Cancelar pedido</button>
     </div>
     <div style="display:flex; justify-content:center; margin-bottom:14px">
         <div id="postOrderStatusPublico" style="display:none; padding:8px 16px; background:#e8f5e9; border:1px solid #4caf50; border-radius:8px; font-size:14px; color:#2e7d32; font-weight:bold"></div>
@@ -1019,12 +1020,13 @@
         </div>
     </div>
 
-    <div id="postOrderSummary" class="post-order-summary" style="display:none"></div>
-
+    <!-- Pagamento/QR primeiro; resumo do pedido embaixo -->
     <div id="postOrderPaymentArea" class="payment-box" style="display:none">
         <div id="postOrderPaymentHeader" class="payment-header"></div>
         <div id="postOrderPaymentBody"></div>
     </div>
+
+    <div id="postOrderSummary" class="post-order-summary" style="display:none; margin-top:18px"></div>
 
     <div class="post-order-image-wrapper" id="postOrderImageWrapper" style="display:none; justify-content:center; margin-top:18px">
         <img id="postOrderImage" src="" alt="" style="max-width:100%; border-radius:16px" />
