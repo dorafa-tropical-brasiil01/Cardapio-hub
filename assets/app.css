@@ -1120,8 +1120,8 @@
 
         @media (max-width: 768px) {
             .payment-box {
-                position: sticky;
-                top: 8px;
+                /* QR acompanha a rolagem normal: itens do pedido ficam acessíveis ao rolar */
+                position: relative;
                 z-index: 100;
             }
         }

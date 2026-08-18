@@ -2044,6 +2044,9 @@
             clearTrackingPedido();
             stopStatusPublicoPolling();
             state.postOrderActive = false;
+            state.carrinho = [];
+            saveLocal();
+            updateCartBadge();
             showMainScreen();
             showToast("Pedido cancelado");
         } catch (e) {
