@@ -1488,7 +1488,9 @@
         const bannerEl = document.getElementById("postOrderBanner");
         if (bannerEl) bannerEl.style.display = "none";
         const tracking = getTrackingPedido();
-        renderResumoPedido(tracking && tracking.id ? tracking : pedidoInfo);
+        const dataResumo = tracking && tracking.id ? tracking : pedidoInfo;
+        renderResumoPedido(dataResumo);
+        updateCancelarPedidoFooter(dataResumo);
     }
 
     function renderStatusPublicoNaTela(statusPublico, tipoEntrega) {
@@ -1576,6 +1578,7 @@
                 updateCartBadge();
             }
             renderResumoPedido(data);
+            updateCancelarPedidoFooter(data);
             return;
         }
 
@@ -1655,6 +1658,7 @@
         header.innerHTML = escapeHtml(titulo);
         body.innerHTML = html;
         renderResumoPedido(data);
+        updateCancelarPedidoFooter(data);
     }
 
     function renderResumoPedido(data) {
@@ -1740,6 +1744,18 @@
             ${entregaHtml}
         `;
         el.style.display = "block";
+    }
+
+    function updateCancelarPedidoFooter(data) {
+        const footer = document.getElementById("postOrderCancelFooter");
+        if (!footer) return;
+        const pagamentoOnline = Boolean(data && data.pagamento_online);
+        const estado = String(data && data.estado_pagamento || "").toUpperCase();
+        const podeCancelar = pagamentoOnline &&
+            estado !== "CONFIRMADO" &&
+            estado !== "CANCELADO" &&
+            estado !== "NAO_APLICAVEL";
+        footer.style.display = podeCancelar ? "flex" : "none";
     }
 
     async function pagarNovamente() {
@@ -2407,7 +2423,7 @@
             <div class="card">
                 <img src="${p.imagem}" alt="${escapeHtml(p.nome || "")}" onclick="openProductDetails('${p.id}')">
                 <p class="card-title">${escapeHtml(p.nome || "")}</p>
-                <div class="product-price" style="margin-top:8px">${formatBRL(p.preco)}</div>
+                <div class="product-price">${formatBRL(p.preco)}</div>
                 <button type="button" class="price-btn" aria-disabled="${!p.ativo}" onclick="openProductDetails('${p.id}')">Comprar Agora</button>
             </div>
         `).join("");
