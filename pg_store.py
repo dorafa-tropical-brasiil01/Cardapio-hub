@@ -2142,26 +2142,29 @@ def claim_external_payment(
 ) -> dict[str, Any] | None:
     """PDV reivindica um pagamento aprovado.
 
-    Retorna o registro atualizado, ou None se já foi reivindicado por outro PDV.
+    Retorna o registro atualizado. Se o pagamento já foi reivindicado pelo
+    mesmo PDV, a chamada é idempotente e retorna o registro. Retorna None se
+    o pagamento não estiver aprovado ou já estiver reivindicado por outro PDV.
     """
     if not is_enabled():
         return None
 
     with _conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Atomic: só claim se claimed_by_pdv_id IS NULL
+            # Atomic: permite claim se ainda não reivindicado OU se já foi
+            # reivindicado pelo mesmo PDV (idempotência).
             cur.execute(
                 """
                 UPDATE external_payments
-                SET claimed_by_pdv_id = %s,
-                    claimed_at = NOW(),
+                SET claimed_by_pdv_id = COALESCE(claimed_by_pdv_id, %s),
+                    claimed_at = COALESCE(claimed_at, NOW()),
                     updated_at = NOW()
                 WHERE id = %s
-                  AND claimed_by_pdv_id IS NULL
                   AND status = 'APROVADO'
+                  AND (claimed_by_pdv_id IS NULL OR claimed_by_pdv_id = %s)
                 RETURNING *
                 """,
-                (pdv_id, payment_id),
+                (pdv_id, payment_id, pdv_id),
             )
             row = cur.fetchone()
             conn.commit()
@@ -2173,25 +2176,65 @@ def apply_external_payment(
     payment_id: str,
     sale_id: int,
     sale_payment_id: int,
+    pdv_id: str | None = None,
 ) -> bool:
-    """PDV aplica o pagamento a uma venda (após claim)."""
+    """PDV aplica o pagamento a uma venda.
+
+    Se pdv_id for informado, também realiza o claim atomicamente e verifica
+    se o pagamento pertence ao PDV (ou está sem reivindicação). A operação
+    é idempotente: se a mesma tupla (payment_id, sale_id, sale_payment_id)
+    já foi aplicada, retorna True.
+
+    Quando pdv_id não é informado, mantém o comportamento legado (Fase 1A)
+    para compatibilidade com PaymentService.
+    """
     if not is_enabled():
         return False
 
     with _conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE external_payments
-                SET applied_sale_id = %s,
-                    applied_sale_payment_id = %s,
-                    applied_at = NOW(),
-                    updated_at = NOW()
-                WHERE id = %s
-                  AND applied_sale_id IS NULL
-                """,
-                (sale_id, sale_payment_id, payment_id),
-            )
+            if pdv_id:
+                cur.execute(
+                    """
+                    UPDATE external_payments
+                    SET claimed_by_pdv_id = COALESCE(claimed_by_pdv_id, %s),
+                        applied_sale_id = %s,
+                        applied_sale_payment_id = %s,
+                        applied_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = %s
+                      AND status = 'APROVADO'
+                      AND (claimed_by_pdv_id IS NULL OR claimed_by_pdv_id = %s)
+                      AND (
+                          applied_sale_id IS NULL
+                          OR (applied_sale_id = %s AND applied_sale_payment_id = %s)
+                      )
+                    """,
+                    (
+                        pdv_id,
+                        sale_id,
+                        sale_payment_id,
+                        payment_id,
+                        pdv_id,
+                        sale_id,
+                        sale_payment_id,
+                    ),
+                )
+            else:
+                # Comportamento legado: aplica sem verificação de PDV.
+                # Mantido para compatibilidade com PaymentService e Fase 1A.
+                cur.execute(
+                    """
+                    UPDATE external_payments
+                    SET applied_sale_id = %s,
+                        applied_sale_payment_id = %s,
+                        applied_at = NOW(),
+                        updated_at = NOW()
+                    WHERE id = %s
+                      AND applied_sale_id IS NULL
+                    """,
+                    (sale_id, sale_payment_id, payment_id),
+                )
             conn.commit()
             return cur.rowcount > 0
 

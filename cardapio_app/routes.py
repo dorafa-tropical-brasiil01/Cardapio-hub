@@ -2050,20 +2050,21 @@ def register_routes(app: Flask) -> None:
             # Idempotencia com retomada: o mesmo PDV pode retomar.
             if not (request_pdv_id and solicitacao_pdv_id and request_pdv_id == solicitacao_pdv_id):
                 return jsonify({"error": "em_atendimento_por_outro_pdv", "pdv_id": solicitacao_pdv_id}), 409
-            # Pedido online: verifica se o pagamento continua reivindicado por este PDV.
+            # Pedido online: verifica se o pagamento nao foi reivindicado por outro PDV.
             if is_online and active_payment_id and core.pg_enabled():
                 payment = core.pg_store.get_external_payment(payment_id=active_payment_id)
                 if payment is None:
                     return jsonify({"error": "pagamento_nao_encontrado"}), 409
                 claimed_by = str(payment.get("claimed_by_pdv_id") or "").strip()
-                if claimed_by != request_pdv_id:
+                if claimed_by and claimed_by != request_pdv_id:
                     return jsonify({"error": "pagamento_reivindicado_por_outro_pdv"}), 409
             return jsonify(s)
 
         if cur_status != "PENDENTE":
             return jsonify({"error": "status_invalido", "status": cur_status}), 409
 
-        # Pedido online: reivindicar o pagamento aprovado antes de colocar em atendimento.
+        # Pedido online: valida pagamento aprovado e sem reivindicacao de outro PDV.
+        # O claim financeiro sera feito no passo PAGAMENTO_APLICADO.
         if is_online and active_payment_id:
             if not core.pg_enabled():
                 return jsonify({"error": "pg_nao_habilitado"}), 500
@@ -2075,12 +2076,6 @@ def register_routes(app: Flask) -> None:
             claimed = str(payment.get("claimed_by_pdv_id") or "").strip()
             if claimed and claimed != request_pdv_id:
                 return jsonify({"error": "pagamento_reivindicado_por_outro_pdv"}), 409
-            if not claimed:
-                claim = core.pg_store.claim_external_payment(
-                    payment_id=active_payment_id, pdv_id=request_pdv_id,
-                )
-                if claim is None:
-                    return jsonify({"error": "pagamento_ja_reivindicado"}), 409
 
         s["status"] = "EM_ATENDIMENTO"
         s["pdv_id"] = body.get("pdv_id")
@@ -2117,6 +2112,10 @@ def register_routes(app: Flask) -> None:
         if s is None or idx is None:
             return jsonify({"error": "nao_encontrado"}), 404
 
+        existing_sale_id = s.get("sale_id")
+        if existing_sale_id is not None and int(existing_sale_id) != sale_id_i:
+            return jsonify({"error": "sale_id_divergente", "sale_id_atual": existing_sale_id}), 409
+
         s["sale_id"] = sale_id_i
         if core.pg_enabled():
             try:
@@ -2126,7 +2125,7 @@ def register_routes(app: Flask) -> None:
         else:
             data["solicitacoes"][idx] = s
             core.save_solicitacoes(_ctx(), data)
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "sale_id": sale_id_i})
 
     @app.post("/api/pdv/solicitacoes/<solicitacao_id>/conferir")
     def api_pdv_conferir_solicitacao(solicitacao_id: str):
@@ -2487,7 +2486,11 @@ def register_routes(app: Flask) -> None:
 
     @app.post("/api/payments/<payment_id>/claim")
     def api_payments_claim(payment_id: str):
-        """PDV reivindica um pagamento aprovado."""
+        """PDV reivindica um pagamento aprovado.
+
+        Idempotente para o mesmo PDV. Para pagamentos de pedidos online,
+        a solicitação deve estar EM_ATENDIMENTO e atribuída ao mesmo PDV.
+        """
         denied = core.require_pdv_key()
         if denied is not None:
             return denied
@@ -2500,22 +2503,52 @@ def register_routes(app: Flask) -> None:
         if not core.pg_enabled():
             return jsonify({"error": "nao_encontrado"}), 404
 
+        payment = core.pg_store.get_external_payment(payment_id=payment_id)
+        if payment is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        if str(payment.get("status") or "").upper() != "APROVADO":
+            return jsonify({"error": "pagamento_nao_aprovado"}), 409
+
+        reference_id = str(payment.get("reference_id") or "").strip()
+        solicitacao = core.pg_store.get_solicitacao(solicitacao_id=reference_id)
+        if isinstance(solicitacao, dict):
+            if str(solicitacao.get("status") or "").upper() != "EM_ATENDIMENTO":
+                return jsonify({"error": "solicitacao_nao_em_atendimento"}), 409
+            solicitacao_pdv_id = str(solicitacao.get("pdv_id") or "").strip()
+            if solicitacao_pdv_id and solicitacao_pdv_id != pdv_id:
+                return jsonify({"error": "solicitacao_atribuida_a_outro_pdv"}), 409
+
         record = core.pg_store.claim_external_payment(
             payment_id=payment_id, pdv_id=pdv_id,
         )
-        if record is None:
-            return jsonify({"error": "ja_reivindicado_ou_nao_aprovado"}), 409
+        if record is not None:
+            return jsonify(record)
 
-        return jsonify(record)
+        # Verifica se já foi reivindicado pelo mesmo PDV (condição de corrida).
+        atual = core.pg_store.get_external_payment(payment_id=payment_id)
+        if isinstance(atual, dict):
+            if str(atual.get("claimed_by_pdv_id") or "").strip() == pdv_id:
+                return jsonify(atual)
+
+        return jsonify({"error": "ja_reivindicado_ou_nao_aprovado"}), 409
 
     @app.post("/api/payments/<payment_id>/application")
     def api_payments_apply(payment_id: str):
-        """PDV aplica o pagamento a uma venda (após claim)."""
+        """PDV aplica o pagamento a uma venda.
+
+        Realiza claim+apply atomicamente. Idempotente para a tupla
+        (payment_id, pdv_id, sale_id, sale_payment_id).
+        """
         denied = core.require_pdv_key()
         if denied is not None:
             return denied
 
         body = request.get_json(silent=True) or {}
+        pdv_id = str(body.get("pdv_id") or "").strip()
+        if not pdv_id:
+            return jsonify({"error": "pdv_id_obrigatorio"}), 400
+
         try:
             sale_id = int(body.get("sale_id") or 0)
             sale_payment_id = int(body.get("sale_payment_id") or 0)
@@ -2528,15 +2561,59 @@ def register_routes(app: Flask) -> None:
         if not core.pg_enabled():
             return jsonify({"error": "nao_encontrado"}), 404
 
+        payment = core.pg_store.get_external_payment(payment_id=payment_id)
+        if payment is None:
+            return jsonify({"error": "nao_encontrado"}), 404
+
+        if str(payment.get("status") or "").upper() != "APROVADO":
+            return jsonify({"error": "pagamento_nao_aprovado"}), 409
+
+        reference_id = str(payment.get("reference_id") or "").strip()
+        solicitacao = core.pg_store.get_solicitacao(solicitacao_id=reference_id)
+        if isinstance(solicitacao, dict):
+            if str(solicitacao.get("status") or "").upper() != "EM_ATENDIMENTO":
+                return jsonify({"error": "solicitacao_nao_em_atendimento"}), 409
+            solicitacao_pdv_id = str(solicitacao.get("pdv_id") or "").strip()
+            if solicitacao_pdv_id and solicitacao_pdv_id != pdv_id:
+                return jsonify({"error": "solicitacao_atribuida_a_outro_pdv"}), 409
+            solicitacao_sale_id = solicitacao.get("sale_id")
+            if solicitacao_sale_id is None:
+                return jsonify({"error": "venda_nao_vinculada"}), 409
+            if int(solicitacao_sale_id) != sale_id:
+                return jsonify({"error": "sale_id_divergente"}), 409
+        else:
+            # Pagamento presencial: reference_id deve ser o próprio sale_id.
+            if reference_id != str(sale_id):
+                return jsonify({"error": "sale_id_divergente"}), 409
+
         ok = core.pg_store.apply_external_payment(
             payment_id=payment_id,
             sale_id=sale_id,
             sale_payment_id=sale_payment_id,
+            pdv_id=pdv_id,
         )
-        if not ok:
-            return jsonify({"error": "ja_aplicado_ou_nao_encontrado"}), 409
+        if ok:
+            return jsonify({"ok": True})
 
-        return jsonify({"ok": True})
+        # Verifica se já foi aplicado com os mesmos dados (condição de corrida).
+        atual = core.pg_store.get_external_payment(payment_id=payment_id)
+        if isinstance(atual, dict):
+            if (
+                str(atual.get("claimed_by_pdv_id") or "").strip() == pdv_id
+                and atual.get("applied_sale_id") == sale_id
+                and atual.get("applied_sale_payment_id") == sale_payment_id
+            ):
+                return jsonify({"ok": True})
+
+            if atual.get("applied_sale_id") is not None:
+                if atual.get("applied_sale_id") != sale_id or atual.get("applied_sale_payment_id") != sale_payment_id:
+                    return jsonify({"error": "ja_aplicado_outra_venda"}), 409
+
+            claimed_by = str(atual.get("claimed_by_pdv_id") or "").strip()
+            if claimed_by and claimed_by != pdv_id:
+                return jsonify({"error": "claim_outro_pdv"}), 409
+
+        return jsonify({"error": "ja_aplicado_ou_nao_encontrado"}), 409
 
     @app.post("/api/payments/webhook")
     def api_payments_webhook():
