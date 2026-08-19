@@ -163,10 +163,21 @@ def init_db() -> None:
                     created_em TIMESTAMPTZ NOT NULL,
                     started_em TIMESTAMPTZ,
                     done_em TIMESTAMPTZ,
+                    sinalizado_em TIMESTAMPTZ,
+                    impressao_solicitada_em TIMESTAMPTZ,
+                    recusado_em TIMESTAMPTZ,
+                    motivo_recusa TEXT,
+                    nota_recusa TEXT,
                     ops_user_id BIGINT
                 )
                 """
             )
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS sinalizado_em TIMESTAMPTZ")
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS impressao_solicitada_em TIMESTAMPTZ")
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS recusado_em TIMESTAMPTZ")
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS motivo_recusa TEXT")
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS nota_recusa TEXT")
+            cur.execute("UPDATE kds_orders SET status = 'NOVO' WHERE status = 'AGUARDANDO'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_status_created ON kds_orders(status, created_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_done_em ON kds_orders(done_em)")
 
@@ -237,6 +248,28 @@ def init_db() -> None:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_solicitacao ON log_order_events(solicitacao_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_log_order_events_event ON log_order_events(event)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS logistica_integracoes (
+                    id BIGSERIAL PRIMARY KEY,
+                    solicitacao_id TEXT NOT NULL,
+                    evento TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDENTE',
+                    tentativas INTEGER NOT NULL DEFAULT 0,
+                    criado_em TIMESTAMPTZ NOT NULL,
+                    proxima_tentativa_em TIMESTAMPTZ NOT NULL,
+                    enviado_em TIMESTAMPTZ,
+                    ultimo_erro TEXT,
+                    protocolo_externo TEXT,
+                    payload_json JSONB NOT NULL,
+                    resposta_json JSONB,
+                    UNIQUE (solicitacao_id, evento)
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_integracoes_status ON logistica_integracoes(status, proxima_tentativa_em)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_integracoes_solicitacao ON logistica_integracoes(solicitacao_id)")
 
             # ------------------------------------------------------------------
             # PAGAMENTOS EXTERNOS — Fase 1 (PIX via PagBank API Order)
@@ -728,7 +761,7 @@ def kds_ensure_order_row(*, solicitacao_id: str) -> None:
     sid = str(solicitacao_id or "").strip()
     if not sid:
         return
-    created = datetime.now().isoformat(timespec="seconds")
+    created = _now_iso()
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -737,7 +770,7 @@ def kds_ensure_order_row(*, solicitacao_id: str) -> None:
                 VALUES (%s, %s, %s)
                 ON CONFLICT (solicitacao_id) DO NOTHING
                 """,
-                (sid, "AGUARDANDO", created),
+                (sid, "NOVO", created),
             )
 
 
@@ -748,14 +781,14 @@ def kds_get_current_for_user(*, ops_user_id: int) -> dict[str, Any] | None:
     uid = int(ops_user_id)
     with _conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # 1) Seleção manual (sem iniciar preparo): se existir e ainda estiver AGUARDANDO, vira o "pedido atual"
+            # 1) Seleção manual (sem iniciar preparo): se existir e ainda estiver NOVO, vira o "pedido atual"
             cur.execute(
                 """
                 SELECT k.*
                 FROM kds_current_selection s
                 JOIN kds_orders k ON k.solicitacao_id=s.solicitacao_id
                 WHERE s.ops_user_id=%s
-                  AND k.status='AGUARDANDO'
+                  AND k.status='NOVO'
                 ORDER BY s.selected_em DESC
                 LIMIT 1
                 """,
@@ -785,7 +818,13 @@ def kds_get_current_for_user(*, ops_user_id: int) -> dict[str, Any] | None:
             return None
 
 
-def kds_start_order(*, solicitacao_id: str, ops_user_id: int) -> None:
+def kds_aceitar_pedido(
+    *,
+    solicitacao_id: str,
+    ops_user_id: int,
+    impressao_solicitada_em: str | None = None,
+) -> None:
+    """Transiciona NOVO -> EM_PREPARO, registrando início do preparo e solicitação de impressão."""
     if not is_enabled():
         return
     _ensure_db_ready()
@@ -795,21 +834,30 @@ def kds_start_order(*, solicitacao_id: str, ops_user_id: int) -> None:
     uid = int(ops_user_id)
     kds_ensure_order_row(solicitacao_id=sid)
     started = _now_iso()
+    impressao = impressao_solicitada_em or started
     with _conn() as conn:
         with conn.cursor() as cur:
-            # quando inicia preparo, a seleção manual perde sentido
             cur.execute("DELETE FROM kds_current_selection WHERE ops_user_id=%s", (uid,))
             cur.execute(
                 """
                 UPDATE kds_orders
-                SET status='EM_PREPARO', started_em=%s, ops_user_id=%s
-                WHERE solicitacao_id=%s
+                SET status='EM_PREPARO',
+                    started_em=%s,
+                    impressao_solicitada_em=%s,
+                    ops_user_id=%s
+                WHERE solicitacao_id=%s AND status='NOVO'
                 """,
-                (started, uid, sid),
+                (started, impressao, uid, sid),
             )
 
 
-def kds_mark_done(*, solicitacao_id: str, ops_user_id: int) -> None:
+def kds_start_order(*, solicitacao_id: str, ops_user_id: int) -> None:
+    """Compatibilidade com chamadas antigas: equivale a aceitar sem passar timestamp."""
+    kds_aceitar_pedido(solicitacao_id=solicitacao_id, ops_user_id=ops_user_id)
+
+
+def kds_marcar_pronto(*, solicitacao_id: str, ops_user_id: int) -> None:
+    """Transiciona EM_PREPARO -> PRONTO."""
     if not is_enabled():
         return
     _ensure_db_ready()
@@ -826,16 +874,83 @@ def kds_mark_done(*, solicitacao_id: str, ops_user_id: int) -> None:
                 """
                 UPDATE kds_orders
                 SET status='PRONTO', done_em=%s, ops_user_id=%s
-                WHERE solicitacao_id=%s
+                WHERE solicitacao_id=%s AND status='EM_PREPARO'
                 """,
                 (done, uid, sid),
+            )
+
+
+def kds_mark_done(*, solicitacao_id: str, ops_user_id: int) -> None:
+    """Compatibilidade com chamadas antigas: equivale a marcar como pronto."""
+    kds_marcar_pronto(solicitacao_id=solicitacao_id, ops_user_id=ops_user_id)
+
+
+def kds_marcar_sinalizado(
+    *,
+    solicitacao_id: str,
+    ops_user_id: int,
+) -> None:
+    """Transiciona PRONTO -> SINALIZADO."""
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    uid = int(ops_user_id)
+    kds_ensure_order_row(solicitacao_id=sid)
+    sinalizado = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM kds_current_selection WHERE ops_user_id=%s", (uid,))
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET status='SINALIZADO', sinalizado_em=%s, ops_user_id=%s
+                WHERE solicitacao_id=%s AND status='PRONTO'
+                """,
+                (sinalizado, uid, sid),
+            )
+
+
+def kds_recusar_pedido(
+    *,
+    solicitacao_id: str,
+    ops_user_id: int,
+    motivo_recusa: str,
+    nota_recusa: str | None = None,
+) -> None:
+    """Transiciona NOVO -> RECUSADO."""
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    uid = int(ops_user_id)
+    kds_ensure_order_row(solicitacao_id=sid)
+    recusado = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM kds_current_selection WHERE ops_user_id=%s", (uid,))
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET status='RECUSADO',
+                    recusado_em=%s,
+                    motivo_recusa=%s,
+                    nota_recusa=%s,
+                    ops_user_id=%s
+                WHERE solicitacao_id=%s AND status='NOVO'
+                """,
+                (recusado, motivo_recusa, nota_recusa or None, uid, sid),
             )
 
 
 def kds_get_status(*, solicitacao_id: str) -> str | None:
     """
     Consulta o status de um pedido no KDS pelo solicitacao_id.
-    Retorna o status (AGUARDANDO, EM_PREPARO, PRONTO) ou None se não encontrado.
+    Retorna o status (NOVO, EM_PREPARO, PRONTO, SINALIZADO, RECUSADO) ou None se não encontrado.
     """
     if not is_enabled():
         return None
@@ -892,11 +1007,13 @@ def kds_stats_today() -> dict[str, int]:
     _ensure_db_ready()
     with _conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status IN ('AGUARDANDO','EM_PREPARO')")
+            cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status IN ('NOVO','EM_PREPARO')")
             pend = int(cur.fetchone()[0] or 0)
             cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status='PRONTO' AND done_em::date = CURRENT_DATE")
-            done = int(cur.fetchone()[0] or 0)
-            return {"pendentes": pend, "concluidos": done}
+            prontos = int(cur.fetchone()[0] or 0)
+            cur.execute("SELECT COUNT(*) FROM kds_orders WHERE status='SINALIZADO' AND sinalizado_em::date = CURRENT_DATE")
+            sinalizados = int(cur.fetchone()[0] or 0)
+            return {"pendentes": pend, "prontos": prontos, "sinalizados": sinalizados}
 
 
 def kds_list_queue_ids(*, limit: int = 50) -> list[str]:
@@ -911,7 +1028,7 @@ def kds_list_queue_ids(*, limit: int = 50) -> list[str]:
                 """
                 SELECT solicitacao_id
                 FROM kds_orders
-                WHERE status='AGUARDANDO'
+                WHERE status='NOVO'
                 ORDER BY created_em ASC
                 LIMIT %s
                 """,
@@ -930,9 +1047,9 @@ def kds_list_queue_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.ops_user_id
+                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.sinalizado_em, k.impressao_solicitada_em, k.recusado_em, k.motivo_recusa, k.nota_recusa, k.ops_user_id
                 FROM kds_orders k
-                WHERE k.status='AGUARDANDO'
+                WHERE k.status='NOVO'
                 ORDER BY k.created_em ASC
                 LIMIT %s
                 """,
@@ -946,7 +1063,12 @@ def kds_list_queue_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
                     "created_em": r[2],
                     "started_em": r[3],
                     "done_em": r[4],
-                    "ops_user_id": r[5],
+                    "sinalizado_em": r[5],
+                    "impressao_solicitada_em": r[6],
+                    "recusado_em": r[7],
+                    "motivo_recusa": r[8],
+                    "nota_recusa": r[9],
+                    "ops_user_id": r[10],
                 }
                 for r in rows
                 if r and str(r[0] or "").strip()
@@ -984,7 +1106,7 @@ def kds_list_preparing_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.ops_user_id
+                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.sinalizado_em, k.impressao_solicitada_em, k.recusado_em, k.motivo_recusa, k.nota_recusa, k.ops_user_id
                 FROM kds_orders k
                 WHERE k.status='EM_PREPARO'
                 ORDER BY k.started_em ASC
@@ -1000,7 +1122,12 @@ def kds_list_preparing_with_status(*, limit: int = 50) -> list[dict[str, Any]]:
                     "created_em": r[2],
                     "started_em": r[3],
                     "done_em": r[4],
-                    "ops_user_id": r[5],
+                    "sinalizado_em": r[5],
+                    "impressao_solicitada_em": r[6],
+                    "recusado_em": r[7],
+                    "motivo_recusa": r[8],
+                    "nota_recusa": r[9],
+                    "ops_user_id": r[10],
                 }
                 for r in rows
                 if r and str(r[0] or "").strip()
@@ -1021,10 +1148,69 @@ def kds_bump_queue_order(*, solicitacao_id: str) -> None:
                 """
                 UPDATE kds_orders
                 SET created_em=%s
-                WHERE solicitacao_id=%s AND status='AGUARDANDO'
+                WHERE solicitacao_id=%s AND status='NOVO'
                 """,
                 (bumped, sid),
             )
+
+
+def _kds_list_by_status(*, status: str, order_by: str, limit: int = 50) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    lim = int(limit) if int(limit) > 0 else 50
+    lim = min(lim, 200)
+    st = str(status or "").strip()
+    allowed_order_by = {
+        "created_em": "created_em",
+        "started_em": "started_em",
+        "done_em": "done_em",
+        "sinalizado_em": "sinalizado_em",
+        "recusado_em": "recusado_em",
+    }
+    ob = allowed_order_by.get(order_by, "created_em")
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT k.solicitacao_id, k.status, k.created_em, k.started_em, k.done_em, k.sinalizado_em, k.impressao_solicitada_em, k.recusado_em, k.motivo_recusa, k.nota_recusa, k.ops_user_id
+                FROM kds_orders k
+                WHERE k.status=%s
+                ORDER BY k.{ob} ASC
+                LIMIT %s
+                """,
+                (st, lim),
+            )
+            rows = cur.fetchall() or []
+            return [
+                {
+                    "solicitacao_id": str(r[0]),
+                    "status": str(r[1]),
+                    "created_em": r[2],
+                    "started_em": r[3],
+                    "done_em": r[4],
+                    "sinalizado_em": r[5],
+                    "impressao_solicitada_em": r[6],
+                    "recusado_em": r[7],
+                    "motivo_recusa": r[8],
+                    "nota_recusa": r[9],
+                    "ops_user_id": r[10],
+                }
+                for r in rows
+                if r and str(r[0] or "").strip()
+            ]
+
+
+def kds_list_prontos(*, limit: int = 50) -> list[dict[str, Any]]:
+    return _kds_list_by_status(status="PRONTO", order_by="done_em", limit=limit)
+
+
+def kds_list_sinalizados(*, limit: int = 50) -> list[dict[str, Any]]:
+    return _kds_list_by_status(status="SINALIZADO", order_by="sinalizado_em", limit=limit)
+
+
+def kds_list_recusados(*, limit: int = 50) -> list[dict[str, Any]]:
+    return _kds_list_by_status(status="RECUSADO", order_by="recusado_em", limit=limit)
 
 
 def logistica_list_ready_order_ids() -> list[str]:
@@ -1501,6 +1687,195 @@ def logistica_run_finish(*, ops_user_id: int) -> dict[str, Any]:
                 (finished, run_id, uid),
             )
     return {"ok": True, "id": run_id}
+
+
+# ------------------------------------------------------------------
+# INTEGRAÇÃO COM CENTRAL LOGÍSTICA EXTERNA
+# ------------------------------------------------------------------
+
+
+def logistica_integracao_criar(
+    *,
+    solicitacao_id: str,
+    evento: str,
+    payload_json: dict[str, Any],
+) -> dict[str, Any]:
+    """Cria um registro PENDENTE na fila de integração."""
+    if not is_enabled():
+        raise RuntimeError("pg_disabled")
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    ev = str(evento or "").strip().upper()
+    if not sid or not ev:
+        raise RuntimeError("dados_invalidos")
+    now = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO logistica_integracoes(
+                    solicitacao_id, evento, status, tentativas, criado_em,
+                    proxima_tentativa_em, payload_json
+                )
+                VALUES (%s, %s, 'PENDENTE', 0, %s, %s, %s)
+                ON CONFLICT (solicitacao_id, evento)
+                DO UPDATE SET
+                    payload_json = EXCLUDED.payload_json,
+                    status = CASE
+                        WHEN logistica_integracoes.status = 'ENVIADO' THEN 'ENVIADO'
+                        ELSE logistica_integracoes.status
+                    END
+                RETURNING id
+                """,
+                (sid, ev, now, now, psycopg2.extras.Json(payload_json)),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise RuntimeError("falha_ao_criar_integracao")
+            return {"ok": True, "id": int(row[0])}
+
+
+def logistica_integracao_pegar_proximo_pendente(
+    *,
+    max_tentativas: int = 3,
+    for_update: bool = True,
+) -> dict[str, Any] | None:
+    """Pega o próximo registro PENDENTE pronto para envio."""
+    if not is_enabled():
+        return None
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            query = """
+                SELECT *
+                FROM logistica_integracoes
+                WHERE status = 'PENDENTE'
+                  AND tentativas < %s
+                  AND proxima_tentativa_em <= %s
+                ORDER BY proxima_tentativa_em ASC
+            """
+            if for_update:
+                query += " FOR UPDATE SKIP LOCKED"
+            cur.execute(query, (max_tentativas, _now_iso()))
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def logistica_integracao_marcar_enviando(*, integracao_id: int) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE logistica_integracoes
+                SET status = 'ENVIANDO', tentativas = tentativas + 1
+                WHERE id = %s AND status = 'PENDENTE'
+                """,
+                (int(integracao_id),),
+            )
+
+
+def logistica_integracao_marcar_enviado(
+    *,
+    integracao_id: int,
+    protocolo_externo: str | None = None,
+    resposta_json: dict[str, Any] | None = None,
+) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    now = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE logistica_integracoes
+                SET status = 'ENVIADO',
+                    enviado_em = %s,
+                    protocolo_externo = %s,
+                    resposta_json = %s,
+                    ultimo_erro = NULL
+                WHERE id = %s
+                """,
+                (now, protocolo_externo or None, psycopg2.extras.Json(resposta_json) if resposta_json else None, int(integracao_id)),
+            )
+
+
+def logistica_integracao_marcar_erro(
+    *,
+    integracao_id: int,
+    ultimo_erro: str,
+    proxima_tentativa_em: str | None = None,
+    max_tentativas: int = 3,
+) -> None:
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            if proxima_tentativa_em:
+                cur.execute(
+                    """
+                    UPDATE logistica_integracoes
+                    SET status = 'PENDENTE',
+                        ultimo_erro = %s,
+                        proxima_tentativa_em = %s
+                    WHERE id = %s
+                    """,
+                    (ultimo_erro, proxima_tentativa_em, int(integracao_id)),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE logistica_integracoes
+                    SET status = 'ERRO', ultimo_erro = %s
+                    WHERE id = %s
+                    """,
+                    (ultimo_erro, int(integracao_id)),
+                )
+
+
+def logistica_integracao_reprocessar(*, integracao_id: int) -> None:
+    """Volta um registro ERRO para PENDENTE para nova tentativa."""
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    now = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE logistica_integracoes
+                SET status = 'PENDENTE',
+                    tentativas = 0,
+                    ultimo_erro = NULL,
+                    proxima_tentativa_em = %s
+                WHERE id = %s AND status = 'ERRO'
+                """,
+                (now, int(integracao_id)),
+            )
+
+
+def logistica_integracao_listar_pendentes(*, limit: int = 100) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    lim = int(limit) if int(limit) > 0 else 100
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM logistica_integracoes
+                WHERE status IN ('PENDENTE', 'ENVIANDO', 'ERRO')
+                ORDER BY criado_em DESC
+                LIMIT %s
+                """,
+                (lim,),
+            )
+            return [dict(r) for r in (cur.fetchall() or [])]
 
 
 def kds_list_done_periodo(*, ini: str, fim: str) -> list[dict[str, Any]]:

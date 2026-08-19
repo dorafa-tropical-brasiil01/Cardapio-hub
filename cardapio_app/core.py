@@ -124,6 +124,35 @@ def telegram_bot_enabled() -> bool:
     return bool(token)
 
 
+def central_logistica_webhook_url() -> str:
+    return os.environ.get("CENTRAL_LOGISTICA_WEBHOOK_URL", "")
+
+
+def central_logistica_api_key() -> str:
+    return os.environ.get("CENTRAL_LOGISTICA_API_KEY", "")
+
+
+def central_logistica_empresa_id() -> str:
+    return os.environ.get("CENTRAL_LOGISTICA_EMPRESA_ID", "EMPRESA01")
+
+
+def central_logistica_timeout_seconds() -> float:
+    try:
+        return float(os.environ.get("CENTRAL_LOGISTICA_TIMEOUT_SECONDS", "5.0"))
+    except Exception:
+        return 5.0
+
+
+def central_logistica_retry_enabled() -> bool:
+    v = str(os.environ.get("CENTRAL_LOGISTICA_RETRY_ENABLED") or "").strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def central_logistica_enabled() -> bool:
+    url = str(central_logistica_webhook_url() or "").strip()
+    return bool(url)
+
+
 def pdv_products_url() -> str:
     return os.environ.get("PDV_PRODUCTS_URL", "http://127.0.0.1:5600/api/produtos?ativos=1")
 

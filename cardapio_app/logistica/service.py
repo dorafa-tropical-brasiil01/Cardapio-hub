@@ -1,9 +1,22 @@
 from __future__ import annotations
 
+import json
+import logging
+import threading
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta
 from typing import Any
 
 from .. import core
 from ..pedidos.service import get_solicitacao_by_id
+
+
+logger = logging.getLogger(__name__)
+
+_PROCESSADOR_ATIVO = False
+_PROCESSADOR_THREAD: threading.Thread | None = None
 
 
 def listar_prontos() -> list[dict[str, Any]]:
@@ -224,3 +237,198 @@ def notificar_entregadores_pedido_pronto(*, solicitacao_id: str, base_url: str) 
             core.telegram_send_message_to(chat_id=chat_id, text=msg)
         except Exception:
             continue
+
+
+# ------------------------------------------------------------------
+# INTEGRAÇÃO COM CENTRAL LOGÍSTICA EXTERNA
+# ------------------------------------------------------------------
+
+
+MAX_TENTATIVAS = 3
+
+
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _backoff(tentativas: int) -> str:
+    """Retorna o próximo timestamp de tentativa com base no número de tentativas."""
+    now = datetime.now()
+    if tentativas <= 1:
+        delta = timedelta(seconds=10)
+    elif tentativas == 2:
+        delta = timedelta(seconds=30)
+    else:
+        delta = timedelta(minutes=2)
+    return (now + delta).isoformat(timespec="seconds")
+
+
+def _idempotency_key(*, empresa_id: str, solicitacao_id: str, evento: str) -> str:
+    return f"{empresa_id}:{solicitacao_id}:{evento.upper()}"
+
+
+def _enviar_para_central(*, payload: dict[str, Any], idempotency_key: str) -> tuple[bool, dict[str, Any] | None, str | None]:
+    url = str(core.central_logistica_webhook_url() or "").strip()
+    if not url:
+        return False, None, "url_nao_configurada"
+
+    api_key = str(core.central_logistica_api_key() or "").strip()
+    timeout = core.central_logistica_timeout_seconds()
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Idempotency-Key": idempotency_key,
+    }
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url=url, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8") if resp.read() else ""
+            if not raw:
+                return True, None, None
+            try:
+                j = json.loads(raw)
+                return True, j if isinstance(j, dict) else None, None
+            except Exception:
+                return True, None, None
+    except urllib.error.HTTPError as e:
+        try:
+            raw = e.read().decode("utf-8")
+        except Exception:
+            raw = ""
+        return False, None, f"HTTP {e.code}: {raw[:200]}"
+    except urllib.error.URLError as e:
+        return False, None, f"URL error: {e}"
+    except Exception as e:
+        return False, None, str(e)[:500]
+
+
+def processar_pendentes(*, max_tentativas: int = MAX_TENTATIVAS) -> int:
+    """Processa um lote de integrações pendentes. Retorna quantos registros tentou enviar."""
+    if not core.pg_enabled():
+        return 0
+    if not core.central_logistica_enabled():
+        return 0
+
+    count = 0
+    while True:
+        reg = core.pg_store.logistica_integracao_pegar_proximo_pendente(
+            max_tentativas=max_tentativas,
+            for_update=True,
+        )
+        if not reg:
+            break
+        count += 1
+        _processar_um(reg=reg, max_tentativas=max_tentativas)
+
+    return count
+
+
+def _processar_um(*, reg: dict[str, Any], max_tentativas: int = MAX_TENTATIVAS) -> None:
+    if not isinstance(reg, dict):
+        return
+
+    integracao_id = int(reg.get("id") or 0)
+    if not integracao_id:
+        return
+
+    payload = reg.get("payload_json") or {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    empresa_id = str(payload.get("empresa_id") or core.central_logistica_empresa_id() or "EMPRESA01").strip()
+    solicitacao_id = str(payload.get("solicitacao_id") or reg.get("solicitacao_id") or "").strip()
+    evento = str(reg.get("evento") or "SINALIZADO").strip()
+    idempotency_key = _idempotency_key(
+        empresa_id=empresa_id,
+        solicitacao_id=solicitacao_id,
+        evento=evento,
+    )
+
+    try:
+        core.pg_store.logistica_integracao_marcar_enviando(integracao_id=integracao_id)
+    except Exception:
+        return
+
+    try:
+        ok, resposta, erro = _enviar_para_central(payload=payload, idempotency_key=idempotency_key)
+    except Exception as e:
+        ok = False
+        resposta = None
+        erro = str(e)[:500]
+
+    if ok:
+        protocolo_externo = resposta.get("protocolo") if isinstance(resposta, dict) else None
+        try:
+            core.pg_store.logistica_integracao_marcar_enviado(
+                integracao_id=integracao_id,
+                protocolo_externo=str(protocolo_externo) if protocolo_externo else None,
+                resposta_json=resposta,
+            )
+        except Exception:
+            pass
+        return
+
+    try:
+        tentativas = int(reg.get("tentativas") or 0) + 1
+    except Exception:
+        tentativas = 1
+
+    proxima_tentativa = _backoff(tentativas=tentativas)
+    if tentativas >= max_tentativas:
+        proxima_tentativa = None
+
+    try:
+        core.pg_store.logistica_integracao_marcar_erro(
+            integracao_id=integracao_id,
+            ultimo_erro=str(erro or "erro_desconhecido").strip(),
+            proxima_tentativa_em=proxima_tentativa,
+            max_tentativas=max_tentativas,
+        )
+    except Exception:
+        pass
+
+
+def reprocessar_integracao(*, integracao_id: int) -> dict[str, Any]:
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+    core.pg_store.logistica_integracao_reprocessar(integracao_id=int(integracao_id))
+    return {"ok": True}
+
+
+def listar_integracoes(*, limit: int = 100) -> list[dict[str, Any]]:
+    if not core.pg_enabled():
+        return []
+    return core.pg_store.logistica_integracao_listar_pendentes(limit=limit)
+
+
+def iniciar_processador_background(intervalo_segundos: int = 30) -> None:
+    """Inicia uma thread única que consulta a fila periodicamente."""
+    global _PROCESSADOR_ATIVO, _PROCESSADOR_THREAD
+
+    if _PROCESSADOR_ATIVO:
+        return
+
+    _PROCESSADOR_ATIVO = True
+
+    def _loop() -> None:
+        while _PROCESSADOR_ATIVO:
+            try:
+                if core.pg_enabled() and core.central_logistica_enabled():
+                    processar_pendentes()
+            except Exception:
+                logger.exception("logistica_processador - erro no loop")
+            time.sleep(max(5, int(intervalo_segundos)))
+
+    _PROCESSADOR_THREAD = threading.Thread(target=_loop, name="kds_logistica_processor", daemon=True)
+    _PROCESSADOR_THREAD.start()
+
+
+def parar_processador_background() -> None:
+    global _PROCESSADOR_ATIVO
+    _PROCESSADOR_ATIVO = False

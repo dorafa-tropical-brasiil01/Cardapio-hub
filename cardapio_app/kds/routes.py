@@ -4,21 +4,36 @@ from flask import Flask, jsonify, make_response, request, session
 
 from ..ops_auth.routes import require_ops_login
 from .service import (
+    aceitar_pedido,
     get_pedido_atual,
     listar_fila_pedidos,
     listar_preparando_pedidos,
+    listar_prontos,
+    listar_recusados,
+    listar_sinalizados,
     marcar_pronto,
-    preparar_pedido,
     pular_pedido,
+    recusar_pedido,
     selecionar_pedido,
+    sinal_entregar,
     stats_hoje,
 )
-from ..logistica.service import notificar_entregadores_pedido_pronto
 
 
 def register_kds_routes(app: Flask) -> None:
     @app.get("/api/kds/fila")
     def api_kds_fila():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_fila_pedidos(limit=limit)})
+
+    @app.get("/api/kds/previas")
+    def api_kds_previas():
         denied = require_ops_login(role="KDS")
         if denied is not None:
             return denied
@@ -38,6 +53,39 @@ def register_kds_routes(app: Flask) -> None:
         except Exception:
             limit = 20
         return jsonify({"ok": True, "fila": listar_preparando_pedidos(limit=limit)})
+
+    @app.get("/api/kds/prontos")
+    def api_kds_prontos():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_prontos(limit=limit)})
+
+    @app.get("/api/kds/sinalizados")
+    def api_kds_sinalizados():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_sinalizados(limit=limit)})
+
+    @app.get("/api/kds/recusados")
+    def api_kds_recusados():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_recusados(limit=limit)})
 
     @app.post("/api/kds/<solicitacao_id>/pular")
     def api_kds_pular(solicitacao_id: str):
@@ -74,13 +122,41 @@ def register_kds_routes(app: Flask) -> None:
         st = stats_hoje()
         return jsonify({"ok": True, "stats": st})
 
-    @app.post("/api/kds/<solicitacao_id>/preparar")
-    def api_kds_preparar(solicitacao_id: str):
+    @app.post("/api/kds/<solicitacao_id>/aceitar")
+    def api_kds_aceitar(solicitacao_id: str):
         denied = require_ops_login(role="KDS")
         if denied is not None:
             return denied
         uid = int(session.get("ops_user_id") or 0)
-        preparar_pedido(solicitacao_id=solicitacao_id, ops_user_id=uid)
+        body = request.get_json(silent=True) or {}
+        impressao = body.get("impressao_solicitada_em") or None
+        aceitar_pedido(
+            solicitacao_id=solicitacao_id,
+            ops_user_id=uid,
+            impressao_solicitada_em=impressao,
+        )
+        return jsonify({"ok": True})
+
+    # alias legado para a interface atual
+    @app.post("/api/kds/<solicitacao_id>/preparar")
+    def api_kds_preparar(solicitacao_id: str):
+        return api_kds_aceitar(solicitacao_id)
+
+    @app.post("/api/kds/<solicitacao_id>/recusar")
+    def api_kds_recusar(solicitacao_id: str):
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        uid = int(session.get("ops_user_id") or 0)
+        body = request.get_json(silent=True) or {}
+        motivo = body.get("motivo_recusa") or "OUTRO"
+        nota = body.get("nota_recusa") or ""
+        recusar_pedido(
+            solicitacao_id=solicitacao_id,
+            ops_user_id=uid,
+            motivo_recusa=motivo,
+            nota_recusa=nota or None,
+        )
         return jsonify({"ok": True})
 
     @app.post("/api/kds/<solicitacao_id>/pronto")
@@ -90,20 +166,21 @@ def register_kds_routes(app: Flask) -> None:
             return denied
         uid = int(session.get("ops_user_id") or 0)
         marcar_pronto(solicitacao_id=solicitacao_id, ops_user_id=uid)
-        try:
-            notificar_entregadores_pedido_pronto(solicitacao_id=solicitacao_id, base_url=str(request.host_url or ""))
-        except Exception:
-            pass
         return jsonify({"ok": True})
 
-    @app.post("/api/kds/<solicitacao_id>/entregar")
-    def api_kds_entregar(solicitacao_id: str):
+    @app.post("/api/kds/<solicitacao_id>/sinal_entregar")
+    def api_kds_sinal_entregar(solicitacao_id: str):
         denied = require_ops_login(role="KDS")
         if denied is not None:
             return denied
         uid = int(session.get("ops_user_id") or 0)
-        marcar_pronto(solicitacao_id=solicitacao_id, ops_user_id=uid)
+        sinal_entregar(solicitacao_id=solicitacao_id, ops_user_id=uid)
         return jsonify({"ok": True})
+
+    # alias legado para a interface atual
+    @app.post("/api/kds/<solicitacao_id>/entregar")
+    def api_kds_entregar(solicitacao_id: str):
+        return api_kds_sinal_entregar(solicitacao_id)
 
     @app.get("/cozinha")
     def cozinha_page():
@@ -111,7 +188,16 @@ def register_kds_routes(app: Flask) -> None:
         if denied is not None:
             return denied
 
-        html = r"""<!doctype html>
+        # A interface existente será reescrita nas Fases 5-7.
+        # Por ora, mantemos o HTML legado para não quebrar a experiência.
+        html = _cozinha_html_legacy()
+        resp = make_response(html, 200)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+
+def _cozinha_html_legacy() -> str:
+    return r"""<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
@@ -197,37 +283,17 @@ def register_kds_routes(app: Flask) -> None:
     function waUrl(phone, msg) {
       const originalPhone = phone;
       const digits = String(phone || '').replace(/\D+/g, '');
-      console.log('[waUrl] input:', originalPhone, 'digits:', digits);
-      
       if (!digits) return '';
-      
-      // Validar comprimento mínimo (10 dígitos sem 55, 12 com 55)
-      if (digits.length < 10) {
-        console.log('[waUrl] invalid: too few digits:', digits.length);
-        return '';
-      }
-      if (digits.length > 13) {
-        console.log('[waUrl] invalid: too many digits:', digits.length);
-        return '';
-      }
-      
-      // Add Brazilian country code (55) if not present
+      if (digits.length < 10) return '';
+      if (digits.length > 13) return '';
       let urlDigits = digits;
       if (!digits.startsWith('55')) {
         urlDigits = '55' + digits;
       }
-      
-      // Validar comprimento final (12 ou 13 dígitos com 55)
-      if (urlDigits.length < 12 || urlDigits.length > 13) {
-        console.log('[waUrl] invalid: final length:', urlDigits.length);
-        return '';
-      }
-      
+      if (urlDigits.length < 12 || urlDigits.length > 13) return '';
       let url = 'https://wa.me/' + urlDigits;
       const m = String(msg || '').trim();
       if (m) url += '?text=' + encodeURIComponent(m);
-      
-      console.log('[waUrl] output:', url);
       return url;
     }
 
@@ -250,7 +316,7 @@ def register_kds_routes(app: Flask) -> None:
       const cliente = safeText(p.cliente_nome);
       const whatsapp = safeText(p.cliente_whatsapp);
       const tipo = safeText(p.tipo_entrega || p.kind);
-      const status = (p.kds && p.kds.status) ? String(p.kds.status) : 'AGUARDANDO';
+      const status = (p.kds && p.kds.status) ? String(p.kds.status) : 'NOVO';
       const obs = safeText(p.observacoes || p.obs || p.observacao);
       const enderecoRaw = (p.endereco || (p.entrega && p.entrega.endereco) || (p.cliente && p.cliente.endereco));
       const addr = (() => {
@@ -274,32 +340,28 @@ def register_kds_routes(app: Flask) -> None:
         return {text: out.join('\n').trim(), maps: safeText(maps).trim()};
       })();
 
-      let statusClass = '';
-      let statusLabel = status;
-      if (status === 'AGUARDANDO') {
-        statusClass = 'background:rgba(10, 92, 47, 0.08);border-color:rgba(10, 92, 47, 0.35);color:var(--verde)';
-        statusLabel = 'AGUARDANDO';
-      } else if (status === 'EM_PREPARO') {
-        statusClass = 'background:var(--amarelo);border-color:var(--verde);color:var(--verde)';
-        statusLabel = 'EM PREPARO';
-      } else if (status === 'PRONTO') {
-        statusClass = 'background:var(--verde);border-color:var(--verde);color:#fff';
-        statusLabel = 'PRONTO';
-      }
+      const statusMap = {
+        'NOVO': { label: 'NOVO', cls: 'background:rgba(10, 92, 47, 0.08);border-color:rgba(10, 92, 47, 0.35);color:var(--verde)' },
+        'EM_PREPARO': { label: 'EM PREPARO', cls: 'background:var(--amarelo);border-color:var(--verde);color:var(--verde)' },
+        'PRONTO': { label: 'PRONTO', cls: 'background:var(--verde);border-color:var(--verde);color:#fff' },
+        'SINALIZADO': { label: 'SINALIZADO', cls: 'background:#1565c0;border-color:#1565c0;color:#fff' },
+        'RECUSADO': { label: 'RECUSADO', cls: 'background:#e03131;border-color:#e03131;color:#fff' },
+      };
+      const st = statusMap[status] || { label: status, cls: 'background:rgba(10, 92, 47, 0.08);border-color:rgba(10, 92, 47, 0.35);color:var(--verde)' };
 
       let buttons = '';
-      if (status === 'AGUARDANDO') {
+      if (status === 'NOVO' || status === 'AGUARDANDO') {
         buttons = '<button type="button" class="secondary" data-preparar="' + id + '">Preparar</button>';
       } else if (status === 'EM_PREPARO') {
         buttons = '<button type="button" class="secondary" data-pronto="' + id + '">Pronto</button>';
       } else if (status === 'PRONTO') {
-        buttons = '<button type="button" class="secondary" data-entregar="' + id + '">Entregar</button>';
+        buttons = '<button type="button" class="secondary" data-entregar="' + id + '">Sinal entregar</button>';
       }
 
       let html = '<div class="card" data-pedido-id="' + id + '">';
       html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">';
       html += '<div style="font-weight:900;font-size:16px">Pedido #' + id + '</div>';
-      html += '<span class="pill" style="' + statusClass + '">' + statusLabel + '</span>';
+      html += '<span class="pill" style="' + st.cls + '">' + st.label + '</span>';
       html += '</div>';
       if (cliente) html += '<div class="muted" style="margin-top:6px">Cliente: ' + cliente + '</div>';
       if (tipo) html += '<div class="muted">Tipo: ' + tipo + '</div>';
@@ -311,9 +373,9 @@ def register_kds_routes(app: Flask) -> None:
         html += '<div style="margin-top:10px"><div style="font-weight:800">Observações</div><div class="muted">' + obs + '</div></div>';
       }
       html += '<div style="margin-top:10px">' + renderItens(p.itens) + '</div>';
-      
+
       if (whatsapp) {
-        const url = waUrl(whatsapp, 'Olá! 😊 Estamos entrando em contato sobre seu pedido.');
+        const url = waUrl(whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.');
         if (url) {
           html += '<div style="margin-top:10px"><a class="wa discreet" target="_blank" rel="noopener" href="' + url + '">'
             + '<span aria-hidden="true" style="font-size:16px">🟢</span>'
@@ -336,10 +398,10 @@ def register_kds_routes(app: Flask) -> None:
           fetch('/api/kds/fila?limit=50', {method: 'GET'}),
           fetch('/api/kds/preparando?limit=50', {method: 'GET'})
         ]);
-        
+
         const j = await resp.json().catch(() => ({}));
         const prepJ = await prepResp.json().catch(() => ({}));
-        
+
         if (!resp.ok || !j || j.ok !== true) {
           statsEl.innerHTML = '<div class="muted">Falha ao carregar</div>';
           pedidosBox.innerHTML = '';
@@ -350,26 +412,27 @@ def register_kds_routes(app: Flask) -> None:
         const stJ = await stResp.json().catch(() => ({}));
         if (stResp.ok && stJ && stJ.ok === true) {
           const st = stJ.stats || {};
-          const pend = (st && st.pendentes !== undefined && st.pendentes !== null) ? st.pendentes : 0;
-          const conc = (st && st.concluidos !== undefined && st.concluidos !== null) ? st.concluidos : 0;
-          statsEl.innerHTML = '<div class="muted">Pendentes: ' + pend + ' | Concluídos hoje: ' + conc + '</div>';
+          const pend = st.pendentes || 0;
+          const prontos = st.prontos || 0;
+          const sinalizados = st.sinalizados || 0;
+          statsEl.innerHTML = '<div class="muted">Pendentes: ' + pend + ' | Prontos: ' + prontos + ' | Sinalizados: ' + sinalizados + '</div>';
         }
 
         const fila = j.fila || [];
         const preparando = (prepJ && prepJ.ok === true) ? (prepJ.fila || []) : [];
-        
+
         let html = '';
-        
+
         if (fila.length > 0) {
-          html += '<div style="font-weight:900;font-size:16px;margin:12px 0 8px 0">AGUARDANDO</div>';
+          html += '<div style="font-weight:900;font-size:16px;margin:12px 0 8px 0">NOVOS</div>';
           html += fila.map(p => renderPedidoCard(p)).join('');
         }
-        
+
         if (preparando.length > 0) {
           html += '<div style="font-weight:900;font-size:16px;margin:20px 0 8px 0">EM PREPARO</div>';
           html += preparando.map(p => renderPedidoCard(p)).join('');
         }
-        
+
         if (fila.length === 0 && preparando.length === 0) {
           pedidosBox.innerHTML = '<div class="muted">Nenhum pedido na fila.</div>';
           return;
@@ -439,6 +502,3 @@ def register_kds_routes(app: Flask) -> None:
   </script>
 </body>
 </html>"""
-        resp = make_response(html, 200)
-        resp.headers["Cache-Control"] = "no-store"
-        return resp

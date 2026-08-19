@@ -11,6 +11,7 @@ from flask import Flask
 from .core import build_context, init_pg_if_enabled
 from .kds.routes import register_kds_routes
 from .logistica.routes import register_logistica_routes
+from .logistica.service import iniciar_processador_background
 from .ops_auth.routes import register_ops_auth_routes
 from .routes import register_routes
 from .taxa_entrega.routes import register_taxa_entrega_routes
@@ -44,5 +45,10 @@ def create_app() -> Flask:
     register_kds_routes(app)
     register_logistica_routes(app)
     register_taxa_entrega_routes(app)
+
+    try:
+        iniciar_processador_background(intervalo_segundos=30)
+    except Exception:
+        pass
 
     return app

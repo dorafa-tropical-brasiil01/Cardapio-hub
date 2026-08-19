@@ -14,11 +14,15 @@ from .service import (
     corrida_nova,
     corrida_remove,
     corrida_start,
+    iniciar_processador_background,
+    listar_integracoes,
     listar_prontos,
     obter_corrida_atual,
     pedido_cancelar_definitivo,
     pedido_dessinalizar,
     pedido_sinalizar,
+    processar_pendentes,
+    reprocessar_integracao,
 )
 
 
@@ -209,6 +213,39 @@ def register_logistica_routes(app: Flask) -> None:
             return jsonify({"error": "senha_invalida"}), 403
         try:
             pedido_cancelar_definitivo(ops_user_id=uid, solicitacao_id=sid, note=note)
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True})
+
+    @app.post("/api/logistica/processar_pendentes")
+    def api_logistica_processar_pendentes():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        try:
+            processados = processar_pendentes()
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 400
+        return jsonify({"ok": True, "processados": processados})
+
+    @app.get("/api/logistica/integracoes")
+    def api_logistica_integracoes():
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 100)
+        except Exception:
+            limit = 100
+        return jsonify({"ok": True, "integracoes": listar_integracoes(limit=limit)})
+
+    @app.post("/api/logistica/integracoes/<int:integracao_id>/reprocessar")
+    def api_logistica_integracao_reprocessar(integracao_id: int):
+        denied = require_ops_login(role="LOGISTICA")
+        if denied is not None:
+            return denied
+        try:
+            reprocessar_integracao(integracao_id=integracao_id)
         except RuntimeError as e:
             return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True})
