@@ -250,6 +250,42 @@ def register_logistica_routes(app: Flask) -> None:
             return jsonify({"error": str(e)}), 400
         return jsonify({"ok": True})
 
+    @app.post("/api/external/logistica/status")
+    def api_external_logistica_status():
+        from .service import processar_webhook_central
+
+        auth = str(request.headers.get("Authorization") or "").strip()
+        if auth.startswith("Bearer "):
+            token = auth.split(" ", 1)[1].strip()
+        else:
+            token = auth
+
+        valid = False
+        configured_key = str(os.environ.get("CENTRAL_LOGISTICA_API_KEY") or "").strip()
+        fallback = str(os.environ.get("LOGISTICA_WEBHOOK_SECRET") or "").strip()
+        if configured_key and token == configured_key:
+            valid = True
+        if fallback and token == fallback:
+            valid = True
+        if not valid:
+            return jsonify({"error": "nao_autorizado"}), 401
+
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "payload_invalido"}), 400
+
+        key = str(request.headers.get("X-Idempotency-Key") or "").strip() or None
+        try:
+            out = processar_webhook_central(payload=body, idempotency_key=key)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except RuntimeError as e:
+            return jsonify({"error": str(e)}), 503
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+        return jsonify(out)
+
     @app.get("/entregas")
     def entregas_page():
         denied = require_ops_login(role="LOGISTICA")

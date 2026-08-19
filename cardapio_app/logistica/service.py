@@ -432,3 +432,73 @@ def iniciar_processador_background(intervalo_segundos: int = 30) -> None:
 def parar_processador_background() -> None:
     global _PROCESSADOR_ATIVO
     _PROCESSADOR_ATIVO = False
+
+
+# ------------------------------------------------------------------
+# WEBHOOK DE RETORNO DA CENTRAL LOGÍSTICA
+# ------------------------------------------------------------------
+
+
+def processar_webhook_central(*, payload: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+    """
+    Processa um webhook enviado pela Central Logística informando mudança de status.
+    Status esperados: ATRIBUIDO, EM_ROTA, ENTREGUE.
+    """
+    if not core.pg_enabled():
+        raise RuntimeError("pg_disabled")
+
+    sid = str((payload or {}).get("solicitacao_id") or "").strip()
+    status = str((payload or {}).get("status") or "").strip().upper()
+    evento = str((payload or {}).get("evento") or status or "").strip().upper()
+    empresa_id = str((payload or {}).get("empresa_id") or core.central_logistica_empresa_id() or "EMPRESA01").strip()
+    protocolo = str((payload or {}).get("protocolo") or "").strip() or None
+    nota = str((payload or {}).get("nota") or "").strip() or None
+    entregador = (payload or {}).get("entregador") or {}
+    if not isinstance(entregador, dict):
+        entregador = {}
+
+    if not sid:
+        raise ValueError("solicitacao_id_ausente")
+    if not evento or evento not in ("ATRIBUIDO", "EM_ROTA", "ENTREGUE"):
+        raise ValueError("status_invalido")
+
+    key = str(idempotency_key or "").strip()
+    if not key:
+        key = _idempotency_key(
+            empresa_id=empresa_id,
+            solicitacao_id=sid,
+            evento=evento,
+        )
+
+    inserido = core.pg_store.logistica_webhook_receber(
+        idempotency_key=key,
+        solicitacao_id=sid,
+        evento=evento,
+        status_externo=status or evento,
+        payload=payload,
+    )
+
+    if not inserido:
+        # Idempotente: já processado.
+        return {"ok": True, "solicitacao_id": sid, "status": evento, "reprocessado": True}
+
+    note_parts = [f"Central: {evento}"]
+    if protocolo:
+        note_parts.append(f"protocolo={protocolo}")
+    if entregador.get("nome"):
+        note_parts.append(f"entregador={entregador.get('nome')}")
+    if nota:
+        note_parts.append(nota)
+    note = " | ".join(note_parts)
+
+    core.pg_store.logistica_event_add(
+        ops_user_id=0,
+        solicitacao_id=sid,
+        event=evento,
+        note=note,
+    )
+
+    if evento == "ENTREGUE":
+        core.pg_store.kds_marcar_entregue(solicitacao_id=sid, ops_user_id=0)
+
+    return {"ok": True, "solicitacao_id": sid, "status": evento}

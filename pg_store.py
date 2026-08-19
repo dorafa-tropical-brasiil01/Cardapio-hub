@@ -168,6 +168,7 @@ def init_db() -> None:
                     recusado_em TIMESTAMPTZ,
                     motivo_recusa TEXT,
                     nota_recusa TEXT,
+                    entregue_em TIMESTAMPTZ,
                     ops_user_id BIGINT
                 )
                 """
@@ -177,6 +178,7 @@ def init_db() -> None:
             cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS recusado_em TIMESTAMPTZ")
             cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS motivo_recusa TEXT")
             cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS nota_recusa TEXT")
+            cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS entregue_em TIMESTAMPTZ")
             cur.execute("UPDATE kds_orders SET status = 'NOVO' WHERE status = 'AGUARDANDO'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_status_created ON kds_orders(status, created_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_done_em ON kds_orders(done_em)")
@@ -270,6 +272,22 @@ def init_db() -> None:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_integracoes_status ON logistica_integracoes(status, proxima_tentativa_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_integracoes_solicitacao ON logistica_integracoes(solicitacao_id)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS logistica_webhooks_recebidos (
+                    id BIGSERIAL PRIMARY KEY,
+                    idempotency_key TEXT NOT NULL UNIQUE,
+                    solicitacao_id TEXT NOT NULL,
+                    evento TEXT NOT NULL,
+                    status_externo TEXT NOT NULL,
+                    payload_json JSONB NOT NULL,
+                    recebido_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_webhooks_solicitacao ON logistica_webhooks_recebidos(solicitacao_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_logistica_webhooks_evento ON logistica_webhooks_recebidos(evento)")
 
             # ------------------------------------------------------------------
             # PAGAMENTOS EXTERNOS — Fase 1 (PIX via PagBank API Order)
@@ -2329,6 +2347,63 @@ def calcular_status_publico(*, solicitacao_id: str) -> dict[str, Any]:
         "finalizado": False,
         "atualizado_em": _now_iso(),
     }
+
+
+def kds_marcar_entregue(*, solicitacao_id: str, ops_user_id: int | None = None) -> None:
+    """Registra entregue_em em kds_orders quando a Central confirma entrega."""
+    if not is_enabled():
+        return
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+    uid = int(ops_user_id) if ops_user_id is not None else None
+    entregue = _now_iso()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE kds_orders
+                SET entregue_em=%s, ops_user_id=COALESCE(%s, ops_user_id)
+                WHERE solicitacao_id=%s AND entregue_em IS NULL
+                """,
+                (entregue, uid, sid),
+            )
+
+
+def logistica_webhook_receber(
+    *,
+    idempotency_key: str,
+    solicitacao_id: str,
+    evento: str,
+    status_externo: str,
+    payload: dict[str, Any],
+) -> bool:
+    """
+    Registra um webhook recebido da Central Logística.
+    Retorna True se foi inserido (novo), False se idempotency_key já existia.
+    """
+    if not is_enabled():
+        return False
+    _ensure_db_ready()
+    sid = str(solicitacao_id or "").strip()
+    key = str(idempotency_key or "").strip()
+    ev = str(evento or "").strip().upper()
+    st = str(status_externo or "").strip().upper()
+    if not sid or not key or not ev or not st:
+        raise ValueError("dados_incompletos")
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO logistica_webhooks_recebidos
+                    (idempotency_key, solicitacao_id, evento, status_externo, payload_json)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """,
+                (key, sid, ev, st, psycopg2.extras.Json(payload)),
+            )
+            return cur.rowcount > 0
 
 
 # ---------------------------------------------------------------------------
