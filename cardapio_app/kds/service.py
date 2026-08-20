@@ -259,6 +259,14 @@ def sinal_entregar(*, solicitacao_id: str, ops_user_id: int) -> None:
 
     _validar_status(sid, domain.KDS_STATUS_PRONTO)
 
+    # Integração com Central Logística: criar ordem e debitar carteira
+    remo_status, remo_body = _criar_ordem_na_remo(solicitacao_id=sid)
+    if remo_status == 402:
+        raise RuntimeError("saldo_insuficiente_carteira_remo")
+    if remo_status >= 400:
+        # Não quebra o KDS se a REMO estiver fora; continua com fila local
+        pass
+
     try:
         core.pg_store.kds_marcar_sinalizado(solicitacao_id=sid, ops_user_id=uid)
     except Exception as e:
@@ -272,6 +280,39 @@ def sinal_entregar(*, solicitacao_id: str, ops_user_id: int) -> None:
     except Exception:
         # Não pode quebrar a transição do KDS
         pass
+
+
+def _criar_ordem_na_remo(*, solicitacao_id: str) -> tuple[int, Any]:
+    if not core.central_logistica_enabled():
+        return 0, None
+
+    sid = str(solicitacao_id or "").strip()
+    pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
+    record = pedido.get("record") or pedido
+    if not isinstance(record, dict):
+        record = {}
+
+    entrega = record.get("entrega") or {}
+    if not isinstance(entrega, dict):
+        entrega = {}
+
+    taxa = float(entrega.get("taxa") or record.get("taxa_entrega") or 0.0)
+
+    payload = {
+        "empresa_id": core.central_logistica_empresa_id(),
+        "solicitacao_id": sid,
+        "taxa": taxa,
+        "payload": {
+            "cliente_nome": str(record.get("cliente_nome") or "").strip(),
+            "cliente_whatsapp": str(record.get("cliente_whatsapp") or "").strip(),
+            "tipo_entrega": str(record.get("tipo_entrega") or record.get("kind") or "").strip().upper(),
+            "taxa": taxa,
+            "total": float(record.get("total") or record.get("valor") or 0.0),
+        },
+    }
+
+    status, body = core.central_logistica_post_json(path="/api/v1/ordens", payload=payload)
+    return status, body
 
 
 def _criar_integracao_logistica(*, solicitacao_id: str, ops_user_id: int) -> None:
@@ -344,62 +385,3 @@ def stats_hoje() -> dict[str, int]:
         return core.pg_store.kds_stats_today()
     except Exception:
         return {"pendentes": 0, "prontos": 0, "sinalizados": 0}
-
-
-# ------------------------------------------------------------------
-# Notificações (Telegram como auxiliar)
-# ------------------------------------------------------------------
-
-
-def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
-    if not core.pg_enabled():
-        return
-    if not core.telegram_bot_enabled():
-        return
-
-    sid = str(solicitacao_id or "").strip()
-    if not sid:
-        return
-
-    base = str(base_url or "").strip().rstrip("/")
-    if not base:
-        return
-
-    try:
-        users = core.pg_store.list_ops_users_by_role(role="KDS")
-    except Exception:
-        users = []
-    if not users:
-        return
-
-    pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
-    cliente = str(pedido.get("cliente_nome") or "").strip()
-    tipo_raw = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
-    tipo_up = tipo_raw.upper().replace(" ", "_")
-    if tipo_up in ("DELIVERY", "ENTREGA"):
-        tipo = "DELIVERY"
-    elif tipo_up in ("RETIRADA", "RETIRAR", "PICKUP"):
-        tipo = "RETIRADA"
-    else:
-        tipo = tipo_raw
-
-    link = base + "/cozinha"
-    msg_lines: list[str] = []
-    msg_lines.append("ALERTA: NOVO PEDIDO")
-    if cliente:
-        msg_lines.append(f"Cliente: {cliente}")
-    if tipo:
-        msg_lines.append(f"Tipo: {tipo}")
-    msg_lines.append(link)
-    msg = "\n".join(msg_lines).strip()
-
-    for u in users:
-        chat_id = str((u or {}).get("telegram") or "").strip()
-        if not chat_id:
-            continue
-        if not chat_id.lstrip("-").isdigit():
-            continue
-        try:
-            core.telegram_send_message_to(chat_id=chat_id, text=msg)
-        except Exception:
-            continue

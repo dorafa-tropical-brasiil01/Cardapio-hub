@@ -153,6 +153,39 @@ def central_logistica_enabled() -> bool:
     return bool(url)
 
 
+def central_logistica_post_json(*, path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> tuple[int, Any]:
+    """Faz POST JSON na REMO e retorna (status_code, body_json)."""
+    base_url = str(central_logistica_webhook_url() or "").strip().rstrip("/")
+    if not base_url:
+        return 0, None
+
+    url = f"{base_url}{path}"
+    data = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url=url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": str(central_logistica_api_key() or "").strip(),
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout or central_logistica_timeout_seconds()) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            return int(resp.status), (json.loads(raw) if raw else None)
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", errors="replace")
+        try:
+            body = json.loads(raw) if raw else None
+        except Exception:
+            body = None
+        return int(e.code), body
+    except Exception:
+        logger.exception("Erro ao chamar REMO: %s", url)
+        return 0, None
+
+
 def pdv_products_url() -> str:
     return os.environ.get("PDV_PRODUCTS_URL", "http://127.0.0.1:5600/api/produtos?ativos=1")
 
