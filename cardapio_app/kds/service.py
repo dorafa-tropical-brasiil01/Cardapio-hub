@@ -296,18 +296,39 @@ def _criar_ordem_na_remo(*, solicitacao_id: str) -> tuple[int, Any]:
     if not isinstance(entrega, dict):
         entrega = {}
 
-    taxa = float(entrega.get("taxa") or record.get("taxa_entrega") or 0.0)
+    endereco = record.get("endereco") if isinstance(record.get("endereco"), dict) else {}
+    client_maps_url = str((endereco or {}).get("maps_url") or "").strip()
+
+    # Taxa que o cliente pagou (informativo — a REMO calcula o seu próprio frete)
+    taxa_cliente = float(entrega.get("taxa") or record.get("taxa_entrega") or 0.0)
+
+    # Origem (loja) — vem do catálogo publicado (deliveryFee.origin_maps_url)
+    origin_maps_url = ""
+    try:
+        from ..taxa_entrega import service as taxa_service
+        from .. import core as _core
+        ctx = _core.build_context()
+        published = _core.read_catalogo_publicado(ctx)
+        ui = published.get("ui") if isinstance(published, dict) else {}
+        cfg = taxa_service.get_delivery_fee_config_from_ui(ui)
+        origin_maps_url = str(cfg.get("origin_maps_url") or cfg.get("deliveryFeeOriginMapsUrl") or "").strip()
+    except Exception:
+        pass
 
     payload = {
         "empresa_id": core.central_logistica_empresa_id(),
         "solicitacao_id": sid,
-        "taxa": taxa,
+        "taxa": taxa_cliente,
+        "origin_maps_url": origin_maps_url,
+        "client_maps_url": client_maps_url,
         "payload": {
             "cliente_nome": str(record.get("cliente_nome") or "").strip(),
             "cliente_whatsapp": str(record.get("cliente_whatsapp") or "").strip(),
             "tipo_entrega": str(record.get("tipo_entrega") or record.get("kind") or "").strip().upper(),
-            "taxa": taxa,
+            "taxa_cliente": taxa_cliente,
             "total": float(record.get("total") or record.get("valor") or 0.0),
+            "origin_maps_url": origin_maps_url,
+            "client_maps_url": client_maps_url,
         },
     }
 
@@ -338,13 +359,36 @@ def _criar_integracao_logistica(*, solicitacao_id: str, ops_user_id: int) -> Non
     if not isinstance(endereco, dict):
         endereco = {}
 
+    # Endereço pode estar no top-level do record (formato novo)
+    if not endereco:
+        endereco = record.get("endereco") if isinstance(record.get("endereco"), dict) else {}
+
     itens = record.get("itens") or record.get("items") or []
     if not isinstance(itens, list):
         itens = []
 
+    client_maps_url = str(endereco.get("maps_url") or "").strip()
+
+    # Origem (loja) — vem do catálogo publicado
+    origin_maps_url = ""
+    try:
+        from ..taxa_entrega import service as taxa_service
+        ctx2 = core.build_context()
+        published = core.read_catalogo_publicado(ctx2)
+        ui = published.get("ui") if isinstance(published, dict) else {}
+        cfg = taxa_service.get_delivery_fee_config_from_ui(ui)
+        origin_maps_url = str(cfg.get("origin_maps_url") or cfg.get("deliveryFeeOriginMapsUrl") or "").strip()
+    except Exception:
+        pass
+
+    taxa_cliente = float(entrega.get("taxa") or record.get("taxa_entrega") or 0.0)
+
     payload = {
         "empresa_id": core.central_logistica_empresa_id(),
         "solicitacao_id": sid,
+        "taxa": taxa_cliente,
+        "origin_maps_url": origin_maps_url,
+        "client_maps_url": client_maps_url,
         "origem": "DoRafa_KDS",
         "evento": "SINALIZADO",
         "sinalizado_em": datetime.now().isoformat(timespec="seconds"),
@@ -360,9 +404,9 @@ def _criar_integracao_logistica(*, solicitacao_id: str, ops_user_id: int) -> Non
                 "bairro": str(endereco.get("bairro") or "").strip(),
                 "cidade": str(endereco.get("cidade") or "").strip(),
                 "referencia": str(endereco.get("referencia") or "").strip(),
-                "maps_url": str(endereco.get("maps_url") or "").strip(),
+                "maps_url": client_maps_url,
             },
-            "taxa": float(entrega.get("taxa") or record.get("taxa_entrega") or 0.0),
+            "taxa": taxa_cliente,
         },
         "pedido": {
             "itens": itens,
