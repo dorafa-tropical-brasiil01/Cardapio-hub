@@ -268,9 +268,12 @@ def _idempotency_key(*, empresa_id: str, solicitacao_id: str, evento: str) -> st
 
 
 def _enviar_para_central(*, payload: dict[str, Any], idempotency_key: str) -> tuple[bool, dict[str, Any] | None, str | None]:
-    url = str(core.central_logistica_webhook_url() or "").strip()
-    if not url:
+    base_url = str(core.central_logistica_webhook_url() or "").strip().rstrip("/")
+    if not base_url:
         return False, None, "url_nao_configurada"
+
+    # O endpoint da REMO para criar ordens de serviço é /api/v1/ordens.
+    url = f"{base_url}/api/v1/ordens"
 
     api_key = str(core.central_logistica_api_key() or "").strip()
     timeout = core.central_logistica_timeout_seconds()
@@ -281,7 +284,7 @@ def _enviar_para_central(*, payload: dict[str, Any], idempotency_key: str) -> tu
         "X-Idempotency-Key": idempotency_key,
     }
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers["x-api-key"] = api_key
 
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url=url, data=data, headers=headers, method="POST")
