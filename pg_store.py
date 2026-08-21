@@ -438,6 +438,32 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_public_pedidos_idem_expires ON public_pedidos_idempotency(expires_at)"
             )
 
+            # ------------------------------------------------------------------
+            # ZONAS DE COBERTURA PARA TAXA DE ENTREGA
+            #
+            # Zonas independentes do Cardápio (espelham a ideia da REMO mas
+            # com taxas próprias). O operador cadastra no PDV, salva aqui,
+            # e o cálculo do checkout usa max(taxa_zona, taxa_distancia).
+            # ------------------------------------------------------------------
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS taxa_entrega_zonas (
+                    id BIGSERIAL PRIMARY KEY,
+                    nome TEXT NOT NULL,
+                    cidade TEXT,
+                    taxa NUMERIC(12,2) NOT NULL DEFAULT 0,
+                    gratis BOOLEAN NOT NULL DEFAULT FALSE,
+                    poligono JSONB,
+                    cor TEXT DEFAULT '#00d4aa',
+                    ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                    criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_taxa_entrega_zonas_ativo ON taxa_entrega_zonas(ativo)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_taxa_entrega_zonas_cidade ON taxa_entrega_zonas(cidade)")
+
 
 def ensure_default_mesas(*, max_mesas: int = 30) -> None:
     if not is_enabled():
@@ -2404,6 +2430,188 @@ def logistica_webhook_receber(
                 (key, sid, ev, st, psycopg2.extras.Json(payload)),
             )
             return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# ZONAS DE COBERTURA (taxa_entrega_zonas) — CRUD
+# ---------------------------------------------------------------------------
+
+def list_taxa_entrega_zonas(*, ativo_only: bool = True) -> list[dict[str, Any]]:
+    if not is_enabled():
+        return []
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            if ativo_only:
+                cur.execute(
+                    "SELECT id, nome, cidade, taxa, gratis, poligono, cor, ativo, criado_em, atualizado_em "
+                    "FROM taxa_entrega_zonas WHERE ativo = TRUE ORDER BY cidade, taxa ASC"
+                )
+            else:
+                cur.execute(
+                    "SELECT id, nome, cidade, taxa, gratis, poligono, cor, ativo, criado_em, atualizado_em "
+                    "FROM taxa_entrega_zonas ORDER BY ativo DESC, cidade, taxa ASC"
+                )
+            rows = cur.fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        poligono = r[5]
+        if isinstance(poligono, str):
+            try:
+                import json as _json
+                poligono = _json.loads(poligono)
+            except Exception:
+                poligono = None
+        out.append({
+            "id": r[0],
+            "nome": r[1],
+            "cidade": r[2],
+            "taxa": float(r[3] or 0),
+            "gratis": bool(r[4]),
+            "poligono": poligono,
+            "cor": r[6] or "#00d4aa",
+            "ativo": bool(r[7]),
+            "criado_em": str(r[8]) if r[8] else None,
+            "atualizado_em": str(r[9]) if r[9] else None,
+        })
+    return out
+
+
+def create_taxa_entrega_zona(
+    *,
+    nome: str,
+    cidade: str | None = None,
+    taxa: float = 0,
+    gratis: bool = False,
+    poligono: list | None = None,
+    cor: str = "#00d4aa",
+) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+    _ensure_db_ready()
+    import json as _json
+    import psycopg2.extras as _extras
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO taxa_entrega_zonas (nome, cidade, taxa, gratis, poligono, cor, ativo)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                RETURNING id, nome, cidade, taxa, gratis, poligono, cor, ativo
+                """,
+                (
+                    str(nome or "").strip(),
+                    (str(cidade or "").strip() or None),
+                    float(taxa or 0),
+                    bool(gratis),
+                    _extras.Json(poligono) if poligono else None,
+                    str(cor or "#00d4aa").strip() or "#00d4aa",
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+    if not row:
+        return None
+    poligono_out = row[5]
+    if isinstance(poligono_out, str):
+        try:
+            poligono_out = _json.loads(poligono_out)
+        except Exception:
+            poligono_out = None
+    return {
+        "id": row[0],
+        "nome": row[1],
+        "cidade": row[2],
+        "taxa": float(row[3] or 0),
+        "gratis": bool(row[4]),
+        "poligono": poligono_out,
+        "cor": row[6] or "#00d4aa",
+        "ativo": bool(row[7]),
+    }
+
+
+def update_taxa_entrega_zona(
+    *,
+    zona_id: int,
+    nome: str | None = None,
+    cidade: str | None = None,
+    taxa: float | None = None,
+    gratis: bool | None = None,
+    poligono: list | None = None,
+    cor: str | None = None,
+    ativo: bool | None = None,
+) -> dict[str, Any] | None:
+    if not is_enabled():
+        return None
+    _ensure_db_ready()
+    import json as _json
+    import psycopg2.extras as _extras
+    sets: list[str] = []
+    params: list[Any] = []
+    if nome is not None:
+        sets.append("nome = %s")
+        params.append(str(nome).strip())
+    if cidade is not None:
+        sets.append("cidade = %s")
+        params.append(str(cidade).strip() or None)
+    if taxa is not None:
+        sets.append("taxa = %s")
+        params.append(float(taxa))
+    if gratis is not None:
+        sets.append("gratis = %s")
+        params.append(bool(gratis))
+    if poligono is not None:
+        sets.append("poligono = %s")
+        params.append(_extras.Json(poligono))
+    if cor is not None:
+        sets.append("cor = %s")
+        params.append(str(cor).strip() or "#00d4aa")
+    if ativo is not None:
+        sets.append("ativo = %s")
+        params.append(bool(ativo))
+    if not sets:
+        return None
+    sets.append("atualizado_em = NOW()")
+    params.append(int(zona_id))
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE taxa_entrega_zonas SET {', '.join(sets)} WHERE id = %s "
+                "RETURNING id, nome, cidade, taxa, gratis, poligono, cor, ativo",
+                tuple(params),
+            )
+            row = cur.fetchone()
+            conn.commit()
+    if not row:
+        return None
+    poligono_out = row[5]
+    if isinstance(poligono_out, str):
+        try:
+            poligono_out = _json.loads(poligono_out)
+        except Exception:
+            poligono_out = None
+    return {
+        "id": row[0],
+        "nome": row[1],
+        "cidade": row[2],
+        "taxa": float(row[3] or 0),
+        "gratis": bool(row[4]),
+        "poligono": poligono_out,
+        "cor": row[6] or "#00d4aa",
+        "ativo": bool(row[7]),
+    }
+
+
+def delete_taxa_entrega_zona(*, zona_id: int) -> bool:
+    if not is_enabled():
+        return False
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM taxa_entrega_zonas WHERE id = %s", (int(zona_id),))
+            deleted = cur.rowcount > 0
+            conn.commit()
+    return deleted
 
 
 # ---------------------------------------------------------------------------

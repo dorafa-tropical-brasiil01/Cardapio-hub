@@ -79,6 +79,62 @@ def _haversine_km(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * r * math.asin(math.sqrt(h))
 
 
+def _point_in_polygon(point: tuple[float, float], polygon: list[list[float]]) -> bool:
+    """Ray casting algorithm. polygon = [[lat,lng], ...] (fechado ou não)."""
+    if not polygon or len(polygon) < 3:
+        return False
+    lat, lng = point
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        yi, xi = polygon[i][0], polygon[i][1]
+        yj, xj = polygon[j][0], polygon[j][1]
+        intersect = ((yi > lat) != (yj > lat)) and (
+            lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-30) + xi
+        )
+        if intersect:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _load_zonas_ativas() -> list[dict[str, Any]]:
+    """Carrega zonas de cobertura ativas do PostgreSQL."""
+    try:
+        from .. import core as _core
+        if not _core.pg_enabled():
+            return []
+        return _core.pg_store.list_taxa_entrega_zonas(ativo_only=True)
+    except Exception:
+        return []
+
+
+def _compute_fee_by_zone(
+    *,
+    client_coords: tuple[float, float],
+    zonas: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Calcula taxa por zona (ponto dentro do polígono).
+
+    Retorna a primeira zona que contém o ponto (menor taxa primeiro se empate).
+    Se a zona for 'gratis', retorna taxa 0.
+    """
+    for zona in zonas:
+        poligono = zona.get("poligono")
+        if not poligono or len(poligono) < 3:
+            continue
+        if _point_in_polygon(client_coords, poligono):
+            taxa = 0.0 if bool(zona.get("gratis")) else float(zona.get("taxa") or 0)
+            return {
+                "zone": zona.get("nome"),
+                "cidade": zona.get("cidade"),
+                "zone_fee": taxa,
+                "gratis": bool(zona.get("gratis")),
+            }
+    return None
+
+
 def get_delivery_fee_config_from_ui(ui: Any) -> dict[str, Any]:
     if not isinstance(ui, dict):
         return {}
@@ -135,43 +191,69 @@ def compute_delivery_fee(*, ui: Any, client_maps_url: str) -> dict[str, Any] | N
     min_v = _parse_float(cfg.get("min") if "min" in cfg else cfg.get("deliveryFeeMin"))
     max_v = _parse_float(cfg.get("max") if "max" in cfg else cfg.get("deliveryFeeMax"))
 
-    fee = float(base) + float(per_km) * float(dist_km)
+    # --- Cálculo por distância (haversine) ---
+    distance_fee = float(base) + float(per_km) * float(dist_km)
 
     if min_v is not None:
-        fee = max(fee, float(min_v))
+        distance_fee = max(distance_fee, float(min_v))
     if max_v is not None:
-        fee = min(fee, float(max_v))
+        distance_fee = min(distance_fee, float(max_v))
+
+    # --- Cálculo por zona (ponto no polígono) ---
+    zone_result = _compute_fee_by_zone(client_coords=b, zonas=_load_zonas_ativas())
+    zone_fee = zone_result["zone_fee"] if zone_result else None
+
+    # --- Regra final: max(zona, distancia) ---
+    # Se tem zona e a zona é grátis (taxa=0), o cliente paga 0.
+    # Se tem zona e não é grátis, usa max(taxa_zona, taxa_distancia).
+    # Se não tem zona, usa só distancia.
+    if zone_result and zone_result.get("gratis"):
+        fee = 0.0
+        method = "zone_gratis"
+    elif zone_fee is not None:
+        fee = max(float(zone_fee), float(distance_fee))
+        method = "zone_max_distance"
+    else:
+        fee = float(distance_fee)
+        method = "haversine"
 
     # Regra de arredondamento para valor cheio em reais:
     # - até X,49: arredonda para baixo
     # - a partir de X,50: arredonda para cima
-    try:
-        floor_v = math.floor(float(fee))
-        frac = float(fee) - float(floor_v)
-        fee_int = int(floor_v + (1 if frac >= 0.5 else 0))
-        fee = float(fee_int)
-    except Exception:
-        pass
+    # (Não arredonda se a zona é grátis — mantém 0.00)
+    if method != "zone_gratis":
+        try:
+            floor_v = math.floor(float(fee))
+            frac = float(fee) - float(floor_v)
+            fee_int = int(floor_v + (1 if frac >= 0.5 else 0))
+            fee = float(fee_int)
+        except Exception:
+            pass
 
-    # Reaplica limites após arredondamento, para manter coerência caso min/max
-    # sejam definidos e a regra de arredondamento produza um valor fora deles.
-    if min_v is not None:
-        fee = max(fee, float(min_v))
-    if max_v is not None:
-        fee = min(fee, float(max_v))
+    # Reaplica limites após arredondamento (exceto se grátis)
+    if method != "zone_gratis":
+        if min_v is not None:
+            fee = max(fee, float(min_v))
+        if max_v is not None:
+            fee = min(fee, float(max_v))
 
     fee = round(fee + 1e-9, 2)
     dist_km = round(float(dist_km) + 1e-9, 3)
 
-    return {
+    result: dict[str, Any] = {
         "enabled": True,
         "fee": fee,
         "distance_km": dist_km,
         "origin_maps_url": origin_maps_url,
         "client_maps_url": str(client_maps_url or "").strip(),
         "computed_em": datetime.now().isoformat(timespec="seconds"),
-        "method": "haversine",
+        "method": method,
     }
+    if zone_result:
+        result["zone"] = zone_result.get("zone")
+        result["zone_fee"] = zone_result.get("zone_fee")
+        result["zone_gratis"] = zone_result.get("gratis")
+    return result
 
 
 def apply_delivery_fee_to_order_record(*, ctx: core.AppContext, rec: dict[str, Any]) -> dict[str, Any]:

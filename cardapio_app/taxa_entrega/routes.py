@@ -115,3 +115,87 @@ def register_taxa_entrega_routes(app: Flask) -> None:
     @app.post("/api/pdv/taxa_entrega/desabilitar")
     def api_pdv_taxa_entrega_desabilitar():
         return _set_enabled(False)
+
+    # ------------------------------------------------------------------
+    # ZONAS DE COBERTURA — CRUD (independente do Cardápio)
+    # ------------------------------------------------------------------
+
+    @app.get("/api/pdv/taxa_entrega/zonas")
+    def api_pdv_taxa_entrega_zonas_list():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"ok": True, "zonas": []})
+        try:
+            ativo_only = str(request.args.get("ativo") or "1").strip().lower() in ("1", "true", "yes")
+            zonas = core.pg_store.list_taxa_entrega_zonas(ativo_only=ativo_only)
+        except Exception:
+            zonas = []
+        return jsonify({"ok": True, "zonas": zonas})
+
+    @app.post("/api/pdv/taxa_entrega/zonas")
+    def api_pdv_taxa_entrega_zonas_create():
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+        body = request.get_json(silent=True) or {}
+        nome = str(body.get("nome") or "").strip()
+        if not nome:
+            return jsonify({"error": "nome_obrigatorio"}), 400
+        try:
+            zona = core.pg_store.create_taxa_entrega_zona(
+                nome=nome,
+                cidade=str(body.get("cidade") or "").strip() or None,
+                taxa=float(body.get("taxa") or 0),
+                gratis=bool(body.get("gratis") or False),
+                poligono=body.get("poligono"),
+                cor=str(body.get("cor") or "#00d4aa").strip() or "#00d4aa",
+            )
+        except Exception:
+            return jsonify({"error": "internal_error"}), 500
+        if not isinstance(zona, dict):
+            return jsonify({"error": "create_failed"}), 400
+        return jsonify({"ok": True, "zona": zona})
+
+    @app.put("/api/pdv/taxa_entrega/zonas/<int:zona_id>")
+    def api_pdv_taxa_entrega_zonas_update(zona_id: int):
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+        body = request.get_json(silent=True) or {}
+        try:
+            zona = core.pg_store.update_taxa_entrega_zona(
+                zona_id=int(zona_id),
+                nome=body.get("nome"),
+                cidade=body.get("cidade"),
+                taxa=float(body["taxa"]) if "taxa" in body and body["taxa"] is not None else None,
+                gratis=body.get("gratis"),
+                poligono=body.get("poligono"),
+                cor=body.get("cor"),
+                ativo=body.get("ativo"),
+            )
+        except Exception:
+            return jsonify({"error": "internal_error"}), 500
+        if not isinstance(zona, dict):
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"ok": True, "zona": zona})
+
+    @app.delete("/api/pdv/taxa_entrega/zonas/<int:zona_id>")
+    def api_pdv_taxa_entrega_zonas_delete(zona_id: int):
+        denied = core.require_pdv_key()
+        if denied is not None:
+            return denied
+        if not core.pg_enabled():
+            return jsonify({"error": "pg_disabled"}), 500
+        try:
+            deleted = core.pg_store.delete_taxa_entrega_zona(zona_id=int(zona_id))
+        except Exception:
+            return jsonify({"error": "internal_error"}), 500
+        if not deleted:
+            return jsonify({"error": "not_found"}), 404
+        return jsonify({"ok": True})
