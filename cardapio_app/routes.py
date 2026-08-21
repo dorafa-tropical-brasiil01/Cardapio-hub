@@ -758,6 +758,97 @@ def register_routes(app: Flask) -> None:
         resp.headers["Expires"] = "0"
         return resp
 
+    @app.get("/manifest.json")
+    def pwa_manifest():
+        manifest = {
+            "name": "DORAFA Tropical Brasil - Cardápio",
+            "short_name": "DoRafa",
+            "description": "Cardápio online DORAFA Tropical Brasil",
+            "start_url": "/",
+            "display": "standalone",
+            "background_color": "#d9f3a2",
+            "theme_color": "#0a5c2f",
+            "orientation": "portrait",
+            "icons": [
+                {"src": "/assets/LOGO_2.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/LOGO_2.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+            ],
+        }
+        return jsonify(manifest)
+
+    @app.get("/sw.js")
+    def pwa_service_worker():
+        js = r"""const CACHE_NAME = 'dorafa-cardapio-v1';
+const OFFLINE_URL = '/offline.html';
+const PRECACHE = [OFFLINE_URL, '/assets/app.css', '/assets/app.js'];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE).catch(() => {}))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== location.origin) return;
+
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(req).then((resp) => {
+        const copy = resp.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put('/', copy)).catch(() => {});
+        return resp;
+      }).catch(() => caches.match('/').then((r) => r || caches.match(OFFLINE_URL)))
+    );
+    return;
+  }
+
+  event.respondWith(
+    fetch(req).then((resp) => {
+      const copy = resp.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+      return resp;
+    }).catch(() => caches.match(req).then((r) => r || caches.match(OFFLINE_URL)))
+  );
+});
+"""
+        resp = make_response(js, 200)
+        resp.headers["Content-Type"] = "application/javascript"
+        resp.headers["Service-Worker-Allowed"] = "/"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.get("/offline.html")
+    def pwa_offline():
+        html = (
+            '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />'
+            '<meta name="viewport" content="width=device-width, initial-scale=1" />'
+            '<title>Offline</title></head><body style="font-family:Arial;padding:20px;text-align:center;'
+            'background:#d9f3a2;color:#0a5c2f;min-height:100vh;display:flex;align-items:center;'
+            'justify-content:center;flex-direction:column">'
+            '<h1>Sem conexão</h1>'
+            '<p>O cardápio está offline. Verifique a internet e tente novamente.</p>'
+            '<a href="/" style="display:inline-block;margin-top:20px;padding:12px 20px;'
+            'background:#0a5c2f;color:#fff;text-decoration:none;border-radius:10px;">Tentar novamente</a>'
+            '</body></html>'
+        )
+        resp = make_response(html, 200)
+        resp.headers["Content-Type"] = "text/html"
+        return resp
+
     @app.get("/index")
     def legacy_index_redirect():
         resp = make_response("", 302)
