@@ -158,6 +158,10 @@ def register_taxa_entrega_routes(app: Flask) -> None:
         if not cidade:
             return jsonify({"error": "cidade_obrigatoria"}), 400
 
+        # Normaliza acentos (REMO pode ter "Vianopolis" sem acento)
+        import unicodedata as _ud
+        cidade_norm = _ud.normalize("NFKD", cidade).encode("ASCII", "ignore").decode("ASCII").strip()
+
         # 1. Buscar zonas da REMO
         remo_url = str(core.central_logistica_webhook_url() or "").strip().rstrip("/")
         remo_key = str(core.central_logistica_api_key() or "").strip()
@@ -168,7 +172,7 @@ def register_taxa_entrega_routes(app: Flask) -> None:
         import urllib.request as _ur
         import json as _json
 
-        qs = _up.urlencode({"cidade": cidade})
+        qs = _up.urlencode({"cidade": cidade_norm})
         url = f"{remo_url}/api/v1/zonas?{qs}"
         req = _ur.Request(url, headers={"x-api-key": remo_key, "User-Agent": "Cardapio/1.0"})
         try:
