@@ -117,7 +117,7 @@ def register_taxa_entrega_routes(app: Flask) -> None:
         return _set_enabled(False)
 
     # ------------------------------------------------------------------
-    # ZONAS DE COBERTURA — CRUD (independente do Cardápio)
+    # ZONAS DE COBERTURA — espelha zonas da REMO, com taxas editáveis
     # ------------------------------------------------------------------
 
     @app.get("/api/pdv/taxa_entrega/zonas")
@@ -128,40 +128,114 @@ def register_taxa_entrega_routes(app: Flask) -> None:
         if not core.pg_enabled():
             return jsonify({"ok": True, "zonas": []})
         try:
-            ativo_only = str(request.args.get("ativo") or "1").strip().lower() in ("1", "true", "yes")
-            zonas = core.pg_store.list_taxa_entrega_zonas(ativo_only=ativo_only)
+            zonas = core.pg_store.list_taxa_entrega_zonas(ativo_only=False)
         except Exception:
             zonas = []
-        return jsonify({"ok": True, "zonas": zonas})
+        # Não expõe polígono para o PDV — é dado interno do sistema
+        safe = []
+        for z in zonas:
+            safe.append({
+                "id": z.get("id"),
+                "nome": z.get("nome"),
+                "cidade": z.get("cidade"),
+                "taxa": z.get("taxa"),
+                "gratis": z.get("gratis"),
+                "cor": z.get("cor"),
+                "ativo": z.get("ativo"),
+            })
+        return jsonify({"ok": True, "zonas": safe})
 
-    @app.post("/api/pdv/taxa_entrega/zonas")
-    def api_pdv_taxa_entrega_zonas_create():
+    @app.post("/api/pdv/taxa_entrega/zonas/importar_remo")
+    def api_pdv_taxa_entrega_zonas_importar_remo():
+        """Importa zonas da REMO para uma cidade, preservando taxas/grátis já editados."""
         denied = core.require_pdv_key()
         if denied is not None:
             return denied
         if not core.pg_enabled():
             return jsonify({"error": "pg_disabled"}), 500
         body = request.get_json(silent=True) or {}
-        nome = str(body.get("nome") or "").strip()
-        if not nome:
-            return jsonify({"error": "nome_obrigatorio"}), 400
+        cidade = str(body.get("cidade") or "").strip()
+        if not cidade:
+            return jsonify({"error": "cidade_obrigatoria"}), 400
+
+        # 1. Buscar zonas da REMO
+        remo_url = str(core.central_logistica_webhook_url() or "").strip().rstrip("/")
+        remo_key = str(core.central_logistica_api_key() or "").strip()
+        if not remo_url or not remo_key:
+            return jsonify({"error": "remo_nao_configurada"}), 500
+
+        import urllib.parse as _up
+        import urllib.request as _ur
+        import json as _json
+
+        qs = _up.urlencode({"cidade": cidade})
+        url = f"{remo_url}/api/v1/zonas?{qs}"
+        req = _ur.Request(url, headers={"x-api-key": remo_key, "User-Agent": "Cardapio/1.0"})
         try:
-            zona = core.pg_store.create_taxa_entrega_zona(
-                nome=nome,
-                cidade=str(body.get("cidade") or "").strip() or None,
-                taxa=float(body.get("taxa") or 0),
-                gratis=bool(body.get("gratis") or False),
-                poligono=body.get("poligono"),
-                cor=str(body.get("cor") or "#00d4aa").strip() or "#00d4aa",
-            )
+            with _ur.urlopen(req, timeout=15) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            return jsonify({"error": "remo_indisponivel", "detail": str(e)}), 502
+
+        remo_zonas = data.get("zonas") if isinstance(data, dict) else None
+        if not isinstance(remo_zonas, list):
+            return jsonify({"error": "remo_resposta_invalida"}), 502
+
+        # 2. Buscar zonas locais já cadastradas (para preservar taxa/grátis editados)
+        try:
+            locais = core.pg_store.list_taxa_entrega_zonas(ativo_only=False)
         except Exception:
-            return jsonify({"error": "internal_error"}), 500
-        if not isinstance(zona, dict):
-            return jsonify({"error": "create_failed"}), 400
-        return jsonify({"ok": True, "zona": zona})
+            locais = []
+        locais_by_nome = {str(z.get("nome") or "").strip().lower(): z for z in locais if isinstance(z, dict)}
+
+        importados = 0
+        atualizados = 0
+        for rz in remo_zonas:
+            if not isinstance(rz, dict):
+                continue
+            nome = str(rz.get("nome") or "").strip()
+            if not nome:
+                continue
+            poligono = rz.get("poligono")
+            cor = str(rz.get("cor") or "#00d4aa").strip() or "#00d4aa"
+            existente = locais_by_nome.get(nome.lower())
+            if existente:
+                # Preserva taxa e grátis editados localmente; atualiza só polígono/cor
+                try:
+                    core.pg_store.update_taxa_entrega_zona(
+                        zona_id=int(existente.get("id")),
+                        poligono=poligono,
+                        cor=cor,
+                    )
+                    atualizados += 1
+                except Exception:
+                    pass
+            else:
+                # Cria nova zona com a taxa da REMO
+                try:
+                    core.pg_store.create_taxa_entrega_zona(
+                        nome=nome,
+                        cidade=cidade,
+                        taxa=float(rz.get("taxa") or 0),
+                        gratis=False,
+                        poligono=poligono,
+                        cor=cor,
+                    )
+                    importados += 1
+                except Exception:
+                    pass
+
+        return jsonify({
+            "ok": True,
+            "cidade": cidade,
+            "importados": importados,
+            "atualizados": atualizados,
+            "total_remo": len(remo_zonas),
+        })
 
     @app.put("/api/pdv/taxa_entrega/zonas/<int:zona_id>")
     def api_pdv_taxa_entrega_zonas_update(zona_id: int):
+        """Atualiza apenas taxa, grátis e ativo (operador não edita polígono)."""
         denied = core.require_pdv_key()
         if denied is not None:
             return denied
@@ -169,21 +243,30 @@ def register_taxa_entrega_routes(app: Flask) -> None:
             return jsonify({"error": "pg_disabled"}), 500
         body = request.get_json(silent=True) or {}
         try:
+            taxa_val = body.get("taxa")
             zona = core.pg_store.update_taxa_entrega_zona(
                 zona_id=int(zona_id),
-                nome=body.get("nome"),
-                cidade=body.get("cidade"),
-                taxa=float(body["taxa"]) if "taxa" in body and body["taxa"] is not None else None,
+                taxa=float(taxa_val) if taxa_val is not None else None,
                 gratis=body.get("gratis"),
-                poligono=body.get("poligono"),
-                cor=body.get("cor"),
                 ativo=body.get("ativo"),
             )
         except Exception:
             return jsonify({"error": "internal_error"}), 500
         if not isinstance(zona, dict):
             return jsonify({"error": "not_found"}), 404
-        return jsonify({"ok": True, "zona": zona})
+        # Não expõe polígono
+        return jsonify({
+            "ok": True,
+            "zona": {
+                "id": zona.get("id"),
+                "nome": zona.get("nome"),
+                "cidade": zona.get("cidade"),
+                "taxa": zona.get("taxa"),
+                "gratis": zona.get("gratis"),
+                "cor": zona.get("cor"),
+                "ativo": zona.get("ativo"),
+            },
+        })
 
     @app.delete("/api/pdv/taxa_entrega/zonas/<int:zona_id>")
     def api_pdv_taxa_entrega_zonas_delete(zona_id: int):
