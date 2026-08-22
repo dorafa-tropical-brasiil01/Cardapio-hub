@@ -2923,6 +2923,36 @@ def expire_stale_pending_payments() -> int:
             return count
 
 
+def list_pendentes_para_reconciliacao(*, janela_minutos: int = 5) -> list[dict[str, Any]]:
+    """Lista cobranças PENDENTE candidatas à reconciliação com o PSP.
+
+    Seleciona cobranças cujo expires_at está dentro da janela (ex.: 5 minutos
+    antes ou depois da expiração) para que o scheduler consulte o PSP e detecte
+    aprovações que não chegaram via webhook.
+
+    Bloco 3.7 — reconciliação Cardápio → PSP.
+    """
+    if not is_enabled():
+        return []
+
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT * FROM external_payments
+                WHERE status = 'PENDENTE'
+                  AND provider_transaction_id IS NOT NULL
+                  AND expires_at IS NOT NULL
+                  AND expires_at <= NOW() + (%s || ' minutes')::interval
+                ORDER BY expires_at ASC
+                LIMIT 50
+                """,
+                (str(int(janela_minutos)),),
+            )
+            rows = cur.fetchall()
+            return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # IDEMPOTÊNCIA DE PEDIDOS PÚBLICOS
 #

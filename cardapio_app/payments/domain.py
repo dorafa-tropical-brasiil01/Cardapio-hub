@@ -228,6 +228,26 @@ class PaymentService:
             )
             return None
 
+        # Defesa em profundidade (Bloco 3.5): validar reference_id e currency
+        # se o evento trouxer esses campos.
+        if event.reference_id:
+            record_ref = str(record.get("reference_id") or "").strip()
+            if record_ref and event.reference_id != record_ref:
+                logger.warning(
+                    "processar_webhook - reference_id divergente: evento=%s registro=%s (rejeitado)",
+                    event.reference_id, record_ref,
+                )
+                return None
+
+        if event.currency:
+            record_currency = str(record.get("currency") or "").strip().upper()
+            if record_currency and event.currency.upper() != record_currency:
+                logger.warning(
+                    "processar_webhook - currency divergente: evento=%s registro=%s (rejeitado)",
+                    event.currency, record_currency,
+                )
+                return None
+
         # Idempotência: se last_event_id == event.event_id, já processado
         current_last_event_id = record.get("last_event_id")
         if current_last_event_id is not None and current_last_event_id == event.event_id:

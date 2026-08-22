@@ -441,6 +441,12 @@ class PagBankAdapter(PaymentProviderAdapter):
             if amount_cents is not None:
                 amount = _centavos_to_reais(int(amount_cents))
 
+        # Extrair reference_id (defesa em profundidade — Bloco 3.5)
+        reference_id = str(payload.get("reference_id") or "").strip() or None
+
+        # PagBank API Order opera em BRL; o webhook não envia currency explicitamente.
+        currency = "BRL"
+
         # Gap 3: sintetizar event_id via SHA-256(body bruto)
         event_id = hashlib.sha256(body).hexdigest()
 
@@ -454,8 +460,8 @@ class PagBankAdapter(PaymentProviderAdapter):
                 pass
 
         logger.info(
-            "validate_webhook - success order_id=%s status=%s event_id=%s",
-            order_id, status.value, event_id[:16],
+            "validate_webhook - success order_id=%s status=%s event_id=%s reference=%s",
+            order_id, status.value, event_id[:16], reference_id,
         )
 
         return PaymentEvent(
@@ -465,6 +471,8 @@ class PagBankAdapter(PaymentProviderAdapter):
             event_id=event_id,
             occurred_at=occurred_at,
             raw_payload=body.decode("utf-8", errors="replace"),
+            reference_id=reference_id,
+            currency=currency,
         )
 
 

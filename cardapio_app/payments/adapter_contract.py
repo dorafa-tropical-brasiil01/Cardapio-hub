@@ -119,6 +119,8 @@ class PaymentEvent:
     amount: float | None = None                # Valor confirmado (se informado)
     occurred_at: datetime | None = None        # Quando ocorreu (se informado)
     raw_payload: str | None = None             # Payload bruto (para debug/log)
+    reference_id: str | None = None            # ID de referência (external_payment_id) — defesa em profundidade
+    currency: str | None = None                # Moeda (ex.: "BRL") — defesa em profundidade
 
 
 # ---------------------------------------------------------------------------

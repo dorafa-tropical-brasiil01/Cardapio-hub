@@ -603,3 +603,95 @@ def tem_cobranca_ativa_pendente(rec: dict[str, Any]) -> bool:
     """True quando existe cobrança ativa PENDENTE e ainda não expirada."""
     estado = domain.derivar_estado_pagamento(solicitacao=rec)
     return estado == domain.ESTADO_AGUARDANDO
+
+
+# ---------------------------------------------------------------------------
+# SCHEDULER DE FUNDO — expiração local + reconciliação Cardápio → PSP
+#
+# Bloco 4.3b (expiração local) e Bloco 3.7 (reconciliação com PSP).
+# Roda em thread daemon única, iniciada em app_factory.create_app().
+# ---------------------------------------------------------------------------
+
+import threading
+import time
+
+_SCHEDULER_ATIVO: bool = False
+_SCHEDULER_THREAD: threading.Thread | None = None
+
+
+def _ciclo_expiracao() -> None:
+    """Expira cobranças PENDENTE cujo expires_at < NOW()."""
+    if not core.pg_enabled():
+        return
+    try:
+        service, _ = build_payment_service()
+        service.expirar_pendentes()
+    except Exception:
+        logger.exception("pagamento_scheduler - falha expirar_pendentes")
+
+
+def _ciclo_reconciliacao() -> None:
+    """Consulta o PSP para cobranças PENDENTE próximas da expiração.
+
+    Se o PSP retornar APROVADO/EXPIRADO/CANCELADO, atualiza o registro local.
+    Garante que pagamentos aprovados sem webhook sejam detectados.
+    """
+    if not core.pg_enabled():
+        return
+    try:
+        pendentes = core.pg_store.list_pendentes_para_reconciliacao(janela_minutos=5)
+    except Exception:
+        logger.exception("pagamento_scheduler - falha ao listar pendentes para reconciliacao")
+        return
+    if not pendentes:
+        return
+
+    try:
+        service, _ = build_payment_service()
+    except Exception:
+        logger.exception("pagamento_scheduler - falha ao construir PaymentService")
+        return
+
+    for p in pendentes:
+        pid = str(p.get("id") or "").strip()
+        if not pid:
+            continue
+        try:
+            service.consultar_pagamento(payment_id=pid)
+        except Exception:
+            logger.exception("pagamento_scheduler - falha reconciliar payment_id=%s", pid)
+
+
+def iniciar_scheduler_background(
+    *,
+    intervalo_expiracao_segundos: int = 60,
+    intervalo_reconciliacao_segundos: int = 300,
+) -> None:
+    """Inicia thread daemon que executa expiração e reconciliação periodicamente.
+
+    Deve ser chamado uma única vez em app_factory.create_app().
+    """
+    global _SCHEDULER_ATIVO, _SCHEDULER_THREAD
+
+    if _SCHEDULER_ATIVO:
+        return
+    _SCHEDULER_ATIVO = True
+
+    def _loop() -> None:
+        ciclo = 0
+        while _SCHEDULER_ATIVO:
+            ciclo += 1
+            # Expiração local: a cada ciclo (default 60s)
+            _ciclo_expiracao()
+            # Reconciliação com PSP: a cada N ciclos (default 300s = 5 ciclos de 60s)
+            if ciclo % max(1, intervalo_reconciliacao_segundos // max(1, intervalo_expiracao_segundos)) == 0:
+                _ciclo_reconciliacao()
+            time.sleep(max(5, int(intervalo_expiracao_segundos)))
+
+    _SCHEDULER_THREAD = threading.Thread(target=_loop, name="pagamento_scheduler", daemon=True)
+    _SCHEDULER_THREAD.start()
+
+
+def parar_scheduler_background() -> None:
+    global _SCHEDULER_ATIVO
+    _SCHEDULER_ATIVO = False

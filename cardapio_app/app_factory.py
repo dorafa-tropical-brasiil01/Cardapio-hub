@@ -13,6 +13,7 @@ from .kds.routes import register_kds_routes
 from .logistica.routes import register_logistica_routes
 from .logistica.service import iniciar_processador_background
 from .ops_auth.routes import register_ops_auth_routes
+from .pagamento_online.service import iniciar_scheduler_background
 from .routes import register_routes
 from .taxa_entrega.routes import register_taxa_entrega_routes
 
@@ -48,6 +49,16 @@ def create_app() -> Flask:
 
     try:
         iniciar_processador_background(intervalo_segundos=30)
+    except Exception:
+        pass
+
+    # Scheduler de pagamentos: expiração local (Bloco 4.3b) + reconciliação
+    # Cardápio → PSP (Bloco 3.7). Thread daemon única.
+    try:
+        iniciar_scheduler_background(
+            intervalo_expiracao_segundos=60,
+            intervalo_reconciliacao_segundos=300,
+        )
     except Exception:
         pass
 

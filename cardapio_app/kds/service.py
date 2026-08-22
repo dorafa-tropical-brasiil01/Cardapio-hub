@@ -429,3 +429,68 @@ def stats_hoje() -> dict[str, int]:
         return core.pg_store.kds_stats_today()
     except Exception:
         return {"pendentes": 0, "prontos": 0, "sinalizados": 0}
+
+
+# ------------------------------------------------------------------
+# Notificações (Telegram como auxiliar)
+# ------------------------------------------------------------------
+
+
+def notificar_kds_novo_pedido(*, solicitacao_id: str, base_url: str) -> None:
+    """Notifica usuários com role KDS sobre um novo pedido liberado para produção.
+
+    Usa Telegram como canal auxiliar. O KDS em si continua funcionando via
+    polling das rotas /api/kds/*; esta notificação é um alerta push opcional
+    para cozinheiros que têm Telegram configurado.
+    """
+    if not core.pg_enabled():
+        return
+    if not core.telegram_bot_enabled():
+        return
+
+    sid = str(solicitacao_id or "").strip()
+    if not sid:
+        return
+
+    base = str(base_url or "").strip().rstrip("/")
+    if not base:
+        return
+
+    try:
+        users = core.pg_store.list_ops_users_by_role(role="KDS")
+    except Exception:
+        users = []
+    if not users:
+        return
+
+    pedido = get_solicitacao_by_id(solicitacao_id=sid) or {}
+    cliente = str(pedido.get("cliente_nome") or "").strip()
+    tipo_raw = str(pedido.get("tipo_entrega") or pedido.get("kind") or "").strip()
+    tipo_up = tipo_raw.upper().replace(" ", "_")
+    if tipo_up in ("DELIVERY", "ENTREGA"):
+        tipo = "DELIVERY"
+    elif tipo_up in ("RETIRADA", "RETIRAR", "PICKUP"):
+        tipo = "RETIRADA"
+    else:
+        tipo = tipo_raw
+
+    link = base + "/cozinha"
+    msg_lines: list[str] = []
+    msg_lines.append("ALERTA: NOVO PEDIDO")
+    if cliente:
+        msg_lines.append(f"Cliente: {cliente}")
+    if tipo:
+        msg_lines.append(f"Tipo: {tipo}")
+    msg_lines.append(link)
+    msg = "\n".join(msg_lines).strip()
+
+    for u in users:
+        chat_id = str((u or {}).get("telegram") or "").strip()
+        if not chat_id:
+            continue
+        if not chat_id.lstrip("-").isdigit():
+            continue
+        try:
+            core.telegram_send_message_to(chat_id=chat_id, text=msg)
+        except Exception:
+            continue
