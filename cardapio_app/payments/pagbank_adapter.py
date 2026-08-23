@@ -341,12 +341,21 @@ class PagBankAdapter(PaymentProviderAdapter):
                 )
             raise
 
+        # Fonte de status: o sandbox do PagBank NÃO popula `status` no
+        # top-level da Order (retorna None). A fonte de verdade é
+        # `charges[0].status`. Em produção o top-level pode existir; quando
+        # ambos estão presentes, a charge tem precedência (é o status real
+        # do pagamento, não um agregado da order).
         raw_status = resp.get("status")
+        charges = resp.get("charges") or []
+        if charges and isinstance(charges, list):
+            charge_status = charges[0].get("status")
+            if charge_status:
+                raw_status = charge_status
         status = _normalize_pagbank_status(raw_status)
 
         # Extrair amount confirmado (se disponível)
         amount = None
-        charges = resp.get("charges") or []
         if charges and isinstance(charges, list):
             charge = charges[0]
             amount_cents = charge.get("amount", {}).get("value")
@@ -360,6 +369,11 @@ class PagBankAdapter(PaymentProviderAdapter):
                 amount_cents = (qr_codes[0].get("amount") or {}).get("value")
                 if amount_cents is not None:
                     amount = _centavos_to_reais(int(amount_cents))
+
+        logger.info(
+            "get_payment_status - success order_id=%s status=%s amount=%s",
+            provider_transaction_id, status.value, amount,
+        )
 
         return PaymentStatusResult(
             provider_transaction_id=provider_transaction_id,
