@@ -75,6 +75,19 @@ def pix_online_enabled() -> bool:
     return raw in ("1", "true", "yes", "y", "on")
 
 
+def cartao_online_enabled() -> bool:
+    """Feature flag da Fase 2A (cartão de crédito online).
+
+    Desligada por padrão. NÃO TEM EFEITO sobre o fluxo atual (V1/PIX) —
+    é preparação para V2 (M2 backend). Quando ligada, permitirá que o
+    Cardápio aceite cartão de crédito online via PagBank.
+
+    O fluxo PIX não é afetado por esta flag em nenhuma circunstância.
+    """
+    raw = str(os.environ.get("CARDAPIO_CARTAO_ONLINE_ENABLED") or "").strip().lower()
+    return raw in ("1", "true", "yes", "y", "on")
+
+
 # ---------------------------------------------------------------------------
 # Métodos elegíveis a pagamento online
 # ---------------------------------------------------------------------------
