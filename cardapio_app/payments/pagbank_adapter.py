@@ -110,6 +110,7 @@ class PagBankAdapter(PaymentProviderAdapter):
         *,
         token: str,
         webhook_token: str | None = None,
+        webhook_url: str | None = None,
         sandbox: bool = True,
         base_url: str | None = None,
     ) -> None:
@@ -117,11 +118,14 @@ class PagBankAdapter(PaymentProviderAdapter):
         Args:
             token: Bearer token para autenticar na API Order.
             webhook_token: Token da conta para validar assinatura do webhook (SHA-256).
+            webhook_url: URL base para onde o PagBank envia notificacoes de pagamento.
+                Se informado, e incluido em notification_urls no POST /orders.
             sandbox: True para sandbox, False para produção.
             base_url: URL base override (se None, usa sandbox/produção conforme flag).
         """
         self._token = token
         self._webhook_token = webhook_token
+        self._webhook_url = webhook_url.rstrip("/") if webhook_url else None
         self._base_url = (
             base_url.rstrip("/")
             if base_url
@@ -234,6 +238,11 @@ class PagBankAdapter(PaymentProviderAdapter):
 
         if expiration_date_iso:
             body["qr_codes"][0]["expiration_date"] = expiration_date_iso
+
+        # notification_urls: URL para onde o PagBank envia o webhook de pagamento.
+        # Sem isso, o PagBank nao notifica — o pagamento fica invisivel ao sistema.
+        if self._webhook_url:
+            body["notification_urls"] = [self._webhook_url]
 
         logger.info(
             "create_payment - reference=%s amount_centavos=%s expires=%s",

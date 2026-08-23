@@ -50,6 +50,7 @@ def build_adapter() -> Any:
     provider_id = "PAGBANK"
     token = ""
     webhook_token = None
+    webhook_url = None
     sandbox = True
     base_url = None
 
@@ -59,6 +60,7 @@ def build_adapter() -> Any:
             env = str(settings.get("environment") or "SANDBOX").upper()
             sandbox = env == "SANDBOX"
             base_url = settings.get("base_url") or None
+            webhook_url = settings.get("webhook_url") or None
 
             creds = core.pg_store.get_provider_credentials(provider_id=provider_id)
             from ..credential_crypto import decrypt as cred_decrypt
@@ -84,6 +86,13 @@ def build_adapter() -> Any:
         webhook_token = os.environ.get("PAGBANK_WEBHOOK_TOKEN")
         sandbox = os.environ.get("PAGBANK_SANDBOX", "1") == "1"
 
+    # Montar URL do webhook se nao veio do banco.
+    # Padrao: {CARDAPIO_PUBLIC_BASE_URL}/api/payments/webhook
+    if not webhook_url:
+        base = str(os.environ.get("CARDAPIO_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+        if base:
+            webhook_url = f"{base}/api/payments/webhook"
+
     if not token:
         raise RuntimeError(
             "PagBank não configurado. Use a tela de Provedores de Pagamento no PDV "
@@ -93,6 +102,7 @@ def build_adapter() -> Any:
     return PagBankAdapter(
         token=token,
         webhook_token=webhook_token,
+        webhook_url=webhook_url,
         sandbox=sandbox,
         base_url=base_url,
     )
