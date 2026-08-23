@@ -24,6 +24,7 @@ from cardapio_app.sensitive_data import (  # noqa: E402
     assert_no_sensitive,
     redact_sensitive,
     safe_log_dict,
+    validate_metadata,
 )
 
 
@@ -390,6 +391,78 @@ def test_payload_pix_nao_e_alterado() -> None:
 
 
 # ---------------------------------------------------------------------------
+# 11. validate_metadata — guard para persistência
+# ---------------------------------------------------------------------------
+
+
+def test_validate_metadata_aceita_seguro() -> None:
+    metadata = {"description": "Pedido 123", "charge_id": "CHAR_ABC"}
+    result = validate_metadata(metadata)
+    assert result == metadata
+    print("[OK] 11: validate_metadata aceita metadata sem campos sensíveis")
+
+
+def test_validate_metadata_none_retorna_none() -> None:
+    assert validate_metadata(None) is None
+    print("[OK] 11b: validate_metadata(None) retorna None")
+
+
+def test_validate_metadata_rejeita_encrypted_card() -> None:
+    metadata = {"description": "Pedido 123", "encrypted_card": "SECRETO"}
+    try:
+        validate_metadata(metadata)
+    except ValueError as e:
+        assert "encrypted_card" in str(e)
+        print("[OK] 11c: validate_metadata rejeita encrypted_card com ValueError")
+        return
+    raise AssertionError("deveria ter rejeitado encrypted_card")
+
+
+def test_validate_metadata_rejeita_cvv() -> None:
+    metadata = {"cvv": "123"}
+    try:
+        validate_metadata(metadata)
+    except ValueError as e:
+        assert "cvv" in str(e)
+        print("[OK] 11d: validate_metadata rejeita cvv com ValueError")
+        return
+    raise AssertionError("deveria ter rejeitado cvv")
+
+
+def test_validate_metadata_rejeita_multiplos() -> None:
+    metadata = {"description": "ok", "encrypted_card": "SEC", "card_number": "4242", "cvv": "123"}
+    try:
+        validate_metadata(metadata)
+    except ValueError as e:
+        msg = str(e)
+        assert "encrypted_card" in msg
+        assert "card_number" in msg
+        assert "cvv" in msg
+        assert "description" not in msg, "campo seguro não deve estar na lista de rejeitados"
+        print("[OK] 11e: validate_metadata rejeita múltiplos campos e lista todos")
+        return
+    raise AssertionError("deveria ter rejeitado múltiplos campos sensíveis")
+
+
+def test_validate_metadata_rejeita_tipo_invalido() -> None:
+    try:
+        validate_metadata("não é dict")  # type: ignore
+    except TypeError as e:
+        assert "dict" in str(e)
+        print("[OK] 11f: validate_metadata rejeita tipo não-dict com TypeError")
+        return
+    raise AssertionError("deveria ter rejeitado tipo inválido")
+
+
+def test_validate_metadata_charge_id_e_seguro() -> None:
+    """charge_id é necessário para estorno (R3) e NÃO é sensível."""
+    metadata = {"charge_id": "CHAR_67FC568B-00D8-431D-B2E7-755E3E6C66A0", "nsu": "032416400102"}
+    result = validate_metadata(metadata)
+    assert result == metadata
+    print("[OK] 11g: validate_metadata aceita charge_id e nsu (não-sensíveis, necessários para estorno)")
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -409,6 +482,13 @@ def main() -> int:
         test_response_pagbank_sem_dados_sensiveis,
         test_sensitive_field_names_completo,
         test_payload_pix_nao_e_alterado,
+        test_validate_metadata_aceita_seguro,
+        test_validate_metadata_none_retorna_none,
+        test_validate_metadata_rejeita_encrypted_card,
+        test_validate_metadata_rejeita_cvv,
+        test_validate_metadata_rejeita_multiplos,
+        test_validate_metadata_rejeita_tipo_invalido,
+        test_validate_metadata_charge_id_e_seguro,
     ]
 
     falhas = 0

@@ -144,3 +144,42 @@ def assert_no_sensitive(data: Any, *, path: str = "") -> None:
     elif isinstance(data, list):
         for i, item in enumerate(data):
             assert_no_sensitive(item, path=f"{path}[{i}]")
+
+
+def validate_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Guard: valida que metadata não contém campos sensíveis antes de persistir.
+
+    Uso obrigatório (V2) antes de gravar metadata em external_payments:
+
+        safe_metadata = validate_metadata(raw_metadata)
+        store.create_external_payment(..., metadata=safe_metadata)
+
+    Se encontrar campos sensíveis, levanta ValueError com a lista de campos
+    rejeitados. Isto é intencional — preferimos falhar alto a persistir dados
+    sensíveis silenciosamente.
+
+    Args:
+        metadata: dict a validar, ou None.
+
+    Returns:
+        O próprio dict se válido, None se entrada for None.
+
+    Raises:
+        ValueError: se metadata contiver campos sensíveis.
+    """
+    if metadata is None:
+        return None
+    if not isinstance(metadata, dict):
+        raise TypeError(f"metadata deve ser dict ou None, recebido {type(metadata).__name__}")
+
+    rejected: list[str] = []
+    for key in metadata:
+        if _is_sensitive_key(key):
+            rejected.append(str(key))
+
+    if rejected:
+        raise ValueError(
+            f"metadata contém campos sensíveis e não pode ser persistido: {rejected}"
+        )
+
+    return metadata
