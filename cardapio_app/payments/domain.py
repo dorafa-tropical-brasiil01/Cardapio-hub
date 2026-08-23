@@ -22,6 +22,7 @@ Regras canônicas (Contrato 0D):
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
@@ -74,6 +75,23 @@ _PROVIDER_TO_DOMAIN = {
 
 def _normalize_status(provider_status: ProviderPaymentStatus) -> PaymentStatus:
     return _PROVIDER_TO_DOMAIN.get(provider_status, PaymentStatus.PENDENTE)
+
+
+def extrair_provider_transaction_id(body: bytes) -> str | None:
+    """Extrai apenas o identificador da transação de um corpo de webhook.
+
+    O corpo é tratado como NÃO CONFIÁVEL: daqui sai somente uma chave de
+    busca, nunca status ou valor. Por isso não há validação de assinatura —
+    um identificador forjado não leva a nada, porque quem decide o status é
+    o PSP, consultado em seguida por `PaymentService.consultar_pagamento`.
+    """
+    try:
+        payload = json.loads(body)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return str(payload.get("id") or "").strip() or None
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +312,55 @@ class PaymentService:
         )
 
         return self._store.get_external_payment(payment_id=record["id"])
+
+    def processar_webhook_confirmado(
+        self,
+        *,
+        headers: dict[str, str],
+        body: bytes,
+    ) -> dict[str, Any] | None:
+        """Processa um webhook confirmando o status direto no PSP.
+
+        Modelo de confiança: o webhook é apenas um GATILHO. Dele extraímos
+        somente o identificador da transação, usado para localizar o pagamento
+        que nós mesmos criamos. O status aplicado vem de
+        `adapter.get_payment_status()` — uma chamada autenticada ao PSP com o
+        nosso próprio token, que um terceiro não consegue falsificar. O campo
+        `status` do corpo do webhook é descartado.
+
+        Quando a assinatura está presente e válida, delega para
+        `processar_webhook` (caminho original, preservando a idempotência por
+        `last_event_id`). O caminho confirmado é a rede de segurança para
+        provedores/ambientes que não enviam assinatura — notadamente o
+        Sandbox do PagBank, que omite `x-authenticity-token`.
+
+        Retorna None se o webhook não referir um pagamento conhecido.
+        """
+        if self._adapter.validate_webhook(headers, body) is not None:
+            return self.processar_webhook(headers=headers, body=body)
+
+        provider_tx_id = extrair_provider_transaction_id(body)
+        if not provider_tx_id:
+            logger.warning("processar_webhook_confirmado - webhook sem identificador de transação")
+            return None
+
+        record = self._store.get_external_payment_by_provider_tx(
+            provider_id=self._adapter.provider_id,
+            provider_transaction_id=provider_tx_id,
+        )
+        if record is None:
+            # Âncora de segurança: só reagimos a cobranças que originamos.
+            logger.warning(
+                "processar_webhook_confirmado - pagamento desconhecido provider_tx=%s (ignorado)",
+                provider_tx_id,
+            )
+            return None
+
+        logger.info(
+            "processar_webhook_confirmado - confirmando no PSP payment_id=%s provider_tx=%s",
+            record["id"], provider_tx_id,
+        )
+        return self.consultar_pagamento(payment_id=record["id"])
 
     # ------------------------------------------------------------------
     # Consulta de status (reconciliação)

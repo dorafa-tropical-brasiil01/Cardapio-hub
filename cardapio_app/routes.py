@@ -2722,12 +2722,13 @@ self.addEventListener('fetch', (event) => {
         raw_body = request.get_data() or b""
         headers = {k.lower(): v for k, v in request.headers.items()}
 
-        # Log de diagnostic: registrar toda requisicao que chega no webhook
+        # Rastro de entrada do webhook. Não registra o corpo: ele carrega
+        # nome/e-mail/CPF do cliente. `assinado` diz se o PSP mandou a
+        # assinatura — o Sandbox do PagBank não manda.
         logger.info(
-            "api_payments_webhook - recebido body_len=%s headers=%s body_preview=%s",
+            "api_payments_webhook - recebido body_len=%s assinado=%s",
             len(raw_body),
-            {k: v for k, v in headers.items() if k in ("x-authenticity-token", "content-type", "user-agent")},
-            raw_body[:200].decode("utf-8", errors="replace"),
+            "x-authenticity-token" in headers,
         )
 
         try:

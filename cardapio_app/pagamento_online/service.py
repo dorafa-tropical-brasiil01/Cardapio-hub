@@ -385,17 +385,23 @@ def processar_webhook(*, headers: dict[str, str], body: bytes, base_url: str = "
     seja notificado duas vezes: só orquestramos quando o status do pagamento
     efetivamente passou para APROVADO nesta chamada.
     """
+    from ..payments.domain import extrair_provider_transaction_id
+
     adapter = build_adapter()
     service, _ = build_payment_service()
 
+    # O estado anterior é lido a partir do identificador da transação, que não
+    # depende da assinatura: o Sandbox do PagBank não envia
+    # `x-authenticity-token`, e sem isso a transição para APROVADO passaria
+    # despercebida e o KDS nunca seria notificado.
     conhecia_antes = False
     status_antes = ""
     try:
-        evento = adapter.validate_webhook(headers, body)
-        if evento is not None:
+        provider_tx_id = extrair_provider_transaction_id(body)
+        if provider_tx_id:
             anterior = core.pg_store.get_external_payment_by_provider_tx(
                 provider_id=adapter.provider_id,
-                provider_transaction_id=evento.provider_transaction_id,
+                provider_transaction_id=provider_tx_id,
             )
             if isinstance(anterior, dict):
                 conhecia_antes = True
@@ -405,7 +411,7 @@ def processar_webhook(*, headers: dict[str, str], body: bytes, base_url: str = "
         # processamento do webhook em si.
         logger.exception("processar_webhook - falha ao ler estado anterior")
 
-    record = service.processar_webhook(headers=headers, body=body)
+    record = service.processar_webhook_confirmado(headers=headers, body=body)
     if not isinstance(record, dict):
         return None
 
