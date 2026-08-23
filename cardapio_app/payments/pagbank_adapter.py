@@ -413,10 +413,13 @@ class PagBankAdapter(PaymentProviderAdapter):
             }
         """
         # Validar assinatura
+        # PagBank: assinatura = SHA-256(token + "-" + payload_bruto)
+        # Importante: usar bytes brutos do payload — qualquer decode/encode
+        # pode alterar caracteres e invalidar o hash.
         if self._webhook_token:
             signature = headers.get("x-authenticity-token") or ""
             expected = hashlib.sha256(
-                f"{self._webhook_token}-{body.decode('utf-8', errors='replace')}".encode("utf-8")
+                self._webhook_token.encode("utf-8") + b"-" + body
             ).hexdigest()
             if not _safe_str_eq(signature, expected):
                 logger.warning("validate_webhook - assinatura inválida")
