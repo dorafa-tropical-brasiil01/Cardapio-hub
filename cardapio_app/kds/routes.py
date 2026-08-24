@@ -207,8 +207,8 @@ def register_kds_routes(app: Flask) -> None:
             "theme_color": "#0a5c2f",
             "orientation": "portrait",
             "icons": [
-                {"src": "/assets/LOGO_2.png", "sizes": "192x192", "type": "image/png"},
-                {"src": "/assets/LOGO_2.png", "sizes": "512x512", "type": "image/png"},
+                {"src": "/assets/KDS_COZINHA.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/KDS_COZINHA.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
             ],
         }
         return jsonify(manifest)
