@@ -26,6 +26,8 @@ def register_ops_auth_routes(app: Flask) -> None:
         accent_dark = "#0d0d0d" if is_kds else "#073d1f"
         heading = "Cozinha Do'Rafa" if is_kds else "Do'Rafa"
         subtitle = "Painel da Cozinha" if is_kds else "Área Operacional"
+        manifest_link = '<link rel="manifest" href="/cozinha/manifest.json" />' if is_kds else '<link rel="manifest" href="/manifest.json" />'
+        apple_touch_icon = '<link rel="apple-touch-icon" href="/assets/KDS_COZINHA.png" />' if is_kds else '<link rel="apple-touch-icon" href="/assets/logo_cardapio.png" />'
         html = f"""<!doctype html>
 <html lang=\"pt-BR\">
 <head>
@@ -33,7 +35,9 @@ def register_ops_auth_routes(app: Flask) -> None:
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />
   <meta name=\"theme-color\" content=\"{accent}\" />
   <meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\" />
+  {manifest_link}
   <link rel=\"icon\" href=\"{favicon_src}\" />
+  {apple_touch_icon}
   <title>{page_title}</title>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}
