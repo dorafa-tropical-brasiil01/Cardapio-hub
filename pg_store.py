@@ -180,6 +180,8 @@ def init_db() -> None:
             cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS nota_recusa TEXT")
             cur.execute("ALTER TABLE kds_orders ADD COLUMN IF NOT EXISTS entregue_em TIMESTAMPTZ")
             cur.execute("UPDATE kds_orders SET status = 'NOVO' WHERE status = 'AGUARDANDO'")
+            # Migracao: pedidos com entregue_em preenchido mas status SINALIZADO -> ENTREGUE
+            cur.execute("UPDATE kds_orders SET status = 'ENTREGUE' WHERE entregue_em IS NOT NULL AND status = 'SINALIZADO'")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_status_created ON kds_orders(status, created_em)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_kds_orders_done_em ON kds_orders(done_em)")
 
@@ -1211,6 +1213,7 @@ def _kds_list_by_status(*, status: str, order_by: str, limit: int = 50) -> list[
         "done_em": "done_em",
         "sinalizado_em": "sinalizado_em",
         "recusado_em": "recusado_em",
+        "entregue_em": "entregue_em",
     }
     ob = allowed_order_by.get(order_by, "created_em")
     with _conn() as conn:
@@ -1251,6 +1254,10 @@ def kds_list_prontos(*, limit: int = 50) -> list[dict[str, Any]]:
 
 def kds_list_sinalizados(*, limit: int = 50) -> list[dict[str, Any]]:
     return _kds_list_by_status(status="SINALIZADO", order_by="sinalizado_em", limit=limit)
+
+
+def kds_list_entregues(*, limit: int = 50) -> list[dict[str, Any]]:
+    return _kds_list_by_status(status="ENTREGUE", order_by="entregue_em", limit=limit)
 
 
 def kds_list_recusados(*, limit: int = 50) -> list[dict[str, Any]]:
@@ -2376,7 +2383,7 @@ def calcular_status_publico(*, solicitacao_id: str) -> dict[str, Any]:
 
 
 def kds_marcar_entregue(*, solicitacao_id: str, ops_user_id: int | None = None) -> None:
-    """Registra entregue_em em kds_orders quando a Central confirma entrega."""
+    """Transiciona pedido KDS para ENTREGUE quando a Central confirma entrega."""
     if not is_enabled():
         return
     _ensure_db_ready()
@@ -2390,7 +2397,7 @@ def kds_marcar_entregue(*, solicitacao_id: str, ops_user_id: int | None = None) 
             cur.execute(
                 """
                 UPDATE kds_orders
-                SET entregue_em=%s, ops_user_id=COALESCE(%s, ops_user_id)
+                SET status='ENTREGUE', entregue_em=%s, ops_user_id=COALESCE(%s, ops_user_id)
                 WHERE solicitacao_id=%s AND entregue_em IS NULL
                 """,
                 (entregue, uid, sid),

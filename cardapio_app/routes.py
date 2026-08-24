@@ -765,7 +765,7 @@ def register_routes(app: Flask) -> None:
             "short_name": "DoRafa",
             "description": "Cardápio online DORAFA Tropical Brasil",
             "start_url": "/",
-            "display": "standalone",
+            "display": "minimal-ui",
             "background_color": "#d9f3a2",
             "theme_color": "#0a5c2f",
             "orientation": "portrait",

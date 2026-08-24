@@ -118,6 +118,16 @@ def listar_sinalizados(*, limit: int = 20) -> list[dict[str, Any]]:
     return _listar_por_lista(kds_list=kds_list)
 
 
+def listar_entregues(*, limit: int = 20) -> list[dict[str, Any]]:
+    if not core.pg_enabled():
+        return []
+    try:
+        kds_list = core.pg_store.kds_list_entregues(limit=int(limit))
+    except Exception:
+        kds_list = []
+    return _listar_por_lista(kds_list=kds_list)
+
+
 def listar_recusados(*, limit: int = 20) -> list[dict[str, Any]]:
     if not core.pg_enabled():
         return []

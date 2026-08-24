@@ -7,6 +7,7 @@ from .page import kds_page_html
 from .service import (
     aceitar_pedido,
     get_pedido_atual,
+    listar_entregues,
     listar_fila_pedidos,
     listar_preparando_pedidos,
     listar_prontos,
@@ -76,6 +77,17 @@ def register_kds_routes(app: Flask) -> None:
         except Exception:
             limit = 20
         return jsonify({"ok": True, "fila": listar_sinalizados(limit=limit)})
+
+    @app.get("/api/kds/entregues")
+    def api_kds_entregues():
+        denied = require_ops_login(role="KDS")
+        if denied is not None:
+            return denied
+        try:
+            limit = int(request.args.get("limit") or 20)
+        except Exception:
+            limit = 20
+        return jsonify({"ok": True, "fila": listar_entregues(limit=limit)})
 
     @app.get("/api/kds/recusados")
     def api_kds_recusados():
@@ -199,7 +211,7 @@ def register_kds_routes(app: Flask) -> None:
             "name": "DoRafa Cozinha",
             "short_name": "Cozinha",
             "start_url": "/cozinha",
-            "display": "standalone",
+            "display": "minimal-ui",
             "background_color": "#0d0d0d",
             "theme_color": "#fd6300",
             "orientation": "portrait",

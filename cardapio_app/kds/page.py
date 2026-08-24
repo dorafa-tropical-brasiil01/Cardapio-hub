@@ -8,9 +8,9 @@ def kds_page_html() -> str:
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#fd6300" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/cozinha/manifest.json" />
+  <link rel="icon" href="/assets/KDS_COZINHA.ico" />
   <link rel="apple-touch-icon" href="/assets/KDS_COZINHA.png" />
   <title>Cozinha — Do'Rafa</title>
   <style>
@@ -43,15 +43,16 @@ def kds_page_html() -> str:
     .stat .value{font-size:22px;font-weight:900;color:var(--verde)}
     .stat .label{font-size:11px;color:var(--muted);text-transform:uppercase}
     .list{display:flex;flex-direction:column;gap:12px}
-    .card-item{background:var(--card);border:2px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease}
+    .card-item{background:var(--card);border:2px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease;overflow:hidden}
     .card-item:active{transform:scale(.99)}
-    .card-item .header{display:flex;align-items:center;justify-content:space-between;gap:10px}
-    .card-item .id{font-weight:900;font-size:16px}
-    .card-item .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900}
+    .card-item .header{display:flex;align-items:center;justify-content:space-between;gap:10px;overflow:hidden;min-width:0}
+    .card-item .id{font-weight:900;font-size:16px;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .card-item .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;flex-shrink:0;white-space:nowrap}
     .badge.NOVO{background:rgba(10,92,47,.08);color:var(--verde);border:1px solid rgba(10,92,47,.2)}
     .badge.EM_PREPARO{background:var(--amarelo);color:var(--verde);border:1px solid var(--verde)}
     .badge.PRONTO{background:var(--verde);color:#fff;border:1px solid var(--verde)}
     .badge.SINALIZADO{background:var(--azul);color:#fff;border:1px solid var(--azul)}
+    .badge.ENTREGUE{background:#6b7280;color:#fff;border:1px solid #6b7280}
     .badge.RECUSADO{background:var(--vermelho);color:#fff;border:1px solid var(--vermelho)}
     .card-item .cliente{margin-top:8px;font-weight:700}
     .card-item .tipo{color:var(--muted);font-size:13px}
@@ -136,6 +137,7 @@ def kds_page_html() -> str:
       <div class="tab" data-aba="preparando" onclick="setAba('preparando')">Em preparo<span class="count" id="count-preparando"></span></div>
       <div class="tab" data-aba="prontos" onclick="setAba('prontos')">Prontos<span class="count" id="count-prontos"></span></div>
       <div class="tab" data-aba="sinalizados" onclick="setAba('sinalizados')">Sinalizados<span class="count" id="count-sinalizados"></span></div>
+      <div class="tab" data-aba="entregues" onclick="setAba('entregues')">Entregues<span class="count" id="count-entregues"></span></div>
       <div class="tab" data-aba="recusados" onclick="setAba('recusados')">Recusados<span class="count" id="count-recusados"></span></div>
     </div>
 
@@ -180,6 +182,7 @@ def kds_page_html() -> str:
       preparando: ['EM_PREPARO'],
       prontos: ['PRONTO'],
       sinalizados: ['SINALIZADO'],
+      entregues: ['ENTREGUE'],
       recusados: ['RECUSADO'],
     };
     let abaAtual = 'previas';
@@ -207,6 +210,7 @@ def kds_page_html() -> str:
         'EM_PREPARO': 'EM PREPARO',
         'PRONTO': 'PRONTO',
         'SINALIZADO': 'SINALIZADO',
+        'ENTREGUE': 'ENTREGUE',
         'RECUSADO': 'RECUSADO',
       };
       return map[status] || status;
@@ -272,11 +276,12 @@ def kds_page_html() -> str:
 
     async function carregar(){
       try {
-        const [resp, prep, pront, sinal, recu, statsResp] = await Promise.all([
+        const [resp, prep, pront, sinal, entre, recu, statsResp] = await Promise.all([
           fetch('/api/kds/previas?limit=50'),
           fetch('/api/kds/preparando?limit=50'),
           fetch('/api/kds/prontos?limit=50'),
           fetch('/api/kds/sinalizados?limit=50'),
+          fetch('/api/kds/entregues?limit=50'),
           fetch('/api/kds/recusados?limit=50'),
           fetch('/api/kds/stats'),
         ]);
@@ -285,6 +290,7 @@ def kds_page_html() -> str:
         const prepJ = prep.ok ? await prep.json().catch(() => ({})) : {fila: []};
         const prontJ = pront.ok ? await pront.json().catch(() => ({})) : {fila: []};
         const sinalJ = sinal.ok ? await sinal.json().catch(() => ({})) : {fila: []};
+        const entreJ = entre.ok ? await entre.json().catch(() => ({})) : {fila: []};
         const recuJ = recu.ok ? await recu.json().catch(() => ({})) : {fila: []};
         const statsJ = statsResp.ok ? await statsResp.json().catch(() => ({})) : {stats: {}};
 
@@ -298,6 +304,7 @@ def kds_page_html() -> str:
           preparando: prepJ.fila || [],
           prontos: prontJ.fila || [],
           sinalizados: sinalJ.fila || [],
+          entregues: entreJ.fila || [],
           recusados: recuJ.fila || [],
         };
 

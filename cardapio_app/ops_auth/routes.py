@@ -21,6 +21,7 @@ def register_ops_auth_routes(app: Flask) -> None:
         is_kds = "/cozinha" in nxt
         page_title = "Cozinha — Do'Rafa" if is_kds else "Login — Do'Rafa"
         logo_src = "/assets/KDS_COZINHA.png" if is_kds else "/assets/logo_cardapio.png"
+        favicon_src = "/assets/KDS_COZINHA.ico" if is_kds else "/assets/logo_cardapio.ico"
         accent = "#fd6300" if is_kds else "#0a5c2f"
         accent_dark = "#0d0d0d" if is_kds else "#073d1f"
         heading = "Cozinha Do'Rafa" if is_kds else "Do'Rafa"
@@ -31,8 +32,8 @@ def register_ops_auth_routes(app: Flask) -> None:
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />
   <meta name=\"theme-color\" content=\"{accent}\" />
-  <meta name=\"apple-mobile-web-app-capable\" content=\"yes\" />
   <meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\" />
+  <link rel=\"icon\" href=\"{favicon_src}\" />
   <title>{page_title}</title>
   <style>
     *{{box-sizing:border-box;margin:0;padding:0}}

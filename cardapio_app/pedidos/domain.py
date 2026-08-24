@@ -7,6 +7,7 @@ KDS_STATUS_NOVO: Final[str] = "NOVO"
 KDS_STATUS_EM_PREPARO: Final[str] = "EM_PREPARO"
 KDS_STATUS_PRONTO: Final[str] = "PRONTO"
 KDS_STATUS_SINALIZADO: Final[str] = "SINALIZADO"
+KDS_STATUS_ENTREGUE: Final[str] = "ENTREGUE"
 KDS_STATUS_RECUSADO: Final[str] = "RECUSADO"
 
 # Legado: AGUARDANDO foi substituído por NOVO. Mantido para compatibilidade
