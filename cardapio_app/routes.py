@@ -765,13 +765,13 @@ def register_routes(app: Flask) -> None:
             "short_name": "DoRafa",
             "description": "Cardápio online DORAFA Tropical Brasil",
             "start_url": "/",
-            "display": "minimal-ui",
+            "display": "standalone",
             "background_color": "#d9f3a2",
             "theme_color": "#0a5c2f",
             "orientation": "portrait",
             "icons": [
-                {"src": "/assets/logo_cardapio.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-                {"src": "/assets/logo_cardapio.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/logo_cardapio_192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/logo_cardapio_512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
             ],
         }
         return jsonify(manifest)

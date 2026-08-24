@@ -211,13 +211,13 @@ def register_kds_routes(app: Flask) -> None:
             "name": "DoRafa Cozinha",
             "short_name": "Cozinha",
             "start_url": "/cozinha",
-            "display": "minimal-ui",
+            "display": "standalone",
             "background_color": "#0d0d0d",
             "theme_color": "#fd6300",
             "orientation": "portrait",
             "icons": [
-                {"src": "/assets/KDS_COZINHA.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-                {"src": "/assets/KDS_COZINHA.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/KDS_COZINHA_192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+                {"src": "/assets/KDS_COZINHA_512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
             ],
         }
         return jsonify(manifest)
