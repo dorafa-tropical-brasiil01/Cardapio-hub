@@ -778,7 +778,7 @@ def register_routes(app: Flask) -> None:
 
     @app.get("/sw.js")
     def pwa_service_worker():
-        js = r"""const CACHE_NAME = 'dorafa-cardapio-v1';
+        js = r"""const CACHE_NAME = 'dorafa-cardapio-v2';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [OFFLINE_URL, '/assets/app.css', '/assets/app.js'];
 

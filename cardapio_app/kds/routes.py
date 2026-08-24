@@ -245,7 +245,7 @@ def register_kds_routes(app: Flask) -> None:
 
 
 def _kds_service_worker_js() -> str:
-    return r"""const CACHE_NAME = 'dorafa-kds-v1';
+    return r"""const CACHE_NAME = 'dorafa-kds-v2';
 const OFFLINE_URL = '/cozinha/offline.html';
 const PRECACHE = [OFFLINE_URL];
 
@@ -257,7 +257,12 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
