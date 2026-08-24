@@ -12,6 +12,9 @@ instance/
 .DS_Store
 Thumbs.db
 
+# Secrets — NUNCA commitar
+railway_env.json
+
 # Dados locais (não versionar)
 produtos.json
 catalogo_publicado.json
