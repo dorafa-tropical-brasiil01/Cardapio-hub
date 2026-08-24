@@ -761,10 +761,12 @@ def register_routes(app: Flask) -> None:
     @app.get("/manifest.json")
     def pwa_manifest():
         manifest = {
+            "id": "/cardapio",
             "name": "DORAFA Tropical Brasil - Cardápio",
             "short_name": "DoRafa",
             "description": "Cardápio online DORAFA Tropical Brasil",
             "start_url": "/",
+            "scope": "/",
             "display": "standalone",
             "background_color": "#d9f3a2",
             "theme_color": "#0a5c2f",
@@ -778,7 +780,7 @@ def register_routes(app: Flask) -> None:
 
     @app.get("/sw.js")
     def pwa_service_worker():
-        js = r"""const CACHE_NAME = 'dorafa-cardapio-v2';
+        js = r"""const CACHE_NAME = 'dorafa-cardapio-v3';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [OFFLINE_URL, '/assets/app.css', '/assets/app.js'];
 
@@ -792,7 +794,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== 'dorafa-kds-v3').map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -804,6 +806,9 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+
+  // NAO interceptar rotas do KDS/cozinha - elas tem seu proprio SW
+  if (url.pathname === '/cozinha' || url.pathname.startsWith('/cozinha/')) return;
 
   if (url.pathname === '/' || url.pathname === '/index.html') {
     event.respondWith(

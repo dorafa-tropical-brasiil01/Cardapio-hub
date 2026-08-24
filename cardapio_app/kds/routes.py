@@ -208,9 +208,11 @@ def register_kds_routes(app: Flask) -> None:
     @app.get("/cozinha/manifest.json")
     def cozinha_manifest():
         manifest = {
+            "id": "/cozinha",
             "name": "DoRafa Cozinha",
             "short_name": "Cozinha",
             "start_url": "/cozinha",
+            "scope": "/cozinha/",
             "display": "standalone",
             "background_color": "#0d0d0d",
             "theme_color": "#fd6300",
@@ -227,7 +229,7 @@ def register_kds_routes(app: Flask) -> None:
         js = _kds_service_worker_js()
         resp = make_response(js, 200)
         resp.headers["Content-Type"] = "application/javascript"
-        resp.headers["Service-Worker-Allowed"] = "/"
+        resp.headers["Service-Worker-Allowed"] = "/cozinha/"
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
@@ -251,7 +253,7 @@ def register_kds_routes(app: Flask) -> None:
 
 
 def _kds_service_worker_js() -> str:
-    return r"""const CACHE_NAME = 'dorafa-kds-v2';
+    return r"""const CACHE_NAME = 'dorafa-kds-v3';
 const OFFLINE_URL = '/cozinha/offline.html';
 const PRECACHE = [OFFLINE_URL];
 
@@ -265,7 +267,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k !== CACHE_NAME && k !== 'dorafa-cardapio-v3').map((k) => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -273,6 +275,10 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== location.origin) return;
+  // So interceptar rotas dentro de /cozinha/
+  if (!url.pathname.startsWith('/cozinha')) return;
   event.respondWith(
     fetch(event.request).catch(() => {
       return caches.match(event.request).then((r) => r || caches.match(OFFLINE_URL));

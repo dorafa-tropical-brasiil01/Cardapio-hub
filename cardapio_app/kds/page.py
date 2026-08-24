@@ -561,7 +561,7 @@ def kds_page_html() -> str:
       carregar();
       timer = setInterval(carregar, 3000);
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/cozinha/sw.js').catch(() => {});
+        navigator.serviceWorker.register('/cozinha/sw.js', {scope: '/cozinha/'}).catch(() => {});
       }
     });
   </script>
