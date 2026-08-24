@@ -195,16 +195,13 @@ def register_kds_routes(app: Flask) -> None:
 
     @app.get("/cozinha/manifest.json")
     def cozinha_manifest():
-        denied = require_ops_login(role="KDS")
-        if denied is not None:
-            return denied
         manifest = {
             "name": "DoRafa Cozinha",
-            "short_name": "DoRafaKDS",
+            "short_name": "Cozinha",
             "start_url": "/cozinha",
             "display": "standalone",
-            "background_color": "#0a5c2f",
-            "theme_color": "#0a5c2f",
+            "background_color": "#0d0d0d",
+            "theme_color": "#fd6300",
             "orientation": "portrait",
             "icons": [
                 {"src": "/assets/KDS_COZINHA.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
@@ -215,9 +212,6 @@ def register_kds_routes(app: Flask) -> None:
 
     @app.get("/cozinha/sw.js")
     def cozinha_sw():
-        denied = require_ops_login(role="KDS")
-        if denied is not None:
-            return denied
         js = _kds_service_worker_js()
         resp = make_response(js, 200)
         resp.headers["Content-Type"] = "application/javascript"

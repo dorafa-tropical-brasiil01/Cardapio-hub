@@ -7,12 +7,12 @@ def kds_page_html() -> str:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a5c2f" />
+  <meta name="theme-color" content="#fd6300" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/cozinha/manifest.json" />
   <link rel="apple-touch-icon" href="/assets/KDS_COZINHA.png" />
-  <title>Cozinha</title>
+  <title>Cozinha — Do'Rafa</title>
   <style>
     :root{
       --verde: #0a5c2f;
