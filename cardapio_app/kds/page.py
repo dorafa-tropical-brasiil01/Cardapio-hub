@@ -755,7 +755,14 @@ def kds_page_html() -> str:
 
     function _testarImpressaoNativa() {
       if (!window.AndroidPrint || !window.AndroidPrint.isConnected()) {
-        showToast('Impressora não conectada', true);
+        // Mostrar descritor USB para debug
+        if (window.AndroidPrint && window.AndroidPrint.listUsbDevices) {
+          const devs = window.AndroidPrint.listUsbDevices();
+          showToast('USB: ' + devs.substring(0, 200), true);
+          console.log('USB descriptor:', devs);
+        } else {
+          showToast('Impressora não conectada', true);
+        }
         return;
       }
       // Cupom de teste minimal: reset + texto + LF + corte
