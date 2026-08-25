@@ -706,7 +706,15 @@ def kds_page_html() -> str:
       const statusEl = document.getElementById('printer-status');
       if (!btn || !statusEl) return;
       btn.classList.remove('connected', 'error');
-      if (_rawbtUrl) {
+      // Prioridade: ponte nativa AndroidPrint
+      if (window.AndroidPrint && typeof window.AndroidPrint.isConnected === 'function') {
+        if (window.AndroidPrint.isConnected()) {
+          btn.classList.add('connected');
+          statusEl.textContent = 'USB';
+        } else {
+          statusEl.textContent = 'Conectar';
+        }
+      } else if (_rawbtUrl) {
         btn.classList.add('connected');
         statusEl.textContent = 'Online';
       } else {
@@ -715,6 +723,18 @@ def kds_page_html() -> str:
     }
 
     function abrirConfigImpressora() {
+      // Se a ponte nativa AndroidPrint está disponível, conectar direto
+      if (window.AndroidPrint && typeof window.AndroidPrint.connect === 'function') {
+        const ok = window.AndroidPrint.connect();
+        if (ok) {
+          showToast('Impressora USB conectada');
+          _updatePrinterButton();
+        } else {
+          showToast('Solicitando permissão USB... aceite no diálogo', true);
+        }
+        return;
+      }
+      // Caso contrário, abrir modal de configuração RawBT
       const overlay = document.getElementById('printer-overlay');
       const input = document.getElementById('printer-url');
       input.value = _rawbtUrl || 'http://localhost:9100';
@@ -821,14 +841,38 @@ def kds_page_html() -> str:
     }
 
     async function imprimirCupom(pedido, cb){
-      // Tentar RawBT (ESC/POS via HTTP para o app Android) primeiro
+      // Prioridade 1: ponte nativa AndroidPrint (app DoRafaKDSPrint com USB Host)
+      if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+        try {
+          if (!window.AndroidPrint.isConnected()) {
+            const connected = window.AndroidPrint.connect();
+            if (!connected) {
+              showToast('Conectando impressora USB... tente novamente', true);
+              // Mesmo assim tenta imprimir — o connect() dispara permissão
+              if (typeof cb === 'function') setTimeout(cb, 300);
+              return;
+            }
+          }
+          const data = montarCupomEscpos(pedido);
+          const base64 = _bytesToBase64(data);
+          const ok = window.AndroidPrint.print(base64);
+          if (ok) {
+            if (typeof cb === 'function') setTimeout(cb, 300);
+            return;
+          }
+          showToast('Impressora nativa falhou — usando diálogo', true);
+        } catch(e) {
+          console.error('AndroidPrint erro:', e);
+          showToast('Erro impressora nativa: ' + e.message, true);
+        }
+      }
+      // Prioridade 2: RawBT (ESC/POS via HTTP para o app Android)
       if (_rawbtUrl) {
         const ok = await imprimirEscpos(pedido);
         if (ok) {
           if (typeof cb === 'function') setTimeout(cb, 300);
           return;
         }
-        // Se RawBT falhou, cai para window.print()
         showToast('RawBT falhou — usando diálogo de impressão', true);
       }
       // Fallback: window.print() com CSS 80mm
@@ -836,6 +880,15 @@ def kds_page_html() -> str:
       frame.innerHTML = montarCupomHtml(pedido);
       window.print();
       if (typeof cb === 'function') setTimeout(cb, 300);
+    }
+
+    function _bytesToBase64(bytes) {
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
     }
 
     function aceitarEImprimir(id){
