@@ -78,6 +78,9 @@ def kds_page_html() -> str:
     .btn-danger{background:var(--vermelho);color:#fff}
     .btn-wa{background:#25D366;color:#fff;border:2px solid #1da851!important;display:inline-flex;align-items:center;gap:8px;justify-content:center;font-size:15px;padding:16px;border-radius:16px;font-weight:900;text-decoration:none;flex:1;min-width:140px}
     .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-printer{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+    .btn-printer.connected{background:var(--verde);color:#fff;border-color:var(--verde)}
+    .btn-printer.error{background:var(--vermelho);color:#fff;border-color:var(--vermelho)}
 
     #modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     #modal-overlay.open{display:flex}
@@ -126,6 +129,10 @@ def kds_page_html() -> str:
       <button class="logout" id="btn-logout" type="button">Sair</button>
       <h1>Cozinha</h1>
       <div class="sub">Painel de preparo</div>
+      <button class="btn-printer" id="btn-printer" type="button" onclick="conectarImpressora()" title="Conectar impressora térmica USB">
+        <span id="printer-icon">&#128424;</span>
+        <span id="printer-status">Impressora</span>
+      </button>
     </div>
 
     <div class="stats">
@@ -440,6 +447,295 @@ def kds_page_html() -> str:
       return url;
     }
 
+    // ============================================================
+    // MODULO WebUSB ESC/POS — Impressão direto na Bematech MP-4200 TH
+    // ============================================================
+
+    // Bematech Vendor ID = 0x0b1b
+    const BEMATECH_VENDOR_ID = 0x0b1b;
+    let _usbPrinter = null;       // USBDevice conectado
+    let _usbEndpointOut = null;   // endpoint number para envio
+    let _usbInterfaceNum = null;  // interface number
+
+    // --- Comandos ESC/POS (portado do PDV escpos_printing.py) ---
+    const ESC = 0x1B;
+    const GS  = 0x1D;
+    const ESC_INIT       = new Uint8Array([ESC, 0x40]);              // ESC @ — reset
+    const ESC_CP850      = new Uint8Array([ESC, 0x74, 0x01]);        // ESC t 1 — PC850
+    const ESC_FONT_A     = new Uint8Array([ESC, 0x4D, 0x00]);        // ESC M 0 — Font A
+    const ESC_NORMAL     = new Uint8Array([ESC, 0x21, 0x00]);        // ESC ! 0 — tamanho normal
+    const ESC_CENTER     = new Uint8Array([ESC, 0x61, 0x01]);        // ESC a 1 — centralizado
+    const ESC_LEFT       = new Uint8Array([ESC, 0x61, 0x00]);        // ESC a 0 — esquerda
+    const ESC_BOLD_ON    = new Uint8Array([ESC, 0x45, 0x01]);        // ESC E 1 — negrito
+    const ESC_BOLD_OFF   = new Uint8Array([ESC, 0x45, 0x00]);        // ESC E 0 — normal
+    const ESC_DOUBLE     = new Uint8Array([ESC, 0x21, 0x30]);        // ESC ! 0x30 — double width+height
+    const ESC_CUT        = new Uint8Array([GS, 0x56, 0x42, 0x00]);   // GS V B 0 — corte parcial
+    const LF             = new Uint8Array([0x0A]);                   // line feed
+    const DASH_LINE      = '-'.repeat(44);
+
+    function _encCP850(text) {
+      // Substitui caracteres não suportados em CP850
+      const repl = {
+        '\u2022':'-','\u2013':'-','\u2014':'-','\u2018':"'",'\u2019':"'",
+        '\u201c':'"','\u201d':'"','\u2026':'...','\u00a0':' ',
+        '\u00ab':'<<','\u00bb':'>>'
+      };
+      let s = String(text || '');
+      for (const [k,v] of Object.entries(repl)) s = s.split(k).join(v);
+      // Codifica em CP850 (acentos do português são suportados)
+      try {
+        return new TextEncoder('cp850', {NONSTANDARD_ALLOW_LEGACY: true}).encode(s);
+      } catch(e) {
+        // Fallback: TextEncoder padrão só suporta UTF-8; usa array manual
+        const arr = [];
+        for (let i = 0; i < s.length; i++) {
+          const code = s.charCodeAt(i);
+          if (code < 0x80) arr.push(code);
+          else arr.push(0x3F); // '?' para caracteres não-ASCII não mapeados
+        }
+        return new Uint8Array(arr);
+      }
+    }
+
+    function _centerText(text, width) {
+      const len = text.length;
+      if (len >= width) return text;
+      const pad = Math.floor((width - len) / 2);
+      return ' '.repeat(pad) + text;
+    }
+
+    function _concatBytes(...arrays) {
+      let total = 0;
+      for (const a of arrays) total += a.length;
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const a of arrays) { out.set(a, off); off += a.length; }
+      return out;
+    }
+
+    function montarCupomEscpos(pedido) {
+      const d = obterDadosPedido(pedido);
+      const W = 44; // largura útil 80mm (48 chars - 4 margem)
+      const parts = [];
+
+      // Inicialização
+      parts.push(ESC_INIT);
+      parts.push(ESC_CP850);
+      parts.push(ESC_FONT_A);
+      parts.push(ESC_NORMAL);
+
+      // Cabeçalho centralizado
+      parts.push(ESC_CENTER);
+      parts.push(_encCP850('DORAFA TROPICAL BRASIL'));
+      parts.push(LF);
+      parts.push(_encCP850('--- COZINHA ---'));
+      parts.push(LF);
+      parts.push(LF);
+
+      // Título
+      parts.push(ESC_DOUBLE);
+      parts.push(_encCP850(_centerText('PEDIDO #' + d.id, W)));
+      parts.push(LF);
+      parts.push(ESC_NORMAL);
+      parts.push(LF);
+
+      // Informações do pedido (esquerda)
+      parts.push(ESC_LEFT);
+      const criado = d.kds.created_em ? new Date(d.kds.created_em).toLocaleString('pt-BR') : '';
+      parts.push(_encCP850('Data: ' + criado));
+      parts.push(LF);
+      parts.push(_encCP850('Cliente: ' + (d.cliente_nome || '-')));
+      parts.push(LF);
+      parts.push(_encCP850('Tipo: ' + (d.tipo || '-') + (d.mesa ? '  Mesa: ' + d.mesa : '')));
+      parts.push(LF);
+      if (d.cliente_whatsapp) {
+        parts.push(_encCP850('WhatsApp: ' + d.cliente_whatsapp));
+        parts.push(LF);
+      }
+      parts.push(LF);
+
+      // Separador
+      parts.push(_encCP850(DASH_LINE));
+      parts.push(LF);
+
+      // Itens
+      parts.push(ESC_BOLD_ON);
+      parts.push(_encCP850('QTD  DESCRICAO                  VALOR'));
+      parts.push(LF);
+      parts.push(ESC_BOLD_OFF);
+      parts.push(_encCP850(DASH_LINE));
+      parts.push(LF);
+
+      const itens = Array.isArray(d.itens) ? d.itens : [];
+      for (const it of itens) {
+        const nome = safeText(it.nome || it.product_name || it.product_code);
+        const qty = safeText(it.qty || it.quantidade || 1);
+        const unit = Number(it.preco_unitario || it.unit_price || it.preco || 0);
+        const totalItem = Number(it.total) || (Number(qty) * unit);
+        const qtyStr = String(qty).padEnd(4, ' ').slice(0, 4);
+        const nomeStr = String(nome).padEnd(26, ' ').slice(0, 26);
+        const valStr = money(totalItem).padStart(10, ' ');
+        parts.push(_encCP850(qtyStr + ' ' + nomeStr + ' ' + valStr));
+        parts.push(LF);
+      }
+
+      // Separador + totais
+      parts.push(_encCP850(DASH_LINE));
+      parts.push(LF);
+      parts.push(_encCP850('Subtotal:        ' + money(d.total - d.taxa).padStart(14, ' ')));
+      parts.push(LF);
+      if (d.taxa) {
+        parts.push(_encCP850('Taxa entrega:    ' + money(d.taxa).padStart(14, ' ')));
+        parts.push(LF);
+      }
+      parts.push(ESC_BOLD_ON);
+      parts.push(_encCP850('TOTAL:           ' + money(d.total).padStart(14, ' ')));
+      parts.push(LF);
+      parts.push(ESC_BOLD_OFF);
+      parts.push(LF);
+
+      // Endereço
+      const end = d.endereco;
+      if (end && (end.rua || end.bairro || end.cidade)) {
+        const ep = [];
+        if (end.rua) ep.push(end.rua + (end.numero ? ', ' + end.numero : ''));
+        if (end.bairro) ep.push(end.bairro);
+        if (end.cidade) ep.push(end.cidade);
+        parts.push(_encCP850('Endereco: ' + ep.join(' - ')));
+        parts.push(LF);
+        if (end.referencia) {
+          parts.push(_encCP850('Ref: ' + end.referencia));
+          parts.push(LF);
+        }
+        parts.push(LF);
+      }
+
+      // Observações
+      if (d.observacoes) {
+        parts.push(_encCP850(DASH_LINE));
+        parts.push(LF);
+        parts.push(ESC_BOLD_ON);
+        parts.push(_encCP850('OBS:'));
+        parts.push(LF);
+        parts.push(ESC_BOLD_OFF);
+        parts.push(_encCP850(d.observacoes));
+        parts.push(LF);
+        parts.push(LF);
+      }
+
+      // Rodapé
+      parts.push(ESC_CENTER);
+      parts.push(_encCP850(DASH_LINE));
+      parts.push(LF);
+      parts.push(_encCP850(_centerText('Pedido recebido na cozinha', W)));
+      parts.push(LF);
+      parts.push(LF);
+      parts.push(LF);
+
+      // Corte de papel
+      parts.push(ESC_CUT);
+
+      return _concatBytes(...parts);
+    }
+
+    async function conectarImpressora() {
+      if (!navigator.usb) {
+        showToast('Navegador não suporta WebUSB', true);
+        return;
+      }
+      try {
+        const btn = document.getElementById('btn-printer');
+        const statusEl = document.getElementById('printer-status');
+        btn.classList.remove('connected', 'error');
+        statusEl.textContent = 'Conectando...';
+
+        // Solicitar dispositivo USB (filtra por Bematech, mas aceita qualquer)
+        const device = await navigator.usb.requestDevice({
+          filters: [{ vendorId: BEMATECH_VENDOR_ID }]
+        });
+
+        await device.open();
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+
+        // Encontrar endpoint de saída (bulk OUT)
+        const config = device.configuration;
+        const iface = config.interfaces[0];
+        _usbInterfaceNum = iface.interfaceNumber;
+        await device.claimInterface(_usbInterfaceNum);
+
+        const alt = iface.alternates[0];
+        _usbEndpointOut = null;
+        for (const ep of alt.endpoints) {
+          if (ep.direction === 'out' && ep.type === 'bulk') {
+            _usbEndpointOut = ep.endpointNumber;
+            break;
+          }
+        }
+        if (_usbEndpointOut === null) {
+          throw new Error('Nenhum endpoint OUT encontrado');
+        }
+
+        _usbPrinter = device;
+        btn.classList.add('connected');
+        statusEl.textContent = 'Conectada';
+        showToast('Impressora conectada');
+
+        // Listener para desconexão
+        navigator.usb.addEventListener('disconnect', _onUsbDisconnect);
+      } catch (e) {
+        const btn = document.getElementById('btn-printer');
+        const statusEl = document.getElementById('printer-status');
+        if (e.name === 'NotFoundError') {
+          statusEl.textContent = 'Impressora';
+          btn.classList.remove('error');
+        } else {
+          btn.classList.add('error');
+          statusEl.textContent = 'Erro';
+          showToast('Erro ao conectar: ' + e.message, true);
+        }
+      }
+    }
+
+    function _onUsbDisconnect(e) {
+      if (_usbPrinter === e.device) {
+        _usbPrinter = null;
+        _usbEndpointOut = null;
+        const btn = document.getElementById('btn-printer');
+        const statusEl = document.getElementById('printer-status');
+        btn.classList.remove('connected', 'error');
+        statusEl.textContent = 'Impressora';
+        showToast('Impressora desconectada');
+      }
+    }
+
+    async function imprimirEscpos(pedido) {
+      if (!_usbPrinter || _usbEndpointOut === null) {
+        return false;
+      }
+      try {
+        const data = montarCupomEscpos(pedido);
+        // Enviar em chunks de 4096 bytes (limite comum de transferência USB)
+        const CHUNK = 4096;
+        for (let off = 0; off < data.length; off += CHUNK) {
+          const chunk = data.slice(off, off + CHUNK);
+          await _usbPrinter.transferOut(_usbEndpointOut, chunk);
+        }
+        return true;
+      } catch (e) {
+        console.error('imprimirEscpos - erro:', e);
+        _usbPrinter = null;
+        _usbEndpointOut = null;
+        const btn = document.getElementById('btn-printer');
+        const statusEl = document.getElementById('printer-status');
+        btn.classList.remove('connected');
+        btn.classList.add('error');
+        statusEl.textContent = 'Erro';
+        return false;
+      }
+    }
+
     function montarCupomHtml(pedido){
       const d = obterDadosPedido(pedido);
       const end = d.endereco;
@@ -483,7 +779,18 @@ def kds_page_html() -> str:
       `;
     }
 
-    function imprimirCupom(pedido, cb){
+    async function imprimirCupom(pedido, cb){
+      // Tentar WebUSB (ESC/POS direto na Bematech) primeiro
+      if (_usbPrinter && _usbEndpointOut !== null) {
+        const ok = await imprimirEscpos(pedido);
+        if (ok) {
+          if (typeof cb === 'function') setTimeout(cb, 300);
+          return;
+        }
+        // Se WebUSB falhou, cai para window.print()
+        showToast('Impressora USB falhou — usando diálogo de impressão', true);
+      }
+      // Fallback: window.print() com CSS 80mm
       const frame = document.getElementById('print-frame');
       frame.innerHTML = montarCupomHtml(pedido);
       window.print();
