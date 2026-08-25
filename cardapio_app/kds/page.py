@@ -725,12 +725,18 @@ def kds_page_html() -> str:
     function abrirConfigImpressora() {
       // Se a ponte nativa AndroidPrint está disponível, conectar direto
       if (window.AndroidPrint && typeof window.AndroidPrint.connect === 'function') {
-        const ok = window.AndroidPrint.connect();
-        if (ok) {
-          showToast('Impressora USB conectada');
-          _updatePrinterButton();
+        if (window.AndroidPrint.isConnected()) {
+          // Já conectado — fazer teste de impressão
+          _testarImpressaoNativa();
         } else {
-          showToast('Solicitando permissão USB... aceite no diálogo', true);
+          const ok = window.AndroidPrint.connect();
+          if (ok) {
+            showToast('Impressora USB conectada');
+            _updatePrinterButton();
+          } else {
+            const err = window.AndroidPrint.getLastError ? window.AndroidPrint.getLastError() : '';
+            showToast('USB falhou' + (err ? ': ' + err : ''), true);
+          }
         }
         return;
       }
@@ -743,6 +749,34 @@ def kds_page_html() -> str:
 
     function fecharConfigImpressora() {
       document.getElementById('printer-overlay').classList.remove('open');
+    }
+
+    function _testarImpressaoNativa() {
+      if (!window.AndroidPrint || !window.AndroidPrint.isConnected()) {
+        showToast('Impressora não conectada', true);
+        return;
+      }
+      // Cupom de teste minimal: reset + texto + LF + corte
+      const ESC = 0x1B, GS = 0x1D;
+      const testData = _concatBytes(
+        new Uint8Array([ESC, 0x40]),                    // ESC @ — reset
+        new Uint8Array([ESC, 0x74, 0x01]),              // ESC t 1 — CP850
+        new Uint8Array([ESC, 0x61, 0x01]),              // centralizado
+        _encCP850('--- TESTE KDS ---'), new Uint8Array([0x0A]),
+        _encCP850('Impressora OK'), new Uint8Array([0x0A, 0x0A, 0x0A]),
+        new Uint8Array([GS, 0x56, 0x42, 0x00])          // corte
+      );
+      const base64 = _bytesToBase64(testData);
+      const ok = window.AndroidPrint.print(base64);
+      if (ok) {
+        showToast('Teste enviado com sucesso');
+      } else {
+        const err = window.AndroidPrint.getLastError ? window.AndroidPrint.getLastError() : '';
+        showToast('Teste falhou' + (err ? ': ' + err : ''), true);
+        console.log('print() falhou:', err);
+        const devs = window.AndroidPrint.listUsbDevices ? window.AndroidPrint.listUsbDevices() : '';
+        console.log('Dispositivos:', devs);
+      }
     }
 
     function salvarImpressora() {
