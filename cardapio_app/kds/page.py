@@ -231,7 +231,9 @@ def kds_page_html() -> str:
       el.textContent = String(msg || '');
       el.className = isError ? 'error' : '';
       el.style.display = 'block';
-      setTimeout(() => { el.style.display = 'none'; }, 3000);
+      // Erros persistem 15s, sucesso 3s
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => { el.style.display = 'none'; }, isError ? 15000 : 3000);
     }
 
     function statusLabel(status){
