@@ -847,8 +847,11 @@ def kds_page_html() -> str:
           if (!window.AndroidPrint.isConnected()) {
             const connected = window.AndroidPrint.connect();
             if (!connected) {
-              showToast('Conectando impressora USB... tente novamente', true);
-              // Mesmo assim tenta imprimir — o connect() dispara permissão
+              const err = window.AndroidPrint.getLastError ? window.AndroidPrint.getLastError() : '';
+              const devs = window.AndroidPrint.listUsbDevices ? window.AndroidPrint.listUsbDevices() : '';
+              showToast('USB connect falhou' + (err ? ': ' + err : ''), true);
+              console.log('AndroidPrint connect falhou:', err);
+              console.log('Dispositivos USB:', devs);
               if (typeof cb === 'function') setTimeout(cb, 300);
               return;
             }
@@ -860,7 +863,8 @@ def kds_page_html() -> str:
             if (typeof cb === 'function') setTimeout(cb, 300);
             return;
           }
-          showToast('Impressora nativa falhou — usando diálogo', true);
+          const err = window.AndroidPrint.getLastError ? window.AndroidPrint.getLastError() : '';
+          showToast('Impressora falhou' + (err ? ': ' + err : ''), true);
         } catch(e) {
           console.error('AndroidPrint erro:', e);
           showToast('Erro impressora nativa: ' + e.message, true);
