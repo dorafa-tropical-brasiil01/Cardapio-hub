@@ -81,6 +81,9 @@ def kds_page_html() -> str:
     .btn-printer{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
     .btn-printer.connected{background:var(--verde);color:#fff;border-color:var(--verde)}
     .btn-printer.error{background:var(--vermelho);color:#fff;border-color:var(--vermelho)}
+    .modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
+    .modal-overlay.open{display:flex}
+    .modal-box{background:var(--card);border-radius:20px;padding:20px;width:min(520px,92%);max-height:90vh;overflow-y:auto}
 
     #modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     #modal-overlay.open{display:flex}
@@ -129,7 +132,7 @@ def kds_page_html() -> str:
       <button class="logout" id="btn-logout" type="button">Sair</button>
       <h1>Cozinha</h1>
       <div class="sub">Painel de preparo</div>
-      <button class="btn-printer" id="btn-printer" type="button" onclick="conectarImpressora()" title="Conectar impressora térmica USB">
+      <button class="btn-printer" id="btn-printer" type="button" onclick="abrirConfigImpressora()" title="Configurar impressora térmica">
         <span id="printer-icon">&#128424;</span>
         <span id="printer-status">Impressora</span>
       </button>
@@ -178,6 +181,24 @@ def kds_page_html() -> str:
       <div class="actions">
         <button class="btn-secondary" onclick="fecharModal()">Cancelar</button>
         <button class="btn-danger" id="btn-confirmar-recusa" onclick="confirmarRecusa()">Recusar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de configuracao da impressora -->
+  <div id="printer-overlay" class="modal-overlay">
+    <div id="printer-modal" class="modal-box">
+      <h3>Configurar Impressora</h3>
+      <p class="muted" style="margin:4px 0 14px 0;font-size:13px">
+        Use o app <b>RawBT</b> instalado no Android para imprimir na Bematech via USB.
+        Configure a URL do RawBT abaixo (padr&atilde;o: <code>http://localhost:9100</code>).
+      </p>
+      <label for="printer-url" style="display:block;margin:10px 0 4px 0;font-weight:700">URL do RawBT</label>
+      <input id="printer-url" type="text" placeholder="http://localhost:9100" style="width:100%;padding:12px;border-radius:12px;border:2px solid var(--border);font-family:inherit;font-size:15px;box-sizing:border-box">
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+        <button class="btn-secondary" onclick="fecharConfigImpressora()">Cancelar</button>
+        <button class="btn-primary" onclick="testarImpressora()">Testar</button>
+        <button class="btn-primary" onclick="salvarImpressora()">Salvar</button>
       </div>
     </div>
   </div>
@@ -448,14 +469,20 @@ def kds_page_html() -> str:
     }
 
     // ============================================================
-    // MODULO WebUSB ESC/POS — Impressão direto na Bematech MP-4200 TH
+    // MODULO IMPRESSAO ESC/POS via RawBT (HTTP) — Bematech MP-4200 TH
     // ============================================================
+    //
+    // O RawBT e um app Android que recebe comandos ESC/POS via HTTP
+    // e envia para a impressora USB. O KDS envia os bytes ESC/POS
+    // via POST para o servidor HTTP local do RawBT.
+    //
+    // Configuracao:
+    //   - Instalar RawBT no Android
+    //   - Conectar Bematech MP-4200 TH via USB-OTG
+    //   - Aceitar RawBT como controlador da impressora
+    //   - No KDS, clicar "Impressora" e configurar a URL (default: http://localhost:9100)
 
-    // Bematech Vendor ID = 0x0b1b
-    const BEMATECH_VENDOR_ID = 0x0b1b;
-    let _usbPrinter = null;       // USBDevice conectado
-    let _usbEndpointOut = null;   // endpoint number para envio
-    let _usbInterfaceNum = null;  // interface number
+    let _rawbtUrl = null;  // URL do RawBT (ex: http://localhost:9100)
 
     // --- Comandos ESC/POS (portado do PDV escpos_printing.py) ---
     const ESC = 0x1B;
@@ -474,7 +501,19 @@ def kds_page_html() -> str:
     const DASH_LINE      = '-'.repeat(44);
 
     function _encCP850(text) {
-      // Substitui caracteres não suportados em CP850
+      // Mapa CP850 para caracteres acentuados do português
+      const cp850map = {
+        0xE1:0xA0, 0xE0:0x85, 0xE2:0x83, 0xE3:0xA6, // á à â ã
+        0xE9:0x82, 0xEA:0x88, 0xEB:0x89,             // é ê ë
+        0xED:0xA1, 0xEC:0x8D, 0xEE:0x8B, 0xEF:0x8C, // í ì î ï
+        0xF3:0xA2, 0xF2:0x95, 0xF4:0x93, 0xF5:0xA8, // ó ò ô õ
+        0xFA:0xA3, 0xF9:0x97, 0xFB:0x96, 0xFC:0x81, // ú ù û ü
+        0xE7:0x87, 0xC1:0x9A, 0xC0:0xB5, 0xC2:0x90, // ç Á À Â
+        0xC3:0xC6, 0xC9:0x90, 0xCA:0xCA, 0xCD:0x9D, // Ã É Ê Í
+        0xD3:0xE0, 0xD4:0xE2, 0xD5:0xE9, 0xDA:0xE3, // Ó Ô Õ Ú
+        0xC7:0x80, 0xD1:0xA5, 0xF1:0xA4,             // Ç Ñ ñ
+      };
+      // Substitui caracteres Unicode não suportados
       const repl = {
         '\u2022':'-','\u2013':'-','\u2014':'-','\u2018':"'",'\u2019':"'",
         '\u201c':'"','\u201d':'"','\u2026':'...','\u00a0':' ',
@@ -482,19 +521,25 @@ def kds_page_html() -> str:
       };
       let s = String(text || '');
       for (const [k,v] of Object.entries(repl)) s = s.split(k).join(v);
-      // Codifica em CP850 (acentos do português são suportados)
-      try {
-        return new TextEncoder('cp850', {NONSTANDARD_ALLOW_LEGACY: true}).encode(s);
-      } catch(e) {
-        // Fallback: TextEncoder padrão só suporta UTF-8; usa array manual
-        const arr = [];
-        for (let i = 0; i < s.length; i++) {
-          const code = s.charCodeAt(i);
-          if (code < 0x80) arr.push(code);
-          else arr.push(0x3F); // '?' para caracteres não-ASCII não mapeados
+      // Codifica manualmente em CP850
+      const arr = [];
+      for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        if (code < 0x80) {
+          arr.push(code);
+        } else if (cp850map[code]) {
+          arr.push(cp850map[code]);
+        } else {
+          // Tenta decomposição (ex: Á = A + combining accent)
+          const decomposed = s.normalize('NFD')[i];
+          if (decomposed && decomposed.charCodeAt(0) < 0x80) {
+            arr.push(decomposed.charCodeAt(0));
+          } else {
+            arr.push(0x3F); // '?'
+          }
         }
-        return new Uint8Array(arr);
       }
+      return new Uint8Array(arr);
     }
 
     function _centerText(text, width) {
@@ -638,100 +683,96 @@ def kds_page_html() -> str:
       return _concatBytes(...parts);
     }
 
-    async function conectarImpressora() {
-      if (!navigator.usb) {
-        showToast('Navegador não suporta WebUSB', true);
-        return;
-      }
+    // --- Configuração e persistência ---
+
+    function _loadPrinterConfig() {
       try {
-        const btn = document.getElementById('btn-printer');
-        const statusEl = document.getElementById('printer-status');
-        btn.classList.remove('connected', 'error');
-        statusEl.textContent = 'Conectando...';
-
-        // Solicitar dispositivo USB (filtra por Bematech, mas aceita qualquer)
-        const device = await navigator.usb.requestDevice({
-          filters: [{ vendorId: BEMATECH_VENDOR_ID }]
-        });
-
-        await device.open();
-        if (device.configuration === null) {
-          await device.selectConfiguration(1);
+        const saved = localStorage.getItem('kds_rawbt_url');
+        if (saved) {
+          _rawbtUrl = saved;
+          _updatePrinterButton();
         }
+      } catch(e) {}
+    }
 
-        // Encontrar endpoint de saída (bulk OUT)
-        const config = device.configuration;
-        const iface = config.interfaces[0];
-        _usbInterfaceNum = iface.interfaceNumber;
-        await device.claimInterface(_usbInterfaceNum);
+    function _savePrinterConfig(url) {
+      _rawbtUrl = url;
+      try { localStorage.setItem('kds_rawbt_url', url); } catch(e) {}
+      _updatePrinterButton();
+    }
 
-        const alt = iface.alternates[0];
-        _usbEndpointOut = null;
-        for (const ep of alt.endpoints) {
-          if (ep.direction === 'out' && ep.type === 'bulk') {
-            _usbEndpointOut = ep.endpointNumber;
-            break;
-          }
-        }
-        if (_usbEndpointOut === null) {
-          throw new Error('Nenhum endpoint OUT encontrado');
-        }
-
-        _usbPrinter = device;
+    function _updatePrinterButton() {
+      const btn = document.getElementById('btn-printer');
+      const statusEl = document.getElementById('printer-status');
+      if (!btn || !statusEl) return;
+      btn.classList.remove('connected', 'error');
+      if (_rawbtUrl) {
         btn.classList.add('connected');
-        statusEl.textContent = 'Conectada';
-        showToast('Impressora conectada');
-
-        // Listener para desconexão
-        navigator.usb.addEventListener('disconnect', _onUsbDisconnect);
-      } catch (e) {
-        const btn = document.getElementById('btn-printer');
-        const statusEl = document.getElementById('printer-status');
-        if (e.name === 'NotFoundError') {
-          statusEl.textContent = 'Impressora';
-          btn.classList.remove('error');
-        } else {
-          btn.classList.add('error');
-          statusEl.textContent = 'Erro';
-          showToast('Erro ao conectar: ' + e.message, true);
-        }
+        statusEl.textContent = 'Online';
+      } else {
+        statusEl.textContent = 'Impressora';
       }
     }
 
-    function _onUsbDisconnect(e) {
-      if (_usbPrinter === e.device) {
-        _usbPrinter = null;
-        _usbEndpointOut = null;
-        const btn = document.getElementById('btn-printer');
-        const statusEl = document.getElementById('printer-status');
-        btn.classList.remove('connected', 'error');
-        statusEl.textContent = 'Impressora';
-        showToast('Impressora desconectada');
+    function abrirConfigImpressora() {
+      const overlay = document.getElementById('printer-overlay');
+      const input = document.getElementById('printer-url');
+      input.value = _rawbtUrl || 'http://localhost:9100';
+      overlay.classList.add('open');
+    }
+
+    function fecharConfigImpressora() {
+      document.getElementById('printer-overlay').classList.remove('open');
+    }
+
+    function salvarImpressora() {
+      const url = String(document.getElementById('printer-url').value || '').trim();
+      if (!url) {
+        _rawbtUrl = null;
+        _updatePrinterButton();
+        fecharConfigImpressora();
+        showToast('Impressora desativada');
+        return;
+      }
+      _savePrinterConfig(url);
+      fecharConfigImpressora();
+      showToast('Impressora configurada: ' + url);
+    }
+
+    async function testarImpressora() {
+      const url = String(document.getElementById('printer-url').value || '').trim();
+      if (!url) { showToast('Informe a URL do RawBT', true); return; }
+      // Envia um cupom de teste (reset + texto + corte)
+      const testData = _concatBytes(
+        ESC_INIT, ESC_CP850, ESC_CENTER,
+        _encCP850('--- TESTE KDS ---'), LF, LF,
+        _encCP850('Impressora conectada'), LF, LF, LF,
+        ESC_CUT
+      );
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: testData
+        });
+        showToast('Teste enviado ao RawBT');
+      } catch (e) {
+        showToast('Erro: ' + e.message, true);
       }
     }
 
     async function imprimirEscpos(pedido) {
-      if (!_usbPrinter || _usbEndpointOut === null) {
-        return false;
-      }
+      if (!_rawbtUrl) return false;
       try {
         const data = montarCupomEscpos(pedido);
-        // Enviar em chunks de 4096 bytes (limite comum de transferência USB)
-        const CHUNK = 4096;
-        for (let off = 0; off < data.length; off += CHUNK) {
-          const chunk = data.slice(off, off + CHUNK);
-          await _usbPrinter.transferOut(_usbEndpointOut, chunk);
-        }
+        await fetch(_rawbtUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: data
+        });
         return true;
       } catch (e) {
         console.error('imprimirEscpos - erro:', e);
-        _usbPrinter = null;
-        _usbEndpointOut = null;
-        const btn = document.getElementById('btn-printer');
-        const statusEl = document.getElementById('printer-status');
-        btn.classList.remove('connected');
-        btn.classList.add('error');
-        statusEl.textContent = 'Erro';
         return false;
       }
     }
@@ -780,15 +821,15 @@ def kds_page_html() -> str:
     }
 
     async function imprimirCupom(pedido, cb){
-      // Tentar WebUSB (ESC/POS direto na Bematech) primeiro
-      if (_usbPrinter && _usbEndpointOut !== null) {
+      // Tentar RawBT (ESC/POS via HTTP para o app Android) primeiro
+      if (_rawbtUrl) {
         const ok = await imprimirEscpos(pedido);
         if (ok) {
           if (typeof cb === 'function') setTimeout(cb, 300);
           return;
         }
-        // Se WebUSB falhou, cai para window.print()
-        showToast('Impressora USB falhou — usando diálogo de impressão', true);
+        // Se RawBT falhou, cai para window.print()
+        showToast('RawBT falhou — usando diálogo de impressão', true);
       }
       // Fallback: window.print() com CSS 80mm
       const frame = document.getElementById('print-frame');
@@ -880,6 +921,7 @@ def kds_page_html() -> str:
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+      _loadPrinterConfig();
       carregar();
       timer = setInterval(carregar, 3000);
       if ('serviceWorker' in navigator) {
