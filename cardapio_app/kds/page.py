@@ -57,6 +57,8 @@ def kds_page_html() -> str:
     .card-item .cliente{margin-top:8px;font-weight:700}
     .card-item .tipo{color:var(--muted);font-size:13px}
     .card-item .hora{color:var(--muted);font-size:12px;margin-top:6px}
+    .card-item .card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
+    .card-item .card-total{font-weight:900;font-size:15px;color:var(--verde)}
     .empty{text-align:center;padding:40px 20px;color:var(--muted)}
 
     #drawer{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
@@ -74,7 +76,7 @@ def kds_page_html() -> str:
     .btn-primary{background:var(--verde);color:#fff}
     .btn-secondary{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border)!important}
     .btn-danger{background:var(--vermelho);color:#fff}
-    .btn-wa{background:var(--verde-claro);color:#fff}
+    .btn-wa{background:#25D366;color:#fff;border:2px solid #1da851!important;display:inline-flex;align-items:center;gap:8px;justify-content:center;font-size:15px;padding:16px;border-radius:16px;font-weight:900;text-decoration:none;flex:1;min-width:140px}
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
     #modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
@@ -228,7 +230,7 @@ def kds_page_html() -> str:
       const record = base.record || base;
       const cliente = record.cliente || {};
       const entrega = record.entrega || {};
-      const endereco = entrega.endereco || {};
+      const endereco = record.endereco || entrega.endereco || {};
       return {
         id: base.id,
         status: kds.status || 'NOVO',
@@ -236,11 +238,11 @@ def kds_page_html() -> str:
         cliente_whatsapp: cliente.whatsapp || base.cliente_whatsapp || '',
         tipo: record.tipo_entrega || base.tipo_entrega || base.kind || '',
         mesa: base.mesa || record.mesa || '',
-        total: record.total || base.total || 0,
+        total: Number(record.total_estimado || record.total || base.total || base.total_estimado || 0),
         observacoes: record.observacoes || base.observacoes || base.observacao || '',
         itens: base.itens || record.itens || record.items || [],
         endereco: endereco,
-        taxa: entrega.taxa || 0,
+        taxa: Number(record.taxa_entrega || entrega.taxa || base.taxa_entrega || 0),
         kds: kds,
       };
     }
@@ -269,7 +271,10 @@ def kds_page_html() -> str:
           </div>
           <div class="cliente">${d.cliente_nome || 'Cliente não informado'}</div>
           <div class="tipo">${d.tipo}${d.mesa ? ' • Mesa ' + d.mesa : ''}</div>
-          <div class="hora">${criado}</div>
+          <div class="card-footer">
+            <div class="hora">${criado}</div>
+            <div class="card-total">${money(d.total)}</div>
+          </div>
         </div>
       `;
     }
@@ -386,23 +391,33 @@ def kds_page_html() -> str:
       `;
 
       let botoes = '';
+      const waIcon = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a9.94 9.94 0 0 0-8.53 15.02L2 22l5.1-1.35A9.96 9.96 0 0 0 12 22a10 10 0 0 0 0-20Zm5.77 14.42c-.24.67-1.21 1.23-1.97 1.39-.52.11-1.2.2-3.48-.74-2.91-1.2-4.79-4.14-4.93-4.33-.14-.19-1.18-1.57-1.18-2.99 0-1.42.74-2.12 1.01-2.41.26-.29.57-.36.76-.36h.55c.17 0 .41-.06.64.49.24.58.82 2 .89 2.14.07.14.11.32.02.51-.09.2-.14.32-.28.49-.14.17-.29.38-.42.51-.14.14-.28.29-.12.58.16.29.7 1.16 1.5 1.88 1.03.92 1.9 1.2 2.19 1.34.29.14.45.12.62-.07.17-.19.71-.82.9-1.1.19-.28.38-.24.64-.14.26.1 1.65.78 1.93.92.29.14.48.22.55.34.07.12.07.68-.17 1.35Z"/></svg>';
       if (d.status === 'NOVO' || d.status === 'AGUARDANDO'){
         botoes = `
           <button class="btn-primary" onclick="aceitarEImprimir('${d.id}')">Aceitar e imprimir</button>
           <button class="btn-danger" onclick="abrirModalRecusa('${d.id}')">Recusar</button>
         `;
         if (d.cliente_whatsapp) {
-          botoes += `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.')}" target="_blank" rel="noopener">WhatsApp</a>`;
+          botoes += `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Estamos entrando em contato sobre seu pedido.')}" target="_blank" rel="noopener">${waIcon} WhatsApp</a>`;
         }
       } else if (d.status === 'EM_PREPARO'){
         botoes = `<button class="btn-primary" onclick="marcarPronto('${d.id}')">Pronto</button>`;
+        if (d.cliente_whatsapp) {
+          botoes += `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Sobre seu pedido, já está em preparo.')}" target="_blank" rel="noopener">${waIcon} WhatsApp</a>`;
+        }
       } else if (d.status === 'PRONTO'){
         botoes = `<button class="btn-primary" onclick="sinalEntregar('${d.id}')">Sinal para entregar</button>`;
+        if (d.cliente_whatsapp) {
+          botoes += `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Seu pedido já está pronto.')}" target="_blank" rel="noopener">${waIcon} WhatsApp</a>`;
+        }
       } else if (d.status === 'SINALIZADO'){
         botoes = `<button class="btn-secondary" onclick="reimprimir('${d.id}')">Reimprimir</button>`;
+        if (d.cliente_whatsapp) {
+          botoes += `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Seu pedido já está a caminho.')}" target="_blank" rel="noopener">${waIcon} WhatsApp</a>`;
+        }
       } else if (d.status === 'RECUSADO'){
         if (d.cliente_whatsapp) {
-          botoes = `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Infelizmente precisamos falar sobre seu pedido.')}" target="_blank" rel="noopener">WhatsApp</a>`;
+          botoes = `<a class="btn-wa" href="${waUrl(d.cliente_whatsapp, 'Olá! Infelizmente precisamos falar sobre seu pedido.')}" target="_blank" rel="noopener">${waIcon} WhatsApp</a>`;
         }
       }
       document.getElementById('drawer-actions').innerHTML = botoes;
