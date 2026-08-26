@@ -73,6 +73,15 @@ def init_db() -> None:
             )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_cardapio_solicitacoes_status ON cardapio_solicitacoes(status)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_cardapio_solicitacoes_mesa ON cardapio_solicitacoes(mesa)")
+            # Migracao: adicionar coluna numero_online (sequencia propria do cardapio)
+            try:
+                cur.execute("ALTER TABLE cardapio_solicitacoes ADD COLUMN IF NOT EXISTS numero_online INTEGER")
+            except Exception:
+                pass
+            try:
+                cur.execute("CREATE INDEX IF NOT EXISTS idx_cardapio_solicitacoes_numero_online ON cardapio_solicitacoes(numero_online)")
+            except Exception:
+                pass
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cardapio_mesas (
@@ -2026,17 +2035,23 @@ def save_solicitacao(*, record: dict[str, Any]) -> None:
     except Exception:
         mesa_i = None
     criado_em = record.get("criado_em")
+    numero_online = record.get("numero_online")
+    try:
+        numero_online_i = int(numero_online) if numero_online is not None else None
+    except Exception:
+        numero_online_i = None
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO cardapio_solicitacoes(id, status, mesa, criado_em, record)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO cardapio_solicitacoes(id, status, mesa, criado_em, record, numero_online)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE SET
                     status=EXCLUDED.status,
                     mesa=EXCLUDED.mesa,
                     criado_em=EXCLUDED.criado_em,
-                    record=EXCLUDED.record
+                    record=EXCLUDED.record,
+                    numero_online=COALESCE(EXCLUDED.numero_online, cardapio_solicitacoes.numero_online)
                 """,
                 (
                     sid,
@@ -2044,8 +2059,21 @@ def save_solicitacao(*, record: dict[str, Any]) -> None:
                     mesa_i,
                     criado_em,
                     psycopg2.extras.Json(record),
+                    numero_online_i,
                 ),
             )
+
+
+def proximo_numero_online() -> int:
+    """Retorna o próximo número sequencial de pedido online (1, 2, 3, ...)."""
+    if not is_enabled():
+        return 0
+    _ensure_db_ready()
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COALESCE(MAX(numero_online), 0) + 1 AS prox FROM cardapio_solicitacoes WHERE numero_online IS NOT NULL")
+            row = cur.fetchone()
+            return int(row[0]) if row else 1
 
 
 def get_solicitacao(*, solicitacao_id: str) -> dict[str, Any] | None:

@@ -1506,6 +1506,12 @@ self.addEventListener('fetch', (event) => {
             total_estimado_f = None
 
         solicitacao_id = uuid.uuid4().hex
+        numero_online = 0
+        if core.pg_enabled():
+            try:
+                numero_online = core.pg_store.proximo_numero_online()
+            except Exception:
+                numero_online = 0
         rec: dict[str, Any] = {
             "id": solicitacao_id,
             "mesa": int(mesa),
@@ -1524,6 +1530,7 @@ self.addEventListener('fetch', (event) => {
             "operator_user_id": None,
             "sale_id": None,
             "resposta": None,
+            "numero_online": numero_online,
         }
 
         data = core.ensure_solicitacoes_file(_ctx())
@@ -1721,6 +1728,12 @@ self.addEventListener('fetch', (event) => {
 
         access_token = secrets.token_urlsafe(24)
         solicitacao_id = uuid.uuid4().hex
+        numero_online = 0
+        if core.pg_enabled():
+            try:
+                numero_online = core.pg_store.proximo_numero_online()
+            except Exception:
+                numero_online = 0
         status_inicial = (
             pedidos_domain.SOLICITACAO_STATUS_AGUARDANDO_PAGAMENTO
             if cobra_online
@@ -1761,6 +1774,7 @@ self.addEventListener('fetch', (event) => {
                 pay_domain.window_deadline_iso() if cobra_online else None
             ),
             "pago_em": None,
+            "numero_online": numero_online,
             "pagamento": None,
             "ocorrencias_pagamento": [],
         }

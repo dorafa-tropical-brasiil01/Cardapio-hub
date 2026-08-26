@@ -46,7 +46,7 @@ def kds_page_html() -> str:
     .card-item{background:var(--card);border:2px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease;overflow:hidden}
     .card-item:active{transform:scale(.99)}
     .card-item .header{display:flex;align-items:center;justify-content:space-between;gap:10px;overflow:hidden;min-width:0}
-    .card-item .id{font-weight:900;font-size:16px;flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .card-item .id{font-weight:900;font-size:16px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
     .card-item .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;flex-shrink:0;white-space:nowrap}
     .badge.NOVO{background:rgba(10,92,47,.08);color:var(--verde);border:1px solid rgba(10,92,47,.2)}
     .badge.EM_PREPARO{background:var(--amarelo);color:var(--verde);border:1px solid var(--verde)}
@@ -54,8 +54,8 @@ def kds_page_html() -> str:
     .badge.SINALIZADO{background:var(--azul);color:#fff;border:1px solid var(--azul)}
     .badge.ENTREGUE{background:#6b7280;color:#fff;border:1px solid #6b7280}
     .badge.RECUSADO{background:var(--vermelho);color:#fff;border:1px solid var(--vermelho)}
-    .card-item .cliente{margin-top:8px;font-weight:700}
-    .card-item .tipo{color:var(--muted);font-size:13px}
+    .card-item .cliente{margin-top:8px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .card-item .tipo{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .card-item .hora{color:var(--muted);font-size:12px;margin-top:6px}
     .card-item .card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
     .card-item .card-total{font-weight:900;font-size:15px;color:var(--verde)}
@@ -185,15 +185,16 @@ def kds_page_html() -> str:
     </div>
   </div>
 
-  <!-- Modal de configuracao da impressora -->
+  <!-- Modal de configuracao da impressora (fallback RawBT) -->
   <div id="printer-overlay" class="modal-overlay">
     <div id="printer-modal" class="modal-box">
-      <h3>Configurar Impressora</h3>
+      <h3>Impressora Térmica</h3>
       <p class="muted" style="margin:4px 0 14px 0;font-size:13px">
-        Use o app <b>RawBT</b> instalado no Android para imprimir na Bematech via USB.
-        Configure a URL do RawBT abaixo (padr&atilde;o: <code>http://localhost:9100</code>).
+        Para imprimir via USB na Bematech MP-4200 TH, instale o app
+        <b>DoRafa KDS Print</b> (recomendado).<br/>
+        Alternativa: use o app <b>RawBT</b> e configure a URL abaixo.
       </p>
-      <label for="printer-url" style="display:block;margin:10px 0 4px 0;font-weight:700">URL do RawBT</label>
+      <label for="printer-url" style="display:block;margin:10px 0 4px 0;font-weight:700">URL do RawBT (alternativa)</label>
       <input id="printer-url" type="text" placeholder="http://localhost:9100" style="width:100%;padding:12px;border-radius:12px;border:2px solid var(--border);font-family:inherit;font-size:15px;box-sizing:border-box">
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
         <button class="btn-secondary" onclick="fecharConfigImpressora()">Cancelar</button>
@@ -261,8 +262,15 @@ def kds_page_html() -> str:
       const cliente = record.cliente || {};
       const entrega = record.entrega || {};
       const endereco = record.endereco || entrega.endereco || {};
+      const numeroOnline = Number(record.numero_online || base.numero_online || 0);
+      // ID curto para exibição: On-line_XX (sequencial do cardápio) ou fallback do UUID
+      const idCurto = numeroOnline > 0
+        ? 'On-line_' + String(numeroOnline).padStart(2, '0')
+        : (base.id || '').substring(0, 8);
       return {
         id: base.id,
+        idCurto: idCurto,
+        numeroOnline: numeroOnline,
         status: kds.status || 'NOVO',
         cliente_nome: cliente.nome || base.cliente_nome || '',
         cliente_whatsapp: cliente.whatsapp || base.cliente_whatsapp || '',
@@ -296,7 +304,7 @@ def kds_page_html() -> str:
       return `
         <div class="card-item" data-id="${d.id}" data-status="${d.status}">
           <div class="header">
-            <div class="id">#${d.id}</div>
+            <div class="id">${d.idCurto}</div>
             <div class="badge ${d.status}">${statusLabel(d.status)}</div>
           </div>
           <div class="cliente">${d.cliente_nome || 'Cliente não informado'}</div>
@@ -394,7 +402,7 @@ def kds_page_html() -> str:
         if (end.referencia) endText += '\nRef: ' + end.referencia;
       }
 
-      document.getElementById('drawer-titulo').textContent = 'Pedido #' + d.id;
+      document.getElementById('drawer-titulo').textContent = 'Pedido ' + d.idCurto;
       document.getElementById('drawer-conteudo').innerHTML = `
         <div class="section">
           <div class="section-title">Cliente</div>
@@ -471,18 +479,19 @@ def kds_page_html() -> str:
     }
 
     // ============================================================
-    // MODULO IMPRESSAO ESC/POS via RawBT (HTTP) — Bematech MP-4200 TH
+    // MODULO IMPRESSAO ESC/POS — Bematech MP-4200 TH
     // ============================================================
     //
-    // O RawBT e um app Android que recebe comandos ESC/POS via HTTP
-    // e envia para a impressora USB. O KDS envia os bytes ESC/POS
-    // via POST para o servidor HTTP local do RawBT.
+    // Prioridade 1: App nativo DoRafaKDSPrint (USB Host API + CDC ACM)
+    //   - WebView carrega o KDS, ponte window.AndroidPrint.print(base64)
+    //   - Inicializa CDC ACM (SET_LINE_CODING + SET_CONTROL_LINE_STATE)
+    //   - Envia bytes ESC/POS via bulkTransfer
     //
-    // Configuracao:
-    //   - Instalar RawBT no Android
-    //   - Conectar Bematech MP-4200 TH via USB-OTG
-    //   - Aceitar RawBT como controlador da impressora
-    //   - No KDS, clicar "Impressora" e configurar a URL (default: http://localhost:9100)
+    // Prioridade 2: RawBT (fallback, ESC/POS via HTTP)
+    //   - App Android que recebe comandos ESC/POS via HTTP
+    //   - Configurar URL no botão "Impressora" (default: http://localhost:9100)
+    //
+    // Prioridade 3: window.print() (último recurso, impressora comum)
 
     let _rawbtUrl = null;  // URL do RawBT (ex: http://localhost:9100)
 
@@ -581,7 +590,7 @@ def kds_page_html() -> str:
 
       // Título
       parts.push(ESC_DOUBLE);
-      parts.push(_encCP850(_centerText('PEDIDO #' + d.id, W)));
+      parts.push(_encCP850(_centerText('PEDIDO ' + d.idCurto, W)));
       parts.push(LF);
       parts.push(ESC_NORMAL);
       parts.push(LF);
@@ -864,7 +873,7 @@ def kds_page_html() -> str:
       const criado = d.kds.created_em ? new Date(d.kds.created_em).toLocaleString('pt-BR') : '';
       return `
         <div class="cupom">
-          <h3>Pedido #${d.id}</h3>
+          <h3>Pedido ${d.idCurto}</h3>
           <div class="linha"><span>Cliente:</span><span>${d.cliente_nome || '-'}</span></div>
           <div class="linha"><span>Tipo:</span><span>${d.tipo || '-'}</span></div>
           <div class="linha"><span>Mesa:</span><span>${d.mesa || '-'}</span></div>
