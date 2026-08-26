@@ -1325,6 +1325,16 @@
         const bannerEl = document.getElementById("postOrderBanner");
         const tracking = getTrackingPedido();
         if (bannerEl) {
+            const isOnline = Boolean(tracking && tracking.pagamento_online);
+            const span = bannerEl.querySelector("span");
+            const btn = bannerEl.querySelector("button");
+            if (isOnline) {
+                if (span) span.textContent = "Pagamento em andamento";
+                if (btn) btn.textContent = "Voltar ao pagamento";
+            } else {
+                if (span) span.textContent = "Pedido em andamento";
+                if (btn) btn.textContent = "Acompanhar pedido";
+            }
             bannerEl.style.display = (tracking && tracking.id) ? "block" : "none";
         }
     }
@@ -1467,11 +1477,16 @@
                         }
                     }
 
-                    if (!state.statusPublicoTimer) {
+                    // Para pedidos sem pagamento online já confirmados pelo PDV,
+                    // não reinicia o polling — apenas mostra o estado final.
+                    const jaConfirmado = Boolean(tracking._confirmado_pdv);
+                    if (!state.statusPublicoTimer && !jaConfirmado) {
                         if (!statusPublicoDiv.innerText) {
                             statusPublicoDiv.innerText = "Carregando status...";
                         }
                         startStatusPublicoPolling();
+                    } else if (jaConfirmado) {
+                        statusPublicoDiv.innerText = "Pedido confirmado";
                     }
                 } else if (statusPublicoDiv) {
                     statusPublicoDiv.style.display = "none";
@@ -1576,6 +1591,30 @@
                 state.carrinho = [];
                 saveLocal();
                 updateCartBadge();
+            }
+            // Para pedidos sem pagamento online (dinheiro) confirmados pelo PDV,
+            // mostra botão "Fazer novo pedido" e limpa o carrinho.
+            if (!pagamentoOnline && estado === "NAO_APLICAVEL") {
+                const tracking = getTrackingPedido();
+                if (tracking && tracking._confirmado_pdv) {
+                    state.carrinho = [];
+                    saveLocal();
+                    updateCartBadge();
+                    // Mostra área com botão de novo pedido
+                    area.style.display = "block";
+                    header.innerHTML = "Pedido confirmado!";
+                    const sp = String(data.status_publico || "").toUpperCase();
+                    const spText = {
+                        "ACEITO": "O estabelecimento confirmou seu pedido.",
+                        "PREPARANDO": "Seu pedido está sendo preparado.",
+                        "PRONTO": "Seu pedido está pronto!",
+                        "EM_ENTREGA": "Seu pedido está a caminho.",
+                        "ENTREGUE": "Seu pedido foi entregue.",
+                    };
+                    body.innerHTML = `<div class="payment-hint" style="margin:12px 0">${escapeHtml(spText[sp] || "Pedido confirmado pelo estabelecimento.")}</div>` +
+                        `<div class="payment-actions"><button type="button" onclick="fazerNovoPedido()">Fazer novo pedido</button></div>`;
+                    body.dataset.renderKey = "confirmado_" + sp;
+                }
             }
             renderResumoPedido(data);
             updateCancelarPedidoFooter(data);
@@ -1887,6 +1926,25 @@
                 const bannerEl = document.getElementById("postOrderBanner");
                 if (bannerEl) bannerEl.style.display = "none";
             }
+
+            // Para pedidos sem pagamento online (dinheiro), quando o PDV confirma
+            // o atendimento (ACEITO ou superior), parar polling e esconder banner.
+            // Não há pagamento para acompanhar — o cliente pode fazer novo pedido.
+            if (!tracking.pagamento_online) {
+                const sp = String(data.status_publico || "").toUpperCase();
+                if (sp === "ACEITO" || sp === "PREPARANDO" || sp === "PRONTO" || sp === "EM_ENTREGA" || sp === "ENTREGUE" || finalizado === true) {
+                    stopStatusPublicoPolling();
+                    const bannerEl = document.getElementById("postOrderBanner");
+                    if (bannerEl) bannerEl.style.display = "none";
+                    // Marca o tracking como confirmado para a tela mostrar "Fazer novo pedido"
+                    tracking._confirmado_pdv = true;
+                    saveTrackingPedido(tracking);
+                    // Re-renderiza a tela se estiver ativa
+                    if (state.postOrderActive) {
+                        renderPagamentoNaTela(data);
+                    }
+                }
+            }
         } catch (e) {
         }
     }
@@ -2084,6 +2142,19 @@
         if (tracking) {
             showPostOrderScreen(tracking);
         }
+    }
+
+    function fazerNovoPedido() {
+        stopStatusPublicoPolling();
+        clearTrackingPedido();
+        state.postOrderActive = false;
+        state.postOrderPedido = null;
+        state.carrinho = [];
+        saveLocal();
+        updateCartBadge();
+        const bannerEl = document.getElementById("postOrderBanner");
+        if (bannerEl) bannerEl.style.display = "none";
+        showMainScreen();
     }
 
     async function refreshSolicitacao() {
