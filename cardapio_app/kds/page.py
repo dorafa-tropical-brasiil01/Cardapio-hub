@@ -124,6 +124,8 @@ def kds_page_html() -> str:
 </head>
 <body>
   <div id="app">
+    <!-- Diagnostico: so aparece dentro do APK (WebView com AndroidPrint) -->
+    <div id="diag-overlay" style="position:fixed;top:0;left:0;right:0;z-index:999;background:#1a1a1a;color:#0f0;font-family:monospace;font-size:11px;padding:8px;max-height:50vh;overflow:auto;display:none;white-space:pre-wrap"></div>
     <div class="topbar">
       <button class="logout" id="btn-logout" type="button">Sair</button>
       <h1>Cozinha</h1>
@@ -955,12 +957,118 @@ def kds_page_html() -> str:
 
     document.addEventListener('DOMContentLoaded', () => {
       _loadPrinterConfig();
+      _rodarDiagnosticoWebView();
       carregar();
       timer = setInterval(carregar, 3000);
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/cozinha/sw.js', {scope: '/cozinha/'}).catch(() => {});
       }
     });
+
+    // ============================================================
+    // DIAGNOSTICO: coleta evidencias concretas do que a WebView
+    // suporta ou nao. So aparece dentro do APK (window.AndroidPrint).
+    // ============================================================
+    function _rodarDiagnosticoWebView() {
+      if (!window.AndroidPrint) return; // so no APK
+      var el = document.getElementById('diag-overlay');
+      if (!el) return;
+      el.style.display = 'block';
+      var linhas = [];
+      function p(s) { linhas.push(s); }
+
+      // 1. User agent (tem versao do Chrome)
+      p('=== USER AGENT ===');
+      p(navigator.userAgent);
+
+      // 2. Viewport
+      p('');
+      p('=== VIEWPORT ===');
+      p('innerWidth=' + window.innerWidth);
+      p('innerHeight=' + window.innerHeight);
+      p('devicePixelRatio=' + window.devicePixelRatio);
+      p('document.documentElement.clientWidth=' + document.documentElement.clientWidth);
+      var meta = document.querySelector('meta[name=viewport]');
+      p('meta viewport: ' + (meta ? meta.content : 'NAO ENCONTRADO'));
+
+      // 3. Teste de features CSS
+      p('');
+      p('=== CSS FEATURE SUPPORT ===');
+      var d = document.createElement('div');
+      var ds = d.style;
+      p('display:flex = ' + ('flex' in ds || 'webkitFlex' in ds));
+      p('display:grid = ' + ('grid' in ds));
+      p('gap = ' + ('gap' in ds));
+      p('inset = ' + ('inset' in ds));
+      p('CSS variables = ' + (window.CSS && CSS.supports ? CSS.supports('--x','0') : 'CSS.supports N/A'));
+
+      // Testar var() de verdade
+      try {
+        d.style.setProperty('--test', 'red');
+        d.style.color = 'var(--test)';
+        var computed = getComputedStyle(d).color;
+        p('var() resolve = ' + computed + (computed.indexOf('255, 0, 0') >= 0 || computed === 'rgb(255, 0, 0)' ? ' [OK]' : ' [FALHOU]'));
+      } catch(e) {
+        p('var() resolve = ERRO: ' + e.message);
+      }
+
+      // Testar gap de verdade
+      try {
+        var c = document.createElement('div');
+        c.style.display = 'flex';
+        c.style.gap = '10px';
+        var a = document.createElement('div'); a.style.width = '50px';
+        var b = document.createElement('div'); b.style.width = '50px';
+        c.appendChild(a); c.appendChild(b);
+        document.body.appendChild(c);
+        var gapReal = b.getBoundingClientRect().left - a.getBoundingClientRect().right;
+        document.body.removeChild(c);
+        p('gap real = ' + gapReal + 'px' + (gapReal > 5 ? ' [OK]' : ' [FALHOU - esperado ~10]'));
+      } catch(e) {
+        p('gap real = ERRO: ' + e.message);
+      }
+
+      // 4. Computed styles de um .card-item real
+      p('');
+      p('=== COMPUTED STYLE .card-item ===');
+      setTimeout(function() {
+        try {
+          var card = document.querySelector('.card-item');
+          if (!card) {
+            p('.card-item nao encontrado (sem pedidos?)');
+          } else {
+            var cs = getComputedStyle(card);
+            p('background=' + cs.backgroundColor);
+            p('border=' + cs.border);
+            p('borderRadius=' + cs.borderRadius);
+            p('padding=' + cs.padding);
+            p('overflow=' + cs.overflow);
+            p('boxSizing=' + cs.boxSizing);
+            p('width=' + cs.width);
+            p('height=' + cs.height);
+          }
+        } catch(e) {
+          p('computed style ERRO: ' + e.message);
+        }
+        // 5. Computed style .topbar
+        try {
+          var tb = document.querySelector('.topbar');
+          if (tb) {
+            var ts = getComputedStyle(tb);
+            p('');
+            p('=== COMPUTED STYLE .topbar ===');
+            p('background=' + ts.backgroundColor);
+            p('position=' + ts.position);
+            p('color=' + ts.color);
+          }
+        } catch(e) {}
+
+        el.textContent = linhas.join('\n');
+      }, 2000);
+
+      // Mostra imediatamente o que ja tem
+      el.textContent = linhas.join('\n');
+    }
   </script>
 </body>
 </html>"""
