@@ -34,20 +34,24 @@ def kds_page_html() -> str:
     .topbar h1{margin:0;font-size:18px;font-weight:900}
     .topbar .sub{opacity:.85;font-size:12px}
     .topbar .logout{float:right;background:rgba(255,255,255,0.15);border:0;color:#fff;padding:8px 12px;border-radius:10px;font-weight:900;cursor:pointer}
-    .tabs{display:flex;gap:6px;overflow-x:auto;padding:14px 0}
+    .tabs{display:flex;overflow-x:auto;padding:14px 0}
+    .tabs > * + *{margin-left:6px}
     .tab{flex:1;min-width:90px;background:var(--card);border:2px solid var(--border);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:var(--text)}
     .tab.active{background:var(--verde);border-color:var(--verde);color:#fff}
     .tab .count{display:block;font-size:11px;font-weight:400;opacity:.85;margin-top:2px}
-    .stats{display:flex;gap:10px;margin-bottom:14px}
+    .stats{display:flex;margin-bottom:14px}
+    .stats > * + *{margin-left:10px}
     .stat{flex:1;background:var(--card);border:2px solid var(--border);border-radius:14px;padding:12px;text-align:center}
     .stat .value{font-size:22px;font-weight:900;color:var(--verde)}
     .stat .label{font-size:11px;color:var(--muted);text-transform:uppercase}
-    .list{display:flex;flex-direction:column;gap:12px}
+    .list{display:flex;flex-direction:column}
+    .list > * + *{margin-top:12px}
     .card-item{background:var(--card);border:2px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease;overflow:hidden}
     .card-item:active{transform:scale(.99)}
-    .card-item .header{display:flex;align-items:center;justify-content:space-between;gap:10px;overflow:hidden;min-width:0}
+    .card-item .header{display:flex;align-items:center;justify-content:space-between;overflow:hidden;min-width:0}
+    .card-item .header > * + *{margin-left:10px}
     .card-item .id{font-weight:900;font-size:16px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
-    .card-item .badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;flex-shrink:0;white-space:nowrap}
+    .card-item .badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;flex-shrink:0;white-space:nowrap}
     .badge.NOVO{background:rgba(10,92,47,.08);color:var(--verde);border:1px solid rgba(10,92,47,.2)}
     .badge.EM_PREPARO{background:var(--amarelo);color:var(--verde);border:1px solid var(--verde)}
     .badge.PRONTO{background:var(--verde);color:#fff;border:1px solid var(--verde)}
@@ -61,7 +65,7 @@ def kds_page_html() -> str:
     .card-item .card-total{font-weight:900;font-size:15px;color:var(--verde)}
     .empty{text-align:center;padding:40px 20px;color:var(--muted)}
 
-    #drawer{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
+    #drawer{position:fixed;top:0;right:0;bottom:0;left:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
     #drawer.open{display:flex}
     #drawer .sheet{width:100%;max-width:980px;max-height:90vh;background:var(--card);border-radius:24px 24px 0 0;padding:18px;overflow-y:auto;animation:slideUp .2s ease}
     @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -71,35 +75,39 @@ def kds_page_html() -> str:
     #drawer .section-title{font-size:13px;font-weight:900;color:var(--verde);text-transform:uppercase;margin-bottom:6px}
     #drawer .muted{color:var(--muted);font-size:14px;white-space:pre-wrap}
     #drawer .item-row{padding:6px 0;border-bottom:1px solid rgba(10,92,47,.08);font-size:14px}
-    #drawer .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    #drawer .actions{display:flex;flex-wrap:wrap;margin:13px -5px 0 -5px}
+    #drawer .actions > *{margin:5px}
     #drawer .actions button{flex:1;min-width:140px;font-size:15px;padding:16px;border-radius:16px;border:0;font-weight:900;cursor:pointer}
     .btn-primary{background:var(--verde);color:#fff}
     .btn-secondary{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border)!important}
     .btn-danger{background:var(--vermelho);color:#fff}
-    .btn-wa{background:#25D366;color:#fff;border:2px solid #1da851!important;display:inline-flex;align-items:center;gap:8px;justify-content:center;font-size:15px;padding:16px;border-radius:16px;font-weight:900;text-decoration:none;flex:1;min-width:140px}
+    .btn-wa{background:#25D366;color:#fff;border:2px solid #1da851!important;display:inline-flex;align-items:center;justify-content:center;font-size:15px;padding:16px;border-radius:16px;font-weight:900;text-decoration:none;flex:1;min-width:140px}
+    .btn-wa > * + *{margin-left:8px}
     .btn:disabled{opacity:.5;cursor:not-allowed}
-    .btn-printer{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+    .btn-printer{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
+    .btn-printer > * + *{margin-left:6px}
     .btn-printer.connected{background:var(--verde);color:#fff;border-color:var(--verde)}
     .btn-printer.error{background:var(--vermelho);color:#fff;border-color:var(--vermelho)}
-    .modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
+    .modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     .modal-overlay.open{display:flex}
-    .modal-box{background:var(--card);border-radius:20px;padding:20px;width:min(520px,92%);max-height:90vh;overflow-y:auto}
+    .modal-box{background:var(--card);border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
 
-    #modal-overlay{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
+    #modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     #modal-overlay.open{display:flex}
-    #modal{background:var(--card);border-radius:20px;padding:20px;width:min(520px,92%);max-height:90vh;overflow-y:auto}
+    #modal{background:var(--card);border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
     #modal h3{margin:0 0 14px 0}
     #modal label{display:block;margin:10px 0 4px 0;font-weight:700}
     #modal select, #modal textarea{width:100%;padding:12px;border-radius:12px;border:2px solid var(--border);font-family:inherit;font-size:15px}
     #modal textarea{min-height:80px;resize:vertical}
-    #modal .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+    #modal .actions{display:flex;justify-content:flex-end;margin-top:18px}
+    #modal .actions > * + *{margin-left:10px}
     #modal .actions button{padding:12px 20px;border-radius:12px;border:0;font-weight:900;cursor:pointer}
 
     #print-frame{position:fixed;top:0;left:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none}
     @media print{
       body *{visibility:hidden}
       #print-frame, #print-frame *{visibility:visible}
-      #print-frame{position:absolute;inset:0;width:100%;height:auto;opacity:1}
+      #print-frame{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:auto;opacity:1}
     }
 
     #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:70;background:#1f3322;color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.2);display:none}
@@ -185,21 +193,23 @@ def kds_page_html() -> str:
     </div>
   </div>
 
-  <!-- Modal de configuracao da impressora (fallback RawBT) -->
+  <!-- Modal informativo: impressao USB so funciona dentro do app Cozinha -->
   <div id="printer-overlay" class="modal-overlay">
     <div id="printer-modal" class="modal-box">
       <h3>Impressora Térmica</h3>
-      <p class="muted" style="margin:4px 0 14px 0;font-size:13px">
-        Para imprimir via USB na Bematech MP-4200 TH, instale o app
-        <b>DoRafa KDS Print</b> (recomendado).<br/>
-        Alternativa: use o app <b>RawBT</b> e configure a URL abaixo.
+      <p class="muted" style="margin:4px 0 14px 0;font-size:13px;white-space:normal">
+        A impressão na <b>Bematech MP-4200 TH</b> (USB) só funciona dentro do
+        aplicativo <b>DoRafa Cozinha</b>, porque o navegador não tem acesso à
+        porta USB do aparelho.
       </p>
-      <label for="printer-url" style="display:block;margin:10px 0 4px 0;font-weight:700">URL do RawBT (alternativa)</label>
-      <input id="printer-url" type="text" placeholder="http://localhost:9100" style="width:100%;padding:12px;border-radius:12px;border:2px solid var(--border);font-family:inherit;font-size:15px;box-sizing:border-box">
-      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
-        <button class="btn-secondary" onclick="fecharConfigImpressora()">Cancelar</button>
-        <button class="btn-primary" onclick="testarImpressora()">Testar</button>
-        <button class="btn-primary" onclick="salvarImpressora()">Salvar</button>
+      <p class="muted" style="margin:0 0 14px 0;font-size:13px;white-space:normal">
+        Abra o app <b>DoRafa Cozinha</b> (ícone da cozinha) neste aparelho,
+        faça login e conecte a impressora por lá. Todo o painel funciona igual
+        dentro do app.
+      </p>
+      <div id="printer-apk-download" style="margin:0 0 14px 0"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:18px">
+        <button class="btn-primary" onclick="fecharConfigImpressora()">Entendi</button>
       </div>
     </div>
   </div>
@@ -482,18 +492,20 @@ def kds_page_html() -> str:
     // MODULO IMPRESSAO ESC/POS — Bematech MP-4200 TH
     // ============================================================
     //
-    // Prioridade 1: App nativo DoRafaKDSPrint (USB Host API + CDC ACM)
+    // Prioridade 1: App nativo DoRafa Cozinha (USB Host API + CDC ACM)
     //   - WebView carrega o KDS, ponte window.AndroidPrint.print(base64)
     //   - Inicializa CDC ACM (SET_LINE_CODING + SET_CONTROL_LINE_STATE)
     //   - Envia bytes ESC/POS via bulkTransfer
     //
-    // Prioridade 2: RawBT (fallback, ESC/POS via HTTP)
-    //   - App Android que recebe comandos ESC/POS via HTTP
-    //   - Configurar URL no botão "Impressora" (default: http://localhost:9100)
+    // Prioridade 2: window.print() (fallback, impressora comum do sistema)
     //
-    // Prioridade 3: window.print() (último recurso, impressora comum)
+    // No navegador (PWA/Chrome) a ponte nativa nao existe: o Chrome nao tem
+    // acesso a porta USB CDC ACM da Bematech. Nesse caso o botao "Impressora"
+    // orienta o operador a usar o app DoRafa Cozinha.
 
-    let _rawbtUrl = null;  // URL do RawBT (ex: http://localhost:9100)
+    function _temPonteNativa() {
+      return !!(window.AndroidPrint && typeof window.AndroidPrint.print === 'function');
+    }
 
     // --- Comandos ESC/POS (portado do PDV escpos_printing.py) ---
     const ESC = 0x1B;
@@ -694,21 +706,11 @@ def kds_page_html() -> str:
       return _concatBytes(...parts);
     }
 
-    // --- Configuração e persistência ---
+    // --- Estado do botao de impressora ---
 
     function _loadPrinterConfig() {
-      try {
-        const saved = localStorage.getItem('kds_rawbt_url');
-        if (saved) {
-          _rawbtUrl = saved;
-          _updatePrinterButton();
-        }
-      } catch(e) {}
-    }
-
-    function _savePrinterConfig(url) {
-      _rawbtUrl = url;
-      try { localStorage.setItem('kds_rawbt_url', url); } catch(e) {}
+      // Limpa config legada do RawBT (nao mais suportado)
+      try { localStorage.removeItem('kds_rawbt_url'); } catch(e) {}
       _updatePrinterButton();
     }
 
@@ -717,27 +719,23 @@ def kds_page_html() -> str:
       const statusEl = document.getElementById('printer-status');
       if (!btn || !statusEl) return;
       btn.classList.remove('connected', 'error');
-      // Prioridade: ponte nativa AndroidPrint
-      if (window.AndroidPrint && typeof window.AndroidPrint.isConnected === 'function') {
-        if (window.AndroidPrint.isConnected()) {
-          btn.classList.add('connected');
-          statusEl.textContent = 'USB';
-        } else {
-          statusEl.textContent = 'Conectar';
-        }
-      } else if (_rawbtUrl) {
+      if (!_temPonteNativa()) {
+        // Navegador comum: sem acesso USB
+        statusEl.textContent = 'Sem USB';
+        return;
+      }
+      if (window.AndroidPrint.isConnected()) {
         btn.classList.add('connected');
-        statusEl.textContent = 'Online';
+        statusEl.textContent = 'USB';
       } else {
-        statusEl.textContent = 'Impressora';
+        statusEl.textContent = 'Conectar';
       }
     }
 
     function abrirConfigImpressora() {
-      // Se a ponte nativa AndroidPrint está disponível, conectar direto
-      if (window.AndroidPrint && typeof window.AndroidPrint.connect === 'function') {
+      // Dentro do app DoRafa Cozinha: conectar/testar a impressora USB
+      if (_temPonteNativa()) {
         if (window.AndroidPrint.isConnected()) {
-          // Já conectado — fazer teste de impressão
           _testarImpressaoNativa();
         } else {
           const ok = window.AndroidPrint.connect();
@@ -751,11 +749,8 @@ def kds_page_html() -> str:
         }
         return;
       }
-      // Caso contrário, abrir modal de configuração RawBT
-      const overlay = document.getElementById('printer-overlay');
-      const input = document.getElementById('printer-url');
-      input.value = _rawbtUrl || 'http://localhost:9100';
-      overlay.classList.add('open');
+      // Navegador comum: explicar que a impressao USB exige o app
+      document.getElementById('printer-overlay').classList.add('open');
     }
 
     function fecharConfigImpressora() {
@@ -794,58 +789,6 @@ def kds_page_html() -> str:
         console.log('print() falhou:', err);
         const devs = window.AndroidPrint.listUsbDevices ? window.AndroidPrint.listUsbDevices() : '';
         console.log('Dispositivos:', devs);
-      }
-    }
-
-    function salvarImpressora() {
-      const url = String(document.getElementById('printer-url').value || '').trim();
-      if (!url) {
-        _rawbtUrl = null;
-        _updatePrinterButton();
-        fecharConfigImpressora();
-        showToast('Impressora desativada');
-        return;
-      }
-      _savePrinterConfig(url);
-      fecharConfigImpressora();
-      showToast('Impressora configurada: ' + url);
-    }
-
-    async function testarImpressora() {
-      const url = String(document.getElementById('printer-url').value || '').trim();
-      if (!url) { showToast('Informe a URL do RawBT', true); return; }
-      // Envia um cupom de teste (reset + texto + corte)
-      const testData = _concatBytes(
-        ESC_INIT, ESC_CP850, ESC_CENTER,
-        _encCP850('--- TESTE KDS ---'), LF, LF,
-        _encCP850('Impressora conectada'), LF, LF, LF,
-        ESC_CUT
-      );
-      try {
-        await fetch(url, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: testData
-        });
-        showToast('Teste enviado ao RawBT');
-      } catch (e) {
-        showToast('Erro: ' + e.message, true);
-      }
-    }
-
-    async function imprimirEscpos(pedido) {
-      if (!_rawbtUrl) return false;
-      try {
-        const data = montarCupomEscpos(pedido);
-        await fetch(_rawbtUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          body: data
-        });
-        return true;
-      } catch (e) {
-        console.error('imprimirEscpos - erro:', e);
-        return false;
       }
     }
 
@@ -893,8 +836,8 @@ def kds_page_html() -> str:
     }
 
     async function imprimirCupom(pedido, cb){
-      // Prioridade 1: ponte nativa AndroidPrint (app DoRafaKDSPrint com USB Host)
-      if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+      // Prioridade 1: ponte nativa AndroidPrint (app DoRafa Cozinha, USB Host)
+      if (_temPonteNativa()) {
         try {
           if (!window.AndroidPrint.isConnected()) {
             const connected = window.AndroidPrint.connect();
@@ -921,17 +864,10 @@ def kds_page_html() -> str:
           console.error('AndroidPrint erro:', e);
           showToast('Erro impressora nativa: ' + e.message, true);
         }
+      } else {
+        showToast('Impressão USB só no app DoRafa Cozinha', true);
       }
-      // Prioridade 2: RawBT (ESC/POS via HTTP para o app Android)
-      if (_rawbtUrl) {
-        const ok = await imprimirEscpos(pedido);
-        if (ok) {
-          if (typeof cb === 'function') setTimeout(cb, 300);
-          return;
-        }
-        showToast('RawBT falhou — usando diálogo de impressão', true);
-      }
-      // Fallback: window.print() com CSS 80mm
+      // Prioridade 2: window.print() com CSS 80mm (impressora do sistema)
       const frame = document.getElementById('print-frame');
       frame.innerHTML = montarCupomHtml(pedido);
       window.print();
