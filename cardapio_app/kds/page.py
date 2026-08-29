@@ -14,90 +14,78 @@ def kds_page_html() -> str:
   <link rel="apple-touch-icon" href="/assets/KDS_COZINHA.png" />
   <title>Cozinha — Do'Rafa</title>
   <style>
-    :root{
-      --verde: #0a5c2f;
-      --amarelo: #fefecf;
-      --verde-claro: #2f9e44;
-      --vermelho: #e03131;
-      --azul: #1971c2;
-      --bg: #f3f0e7;
-      --card: #ffffff;
-      --border: rgba(10, 92, 47, 0.18);
-      --text: #1f3322;
-      --muted: #5c6b5f;
-    }
     *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{height:100%}
-    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;background:var(--bg);color:var(--text);line-height:1.35}
+    body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;background:#f3f0e7;color:#1f3322;line-height:1.35}
     #app{max-width:980px;margin:0 auto;padding:14px;padding-bottom:120px}
-    .topbar{position:sticky;top:0;z-index:20;background:var(--verde);color:#fff;padding:14px 18px;border-radius:0 0 18px 18px;box-shadow:0 4px 12px rgba(0,0,0,0.08)}
+    .topbar{position:sticky;top:0;z-index:20;background:#0a5c2f;color:#fff;padding:14px 18px;border-radius:0 0 18px 18px;box-shadow:0 4px 12px rgba(0,0,0,0.08)}
     .topbar h1{margin:0;font-size:18px;font-weight:900}
     .topbar .sub{opacity:.85;font-size:12px}
     .topbar .logout{float:right;background:rgba(255,255,255,0.15);border:0;color:#fff;padding:8px 12px;border-radius:10px;font-weight:900;cursor:pointer}
     .tabs{display:flex;overflow-x:auto;padding:14px 0}
     .tabs > * + *{margin-left:6px}
-    .tab{flex:1;min-width:90px;background:var(--card);border:2px solid var(--border);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:var(--text)}
-    .tab.active{background:var(--verde);border-color:var(--verde);color:#fff}
+    .tab{flex:1;min-width:90px;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:#1f3322}
+    .tab.active{background:#0a5c2f;border-color:#0a5c2f;color:#fff}
     .tab .count{display:block;font-size:11px;font-weight:400;opacity:.85;margin-top:2px}
     .stats{display:flex;margin-bottom:14px}
     .stats > * + *{margin-left:10px}
-    .stat{flex:1;background:var(--card);border:2px solid var(--border);border-radius:14px;padding:12px;text-align:center}
-    .stat .value{font-size:22px;font-weight:900;color:var(--verde)}
-    .stat .label{font-size:11px;color:var(--muted);text-transform:uppercase}
+    .stat{flex:1;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:12px;text-align:center}
+    .stat .value{font-size:22px;font-weight:900;color:#0a5c2f}
+    .stat .label{font-size:11px;color:#5c6b5f;text-transform:uppercase}
     .list{display:flex;flex-direction:column}
     .list > * + *{margin-top:12px}
-    .card-item{background:var(--card);border:2px solid var(--border);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease;overflow:hidden}
+    .card-item{background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:18px;padding:14px;cursor:pointer;transition:transform .05s ease;overflow:hidden}
     .card-item:active{transform:scale(.99)}
     .card-item .header{display:flex;align-items:center;justify-content:space-between;overflow:hidden;min-width:0}
     .card-item .header > * + *{margin-left:10px}
     .card-item .id{font-weight:900;font-size:16px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
     .card-item .badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:900;flex-shrink:0;white-space:nowrap}
-    .badge.NOVO{background:rgba(10,92,47,.08);color:var(--verde);border:1px solid rgba(10,92,47,.2)}
-    .badge.EM_PREPARO{background:var(--amarelo);color:var(--verde);border:1px solid var(--verde)}
-    .badge.PRONTO{background:var(--verde);color:#fff;border:1px solid var(--verde)}
-    .badge.SINALIZADO{background:var(--azul);color:#fff;border:1px solid var(--azul)}
+    .badge.NOVO{background:rgba(10,92,47,.08);color:#0a5c2f;border:1px solid rgba(10,92,47,.2)}
+    .badge.EM_PREPARO{background:#fefecf;color:#0a5c2f;border:1px solid #0a5c2f}
+    .badge.PRONTO{background:#0a5c2f;color:#fff;border:1px solid #0a5c2f}
+    .badge.SINALIZADO{background:#1971c2;color:#fff;border:1px solid #1971c2}
     .badge.ENTREGUE{background:#6b7280;color:#fff;border:1px solid #6b7280}
-    .badge.RECUSADO{background:var(--vermelho);color:#fff;border:1px solid var(--vermelho)}
+    .badge.RECUSADO{background:#e03131;color:#fff;border:1px solid #e03131}
     .card-item .cliente{margin-top:8px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .card-item .tipo{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .card-item .hora{color:var(--muted);font-size:12px;margin-top:6px}
+    .card-item .tipo{color:#5c6b5f;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .card-item .hora{color:#5c6b5f;font-size:12px;margin-top:6px}
     .card-item .card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:6px}
-    .card-item .card-total{font-weight:900;font-size:15px;color:var(--verde)}
-    .empty{text-align:center;padding:40px 20px;color:var(--muted)}
+    .card-item .card-total{font-weight:900;font-size:15px;color:#0a5c2f}
+    .empty{text-align:center;padding:40px 20px;color:#5c6b5f}
 
     #drawer{position:fixed;top:0;right:0;bottom:0;left:0;z-index:50;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center}
     #drawer.open{display:flex}
-    #drawer .sheet{width:100%;max-width:980px;max-height:90vh;background:var(--card);border-radius:24px 24px 0 0;padding:18px;overflow-y:auto;animation:slideUp .2s ease}
+    #drawer .sheet{width:100%;max-width:980px;max-height:90vh;background:#ffffff;border-radius:24px 24px 0 0;padding:18px;overflow-y:auto;animation:slideUp .2s ease}
     @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-    #drawer .close{position:absolute;top:14px;right:18px;background:none;border:0;font-size:24px;color:var(--muted);cursor:pointer}
+    #drawer .close{position:absolute;top:14px;right:18px;background:none;border:0;font-size:24px;color:#5c6b5f;cursor:pointer}
     #drawer h2{margin:0 0 10px 0;font-size:18px}
     #drawer .section{margin:14px 0}
-    #drawer .section-title{font-size:13px;font-weight:900;color:var(--verde);text-transform:uppercase;margin-bottom:6px}
-    #drawer .muted{color:var(--muted);font-size:14px;white-space:pre-wrap}
+    #drawer .section-title{font-size:13px;font-weight:900;color:#0a5c2f;text-transform:uppercase;margin-bottom:6px}
+    #drawer .muted{color:#5c6b5f;font-size:14px;white-space:pre-wrap}
     #drawer .item-row{padding:6px 0;border-bottom:1px solid rgba(10,92,47,.08);font-size:14px}
     #drawer .actions{display:flex;flex-wrap:wrap;margin:13px -5px 0 -5px}
     #drawer .actions > *{margin:5px}
     #drawer .actions button{flex:1;min-width:140px;font-size:15px;padding:16px;border-radius:16px;border:0;font-weight:900;cursor:pointer}
-    .btn-primary{background:var(--verde);color:#fff}
-    .btn-secondary{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border)!important}
-    .btn-danger{background:var(--vermelho);color:#fff}
+    .btn-primary{background:#0a5c2f;color:#fff}
+    .btn-secondary{background:rgba(10,92,47,.08);color:#0a5c2f;border:2px solid rgba(10,92,47,0.18)!important}
+    .btn-danger{background:#e03131;color:#fff}
     .btn-wa{background:#25D366;color:#fff;border:2px solid #1da851!important;display:inline-flex;align-items:center;justify-content:center;font-size:15px;padding:16px;border-radius:16px;font-weight:900;text-decoration:none;flex:1;min-width:140px}
     .btn-wa > * + *{margin-left:8px}
     .btn:disabled{opacity:.5;cursor:not-allowed}
-    .btn-printer{background:rgba(10,92,47,.08);color:var(--verde);border:2px solid var(--border);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
+    .btn-printer{background:rgba(10,92,47,.08);color:#0a5c2f;border:2px solid rgba(10,92,47,0.18);border-radius:12px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;white-space:nowrap}
     .btn-printer > * + *{margin-left:6px}
-    .btn-printer.connected{background:var(--verde);color:#fff;border-color:var(--verde)}
-    .btn-printer.error{background:var(--vermelho);color:#fff;border-color:var(--vermelho)}
+    .btn-printer.connected{background:#0a5c2f;color:#fff;border-color:#0a5c2f}
+    .btn-printer.error{background:#e03131;color:#fff;border-color:#e03131}
     .modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     .modal-overlay.open{display:flex}
-    .modal-box{background:var(--card);border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
+    .modal-box{background:#ffffff;border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
 
     #modal-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:60;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center}
     #modal-overlay.open{display:flex}
-    #modal{background:var(--card);border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
+    #modal{background:#ffffff;border-radius:20px;padding:20px;width:92%;max-width:520px;max-height:90vh;overflow-y:auto}
     #modal h3{margin:0 0 14px 0}
     #modal label{display:block;margin:10px 0 4px 0;font-weight:700}
-    #modal select, #modal textarea{width:100%;padding:12px;border-radius:12px;border:2px solid var(--border);font-family:inherit;font-size:15px}
+    #modal select, #modal textarea{width:100%;padding:12px;border-radius:12px;border:2px solid rgba(10,92,47,0.18);font-family:inherit;font-size:15px}
     #modal textarea{min-height:80px;resize:vertical}
     #modal .actions{display:flex;justify-content:flex-end;margin-top:18px}
     #modal .actions > * + *{margin-left:10px}
@@ -111,7 +99,7 @@ def kds_page_html() -> str:
     }
 
     #toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:70;background:#1f3322;color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.2);display:none}
-    #toast.error{background:var(--vermelho)}
+    #toast.error{background:#e03131}
 
     @media (max-width: 520px){
       .topbar h1{font-size:16px}
