@@ -359,9 +359,79 @@ def kds_page_html() -> str:
 
         window._dadosKDS = grupos;
         render();
+        if (window.AndroidPrint) _diagnosticoPedidosReais(grupos);
       } catch (e) {
         showToast('Erro ao carregar pedidos', true);
       }
+    }
+
+    function _diagnosticoPedidosReais(grupos) {
+      var el = document.getElementById('diag-overlay');
+      if (!el) return;
+      var linhas = el.textContent ? el.textContent.split('\n') : [];
+      linhas.push('');
+      linhas.push('=== PEDIDOS REAIS ===');
+      Object.keys(grupos).forEach(function(k) {
+        var lista = grupos[k] || [];
+        linhas.push(k + ': ' + lista.length + ' pedidos');
+        if (lista.length > 0) {
+          var p = lista[0];
+          linhas.push('  raw[0] keys: ' + Object.keys(p).join(','));
+          linhas.push('  raw[0] JSON: ' + JSON.stringify(p).substring(0, 500));
+          // Gerar HTML do renderCard e mostrar
+          try {
+            var html = renderCard(p);
+            linhas.push('  renderCard HTML: ' + html.substring(0, 500));
+          } catch(e) {
+            linhas.push('  renderCard ERRO: ' + e.message);
+          }
+          // Medir card real se existir no DOM
+          setTimeout(function() {
+            var card = document.querySelector('.card-item:not([style*="z-index"])');
+            if (card) {
+              var cs = getComputedStyle(card);
+              linhas.push('  CARD REAL computed:');
+              linhas.push('    background=' + cs.backgroundColor);
+              linhas.push('    border=' + cs.border);
+              linhas.push('    padding=' + cs.padding);
+              linhas.push('    overflow=' + cs.overflow);
+              linhas.push('    width=' + cs.width);
+              linhas.push('    height=' + cs.height);
+              var r = card.getBoundingClientRect();
+              linhas.push('    rect w=' + r.width + ' h=' + r.height);
+              // Medir filhos
+              var idEl = card.querySelector('.id');
+              var clienteEl = card.querySelector('.cliente');
+              var tipoEl = card.querySelector('.tipo');
+              if (idEl) {
+                var ir = idEl.getBoundingClientRect();
+                linhas.push('    .id rect w=' + ir.width + ' h=' + ir.height + ' text="' + idEl.textContent + '"');
+              }
+              if (clienteEl) {
+                var cr = clienteEl.getBoundingClientRect();
+                linhas.push('    .cliente rect w=' + cr.width + ' h=' + cr.height + ' text="' + clienteEl.textContent.substring(0,30) + '"');
+              }
+              if (tipoEl) {
+                var tr = tipoEl.getBoundingClientRect();
+                linhas.push('    .tipo rect w=' + tr.width + ' h=' + tr.height);
+              }
+              // Verificar se texto transborda
+              if (card.scrollWidth > card.clientWidth) {
+                linhas.push('    OVERFLOW HORIZONTAL! scrollWidth=' + card.scrollWidth + ' clientWidth=' + card.clientWidth);
+              }
+              if (card.scrollHeight > card.clientHeight) {
+                linhas.push('    OVERFLOW VERTICAL! scrollHeight=' + card.scrollHeight + ' clientHeight=' + card.clientHeight);
+              }
+              // innerHTML real
+              linhas.push('    innerHTML: ' + card.innerHTML.substring(0, 400));
+            } else {
+              linhas.push('  CARD REAL: nenhum .card-item no DOM');
+            }
+            el.textContent = linhas.join('\n');
+          }, 1000);
+        }
+      });
+      el.textContent = linhas.join('\n');
     }
 
     function render(){
