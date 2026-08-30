@@ -24,7 +24,7 @@ def kds_page_html() -> str:
     .topbar .logout{float:right;background:rgba(255,255,255,0.15);border:0;color:#fff;padding:8px 12px;border-radius:10px;font-weight:900;cursor:pointer}
     .tabs{display:flex;overflow-x:auto;padding:14px 0}
     .tabs > * + *{margin-left:6px}
-    .tab{flex:0 0 auto;min-width:90px;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:#1f3322}
+    .tab{flex:0 0 auto;min-width:90px;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:11px;cursor:pointer;white-space:nowrap;color:#1f3322}
     .tab.active{background:#0a5c2f;border-color:#0a5c2f;color:#fff}
     .tab .count{display:block;font-size:11px;font-weight:400;opacity:.85;margin-top:2px}
     .stats{display:flex;margin-bottom:14px}
@@ -103,7 +103,7 @@ def kds_page_html() -> str:
 
     @media (max-width: 520px){
       .topbar h1{font-size:16px}
-      .tab{font-size:12px;min-width:76px}
+      .tab{font-size:10px;min-width:70px}
       #drawer .actions button{min-width:100%;font-size:14px}
     }
 
@@ -124,8 +124,6 @@ def kds_page_html() -> str:
 </head>
 <body>
   <div id="app">
-    <!-- Diagnostico: so aparece dentro do APK (WebView com AndroidPrint) -->
-    <div id="diag-overlay" style="position:fixed;top:0;left:0;width:50%;z-index:999;background:rgba(26,26,26,0.92);color:#0f0;font-family:monospace;font-size:10px;padding:6px;max-height:45vh;overflow:auto;display:none;white-space:pre-wrap;pointer-events:none"></div>
     <div class="topbar">
       <button class="logout" id="btn-logout" type="button">Sair</button>
       <h1>Cozinha</h1>
@@ -217,7 +215,6 @@ def kds_page_html() -> str:
       recusados: ['RECUSADO'],
     };
     let abaAtual = 'previas';
-    window.abaAtual = abaAtual;
     let pedidoSelecionado = null;
     let timer = null;
 
@@ -252,13 +249,8 @@ def kds_page_html() -> str:
 
     function setAba(aba){
       abaAtual = aba;
-      window.abaAtual = aba;
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.aba === aba));
       render();
-      if (window.AndroidPrint) {
-        window._diagRan = false;
-        _diagnosticoPedidosReais(window._dadosKDS || {});
-      }
     }
 
     function obterDadosPedido(p){
@@ -365,94 +357,9 @@ def kds_page_html() -> str:
 
         window._dadosKDS = grupos;
         render();
-        if (window.AndroidPrint) _diagnosticoPedidosReais(grupos);
       } catch (e) {
         showToast('Erro ao carregar pedidos', true);
       }
-    }
-
-    function _diagnosticoPedidosReais(grupos) {
-      if (window._diagRan) return;
-      window._diagRan = true;
-      var el = document.getElementById('diag-overlay');
-      if (!el) return;
-      // Esperar render() terminar e medir cards reais no DOM
-      setTimeout(function() {
-        var linhas = el.textContent ? el.textContent.split('\n').slice(0, 30) : [];
-        linhas.push('');
-        linhas.push('=== ABA ATUAL: ' + (window.abaAtual || '?') + ' ===');
-        var container = document.getElementById('lista');
-        var cards = container ? container.querySelectorAll('.card-item') : [];
-        linhas.push('cards no DOM: ' + cards.length);
-        if (cards.length === 0) {
-          linhas.push('TROQUE PARA ABA "Em preparo" E RECARREGUE');
-        }
-        for (var i = 0; i < Math.min(cards.length, 3); i++) {
-          var card = cards[i];
-          var cs = getComputedStyle(card);
-          linhas.push('');
-          linhas.push('--- CARD ' + i + ' ---');
-          linhas.push('background=' + cs.backgroundColor);
-          linhas.push('border=' + cs.border);
-          linhas.push('padding=' + cs.padding);
-          linhas.push('overflow=' + cs.overflow);
-          linhas.push('boxSizing=' + cs.boxSizing);
-          linhas.push('width=' + cs.width);
-          linhas.push('height=' + cs.height);
-          var r = card.getBoundingClientRect();
-          linhas.push('rect w=' + r.width + ' h=' + r.height);
-          if (card.scrollWidth > card.clientWidth) {
-            linhas.push('OVERFLOW H! scroll=' + card.scrollWidth + ' client=' + card.clientWidth);
-          }
-          if (card.scrollHeight > card.clientHeight) {
-            linhas.push('OVERFLOW V! scroll=' + card.scrollHeight + ' client=' + card.clientHeight);
-          }
-          // Filhos
-          var idEl = card.querySelector('.id');
-          var badgeEl = card.querySelector('.badge');
-          var clienteEl = card.querySelector('.cliente');
-          var tipoEl = card.querySelector('.tipo');
-          var horaEl = card.querySelector('.hora');
-          var totalEl = card.querySelector('.card-total');
-          if (idEl) {
-            var ir = idEl.getBoundingClientRect();
-            var ics = getComputedStyle(idEl);
-            linhas.push('.id: w=' + ir.width + ' text="' + idEl.textContent + '" flexShrink=' + ics.flexShrink + ' maxW=' + ics.maxWidth);
-          }
-          if (badgeEl) {
-            var br = badgeEl.getBoundingClientRect();
-            var bcs = getComputedStyle(badgeEl);
-            linhas.push('.badge: w=' + br.width + ' text="' + badgeEl.textContent + '" flexShrink=' + bcs.flexShrink);
-          }
-          if (clienteEl) {
-            var cr = clienteEl.getBoundingClientRect();
-            linhas.push('.cliente: w=' + cr.width + ' h=' + cr.height + ' text="' + clienteEl.textContent.substring(0,40) + '"');
-            linhas.push('  overflow=' + getComputedStyle(clienteEl).overflow + ' whiteSpace=' + getComputedStyle(clienteEl).whiteSpace);
-          }
-          if (tipoEl) {
-            var tr = tipoEl.getBoundingClientRect();
-            linhas.push('.tipo: w=' + tr.width + ' text="' + tipoEl.textContent.substring(0,40) + '"');
-          }
-          if (horaEl) linhas.push('.hora: w=' + horaEl.getBoundingClientRect().width + ' text="' + horaEl.textContent + '"');
-          if (totalEl) linhas.push('.card-total: w=' + totalEl.getBoundingClientRect().width + ' text="' + totalEl.textContent + '"');
-          // Footer
-          var footer = card.querySelector('.card-footer');
-          if (footer) {
-            var fr = footer.getBoundingClientRect();
-            var fcs = getComputedStyle(footer);
-            linhas.push('.card-footer: w=' + fr.width + ' overflow=' + fcs.overflow + ' display=' + fcs.display);
-          }
-          // Header
-          var header = card.querySelector('.header');
-          if (header) {
-            var hr = header.getBoundingClientRect();
-            var hcs = getComputedStyle(header);
-            linhas.push('.header: w=' + hr.width + ' overflow=' + hcs.overflow + ' minWidth=' + hcs.minWidth);
-          }
-          linhas.push('innerHTML: ' + card.innerHTML.substring(0, 300));
-        }
-        el.textContent = linhas.join('\n');
-      }, 1500);
     }
 
     function render(){
@@ -1048,146 +955,12 @@ def kds_page_html() -> str:
 
     document.addEventListener('DOMContentLoaded', () => {
       _loadPrinterConfig();
-      _rodarDiagnosticoWebView();
       carregar();
       timer = setInterval(carregar, 3000);
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/cozinha/sw.js', {scope: '/cozinha/'}).catch(() => {});
       }
     });
-
-    // ============================================================
-    // DIAGNOSTICO: coleta evidencias concretas do que a WebView
-    // suporta ou nao. So aparece dentro do APK (window.AndroidPrint).
-    // ============================================================
-    function _rodarDiagnosticoWebView() {
-      if (!window.AndroidPrint) return; // so no APK
-      var el = document.getElementById('diag-overlay');
-      if (!el) return;
-      el.style.display = 'block';
-      var linhas = [];
-      function p(s) { linhas.push(s); }
-
-      // 1. User agent
-      p('=== USER AGENT ===');
-      p(navigator.userAgent);
-
-      // 2. Viewport
-      p('');
-      p('=== VIEWPORT ===');
-      p('innerWidth=' + window.innerWidth);
-      p('innerHeight=' + window.innerHeight);
-      p('devicePixelRatio=' + window.devicePixelRatio);
-      p('clientWidth=' + document.documentElement.clientWidth);
-
-      // 3. Verificar se o CSS servido e novo (sem var) ou antigo (com var)
-      p('');
-      p('=== CSS SERVIDO ===');
-      try {
-        var styles = document.querySelectorAll('style');
-        var cssText = '';
-        for (var i = 0; i < styles.length; i++) cssText += styles[i].textContent;
-        p('tem var(-- = ' + (cssText.indexOf('var(--') >= 0));
-        p('tem :root = ' + (cssText.indexOf(':root') >= 0));
-        p('tem #0a5c2f = ' + (cssText.indexOf('#0a5c2f') >= 0));
-        p('tem gap: = ' + (cssText.indexOf('gap:') >= 0));
-        p('tem > * + * = ' + (cssText.indexOf('> * + *') >= 0));
-      } catch(e) { p('css check ERRO: ' + e.message); }
-
-      // 4. Service Worker
-      p('');
-      p('=== SERVICE WORKER ===');
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-          p('SW registrados = ' + regs.length);
-          for (var i = 0; i < regs.length; i++) {
-            p('  scope=' + regs[i].scope + ' script=' + (regs[i].active ? regs[i].active.scriptURL : 'none'));
-          }
-          el.textContent = linhas.join('\n');
-        }).catch(function(e) { p('SW ERRO: ' + e.message); });
-      } else { p('serviceWorker NAO suportado'); }
-
-      // 5. Computed .stat (sempre visivel)
-      p('');
-      p('=== .stat ===');
-      try {
-        var stat = document.querySelector('.stat');
-        if (stat) {
-          var ss = getComputedStyle(stat);
-          p('background=' + ss.backgroundColor);
-          p('border=' + ss.border);
-          p('padding=' + ss.padding);
-          p('boxSizing=' + ss.boxSizing);
-          p('width=' + ss.width);
-          var r = stat.getBoundingClientRect();
-          p('rect w=' + r.width + ' h=' + r.height);
-        } else { p('.stat nao encontrado'); }
-      } catch(e) { p('.stat ERRO: ' + e.message); }
-
-      // 6. Computed .tab (sempre visivel)
-      p('');
-      p('=== .tab ===');
-      try {
-        var tab = document.querySelector('.tab');
-        if (tab) {
-          var ts2 = getComputedStyle(tab);
-          p('background=' + ts2.backgroundColor);
-          p('border=' + ts2.border);
-          p('padding=' + ts2.padding);
-          p('boxSizing=' + ts2.boxSizing);
-          p('width=' + ts2.width);
-          var r2 = tab.getBoundingClientRect();
-          p('rect w=' + r2.width + ' h=' + r2.height);
-        } else { p('.tab nao encontrado'); }
-      } catch(e) { p('.tab ERRO: ' + e.message); }
-
-      // 7. Card sintetico para medir renderizacao real
-      p('');
-      p('=== CARD SINTETICO ===');
-      try {
-        var tc = document.createElement('div');
-        tc.className = 'card-item';
-        tc.style.position = 'relative';
-        tc.style.zIndex = '999';
-        tc.innerHTML = '<div class="header"><div class="id">TESTE-001</div><div class="badge NOVO">NOVO</div></div><div class="cliente">Cliente Teste</div><div class="card-footer"><div class="card-total">R$ 25,00</div></div>';
-        document.body.appendChild(tc);
-        var cs = getComputedStyle(tc);
-        p('background=' + cs.backgroundColor);
-        p('border=' + cs.border);
-        p('borderRadius=' + cs.borderRadius);
-        p('padding=' + cs.padding);
-        p('overflow=' + cs.overflow);
-        p('boxSizing=' + cs.boxSizing);
-        p('width=' + cs.width);
-        var r3 = tc.getBoundingClientRect();
-        p('rect w=' + r3.width + ' h=' + r3.height);
-        var idEl = tc.querySelector('.id');
-        var badgeEl = tc.querySelector('.badge');
-        if (idEl && badgeEl) {
-          p('id rect w=' + idEl.getBoundingClientRect().width);
-          p('badge rect w=' + badgeEl.getBoundingClientRect().width);
-          p('gap id-badge = ' + (badgeEl.getBoundingClientRect().left - idEl.getBoundingClientRect().right) + 'px');
-        }
-        setTimeout(function() { if (tc.parentNode) tc.parentNode.removeChild(tc); }, 10000);
-      } catch(e) { p('card ERRO: ' + e.message); }
-
-      // 8. .topbar
-      p('');
-      p('=== .topbar ===');
-      try {
-        var tb = document.querySelector('.topbar');
-        if (tb) {
-          var ts3 = getComputedStyle(tb);
-          p('background=' + ts3.backgroundColor);
-          p('position=' + ts3.position);
-          p('padding=' + ts3.padding);
-          p('borderRadius=' + ts3.borderRadius);
-        }
-      } catch(e) {}
-
-      el.textContent = linhas.join('\n');
-      setTimeout(function() { el.textContent = linhas.join('\n'); }, 3000);
-    }
   </script>
 </body>
 </html>"""
