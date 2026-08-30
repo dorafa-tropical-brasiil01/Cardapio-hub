@@ -217,6 +217,7 @@ def kds_page_html() -> str:
       recusados: ['RECUSADO'],
     };
     let abaAtual = 'previas';
+    window.abaAtual = abaAtual;
     let pedidoSelecionado = null;
     let timer = null;
 
@@ -251,8 +252,13 @@ def kds_page_html() -> str:
 
     function setAba(aba){
       abaAtual = aba;
+      window.abaAtual = aba;
       document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.aba === aba));
       render();
+      if (window.AndroidPrint) {
+        window._diagRan = false;
+        _diagnosticoPedidosReais(window._dadosKDS || {});
+      }
     }
 
     function obterDadosPedido(p){
