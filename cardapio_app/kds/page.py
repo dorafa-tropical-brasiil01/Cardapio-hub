@@ -977,7 +977,7 @@ def kds_page_html() -> str:
       var linhas = [];
       function p(s) { linhas.push(s); }
 
-      // 1. User agent (tem versao do Chrome)
+      // 1. User agent
       p('=== USER AGENT ===');
       p(navigator.userAgent);
 
@@ -987,87 +987,115 @@ def kds_page_html() -> str:
       p('innerWidth=' + window.innerWidth);
       p('innerHeight=' + window.innerHeight);
       p('devicePixelRatio=' + window.devicePixelRatio);
-      p('document.documentElement.clientWidth=' + document.documentElement.clientWidth);
-      var meta = document.querySelector('meta[name=viewport]');
-      p('meta viewport: ' + (meta ? meta.content : 'NAO ENCONTRADO'));
+      p('clientWidth=' + document.documentElement.clientWidth);
 
-      // 3. Teste de features CSS
+      // 3. Verificar se o CSS servido e novo (sem var) ou antigo (com var)
       p('');
-      p('=== CSS FEATURE SUPPORT ===');
-      var d = document.createElement('div');
-      var ds = d.style;
-      p('display:flex = ' + ('flex' in ds || 'webkitFlex' in ds));
-      p('display:grid = ' + ('grid' in ds));
-      p('gap = ' + ('gap' in ds));
-      p('inset = ' + ('inset' in ds));
-      p('CSS variables = ' + (window.CSS && CSS.supports ? CSS.supports('--x','0') : 'CSS.supports N/A'));
-
-      // Testar var() de verdade
+      p('=== CSS SERVIDO ===');
       try {
-        d.style.setProperty('--test', 'red');
-        d.style.color = 'var(--test)';
-        var computed = getComputedStyle(d).color;
-        p('var() resolve = ' + computed + (computed.indexOf('255, 0, 0') >= 0 || computed === 'rgb(255, 0, 0)' ? ' [OK]' : ' [FALHOU]'));
-      } catch(e) {
-        p('var() resolve = ERRO: ' + e.message);
-      }
+        var styles = document.querySelectorAll('style');
+        var cssText = '';
+        for (var i = 0; i < styles.length; i++) cssText += styles[i].textContent;
+        p('tem var(-- = ' + (cssText.indexOf('var(--') >= 0));
+        p('tem :root = ' + (cssText.indexOf(':root') >= 0));
+        p('tem #0a5c2f = ' + (cssText.indexOf('#0a5c2f') >= 0));
+        p('tem gap: = ' + (cssText.indexOf('gap:') >= 0));
+        p('tem > * + * = ' + (cssText.indexOf('> * + *') >= 0));
+      } catch(e) { p('css check ERRO: ' + e.message); }
 
-      // Testar gap de verdade
-      try {
-        var c = document.createElement('div');
-        c.style.display = 'flex';
-        c.style.gap = '10px';
-        var a = document.createElement('div'); a.style.width = '50px';
-        var b = document.createElement('div'); b.style.width = '50px';
-        c.appendChild(a); c.appendChild(b);
-        document.body.appendChild(c);
-        var gapReal = b.getBoundingClientRect().left - a.getBoundingClientRect().right;
-        document.body.removeChild(c);
-        p('gap real = ' + gapReal + 'px' + (gapReal > 5 ? ' [OK]' : ' [FALHOU - esperado ~10]'));
-      } catch(e) {
-        p('gap real = ERRO: ' + e.message);
-      }
-
-      // 4. Computed styles de um .card-item real
+      // 4. Service Worker
       p('');
-      p('=== COMPUTED STYLE .card-item ===');
-      setTimeout(function() {
-        try {
-          var card = document.querySelector('.card-item');
-          if (!card) {
-            p('.card-item nao encontrado (sem pedidos?)');
-          } else {
-            var cs = getComputedStyle(card);
-            p('background=' + cs.backgroundColor);
-            p('border=' + cs.border);
-            p('borderRadius=' + cs.borderRadius);
-            p('padding=' + cs.padding);
-            p('overflow=' + cs.overflow);
-            p('boxSizing=' + cs.boxSizing);
-            p('width=' + cs.width);
-            p('height=' + cs.height);
+      p('=== SERVICE WORKER ===');
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          p('SW registrados = ' + regs.length);
+          for (var i = 0; i < regs.length; i++) {
+            p('  scope=' + regs[i].scope + ' script=' + (regs[i].active ? regs[i].active.scriptURL : 'none'));
           }
-        } catch(e) {
-          p('computed style ERRO: ' + e.message);
+          el.textContent = linhas.join('\n');
+        }).catch(function(e) { p('SW ERRO: ' + e.message); });
+      } else { p('serviceWorker NAO suportado'); }
+
+      // 5. Computed .stat (sempre visivel)
+      p('');
+      p('=== .stat ===');
+      try {
+        var stat = document.querySelector('.stat');
+        if (stat) {
+          var ss = getComputedStyle(stat);
+          p('background=' + ss.backgroundColor);
+          p('border=' + ss.border);
+          p('padding=' + ss.padding);
+          p('boxSizing=' + ss.boxSizing);
+          p('width=' + ss.width);
+          var r = stat.getBoundingClientRect();
+          p('rect w=' + r.width + ' h=' + r.height);
+        } else { p('.stat nao encontrado'); }
+      } catch(e) { p('.stat ERRO: ' + e.message); }
+
+      // 6. Computed .tab (sempre visivel)
+      p('');
+      p('=== .tab ===');
+      try {
+        var tab = document.querySelector('.tab');
+        if (tab) {
+          var ts2 = getComputedStyle(tab);
+          p('background=' + ts2.backgroundColor);
+          p('border=' + ts2.border);
+          p('padding=' + ts2.padding);
+          p('boxSizing=' + ts2.boxSizing);
+          p('width=' + ts2.width);
+          var r2 = tab.getBoundingClientRect();
+          p('rect w=' + r2.width + ' h=' + r2.height);
+        } else { p('.tab nao encontrado'); }
+      } catch(e) { p('.tab ERRO: ' + e.message); }
+
+      // 7. Card sintetico para medir renderizacao real
+      p('');
+      p('=== CARD SINTETICO ===');
+      try {
+        var tc = document.createElement('div');
+        tc.className = 'card-item';
+        tc.style.position = 'relative';
+        tc.style.zIndex = '999';
+        tc.innerHTML = '<div class="header"><div class="id">TESTE-001</div><div class="badge NOVO">NOVO</div></div><div class="cliente">Cliente Teste</div><div class="card-footer"><div class="card-total">R$ 25,00</div></div>';
+        document.body.appendChild(tc);
+        var cs = getComputedStyle(tc);
+        p('background=' + cs.backgroundColor);
+        p('border=' + cs.border);
+        p('borderRadius=' + cs.borderRadius);
+        p('padding=' + cs.padding);
+        p('overflow=' + cs.overflow);
+        p('boxSizing=' + cs.boxSizing);
+        p('width=' + cs.width);
+        var r3 = tc.getBoundingClientRect();
+        p('rect w=' + r3.width + ' h=' + r3.height);
+        var idEl = tc.querySelector('.id');
+        var badgeEl = tc.querySelector('.badge');
+        if (idEl && badgeEl) {
+          p('id rect w=' + idEl.getBoundingClientRect().width);
+          p('badge rect w=' + badgeEl.getBoundingClientRect().width);
+          p('gap id-badge = ' + (badgeEl.getBoundingClientRect().left - idEl.getBoundingClientRect().right) + 'px');
         }
-        // 5. Computed style .topbar
-        try {
-          var tb = document.querySelector('.topbar');
-          if (tb) {
-            var ts = getComputedStyle(tb);
-            p('');
-            p('=== COMPUTED STYLE .topbar ===');
-            p('background=' + ts.backgroundColor);
-            p('position=' + ts.position);
-            p('color=' + ts.color);
-          }
-        } catch(e) {}
+        setTimeout(function() { if (tc.parentNode) tc.parentNode.removeChild(tc); }, 10000);
+      } catch(e) { p('card ERRO: ' + e.message); }
 
-        el.textContent = linhas.join('\n');
-      }, 2000);
+      // 8. .topbar
+      p('');
+      p('=== .topbar ===');
+      try {
+        var tb = document.querySelector('.topbar');
+        if (tb) {
+          var ts3 = getComputedStyle(tb);
+          p('background=' + ts3.backgroundColor);
+          p('position=' + ts3.position);
+          p('padding=' + ts3.padding);
+          p('borderRadius=' + ts3.borderRadius);
+        }
+      } catch(e) {}
 
-      // Mostra imediatamente o que ja tem
       el.textContent = linhas.join('\n');
+      setTimeout(function() { el.textContent = linhas.join('\n'); }, 3000);
     }
   </script>
 </body>
