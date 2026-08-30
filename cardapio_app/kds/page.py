@@ -366,72 +366,87 @@ def kds_page_html() -> str:
     }
 
     function _diagnosticoPedidosReais(grupos) {
+      if (window._diagRan) return;
+      window._diagRan = true;
       var el = document.getElementById('diag-overlay');
       if (!el) return;
-      var linhas = el.textContent ? el.textContent.split('\n') : [];
-      linhas.push('');
-      linhas.push('=== PEDIDOS REAIS ===');
-      Object.keys(grupos).forEach(function(k) {
-        var lista = grupos[k] || [];
-        linhas.push(k + ': ' + lista.length + ' pedidos');
-        if (lista.length > 0) {
-          var p = lista[0];
-          linhas.push('  raw[0] keys: ' + Object.keys(p).join(','));
-          linhas.push('  raw[0] JSON: ' + JSON.stringify(p).substring(0, 500));
-          // Gerar HTML do renderCard e mostrar
-          try {
-            var html = renderCard(p);
-            linhas.push('  renderCard HTML: ' + html.substring(0, 500));
-          } catch(e) {
-            linhas.push('  renderCard ERRO: ' + e.message);
-          }
-          // Medir card real se existir no DOM
-          setTimeout(function() {
-            var card = document.querySelector('.card-item:not([style*="z-index"])');
-            if (card) {
-              var cs = getComputedStyle(card);
-              linhas.push('  CARD REAL computed:');
-              linhas.push('    background=' + cs.backgroundColor);
-              linhas.push('    border=' + cs.border);
-              linhas.push('    padding=' + cs.padding);
-              linhas.push('    overflow=' + cs.overflow);
-              linhas.push('    width=' + cs.width);
-              linhas.push('    height=' + cs.height);
-              var r = card.getBoundingClientRect();
-              linhas.push('    rect w=' + r.width + ' h=' + r.height);
-              // Medir filhos
-              var idEl = card.querySelector('.id');
-              var clienteEl = card.querySelector('.cliente');
-              var tipoEl = card.querySelector('.tipo');
-              if (idEl) {
-                var ir = idEl.getBoundingClientRect();
-                linhas.push('    .id rect w=' + ir.width + ' h=' + ir.height + ' text="' + idEl.textContent + '"');
-              }
-              if (clienteEl) {
-                var cr = clienteEl.getBoundingClientRect();
-                linhas.push('    .cliente rect w=' + cr.width + ' h=' + cr.height + ' text="' + clienteEl.textContent.substring(0,30) + '"');
-              }
-              if (tipoEl) {
-                var tr = tipoEl.getBoundingClientRect();
-                linhas.push('    .tipo rect w=' + tr.width + ' h=' + tr.height);
-              }
-              // Verificar se texto transborda
-              if (card.scrollWidth > card.clientWidth) {
-                linhas.push('    OVERFLOW HORIZONTAL! scrollWidth=' + card.scrollWidth + ' clientWidth=' + card.clientWidth);
-              }
-              if (card.scrollHeight > card.clientHeight) {
-                linhas.push('    OVERFLOW VERTICAL! scrollHeight=' + card.scrollHeight + ' clientHeight=' + card.clientHeight);
-              }
-              // innerHTML real
-              linhas.push('    innerHTML: ' + card.innerHTML.substring(0, 400));
-            } else {
-              linhas.push('  CARD REAL: nenhum .card-item no DOM');
-            }
-            el.textContent = linhas.join('\n');
-          }, 1000);
+      // Esperar render() terminar e medir cards reais no DOM
+      setTimeout(function() {
+        var linhas = el.textContent ? el.textContent.split('\n').slice(0, 30) : [];
+        linhas.push('');
+        linhas.push('=== ABA ATUAL: ' + (window.abaAtual || '?') + ' ===');
+        var container = document.getElementById('lista');
+        var cards = container ? container.querySelectorAll('.card-item') : [];
+        linhas.push('cards no DOM: ' + cards.length);
+        if (cards.length === 0) {
+          linhas.push('TROQUE PARA ABA "Em preparo" E RECARREGUE');
         }
-      });
-      el.textContent = linhas.join('\n');
+        for (var i = 0; i < Math.min(cards.length, 3); i++) {
+          var card = cards[i];
+          var cs = getComputedStyle(card);
+          linhas.push('');
+          linhas.push('--- CARD ' + i + ' ---');
+          linhas.push('background=' + cs.backgroundColor);
+          linhas.push('border=' + cs.border);
+          linhas.push('padding=' + cs.padding);
+          linhas.push('overflow=' + cs.overflow);
+          linhas.push('boxSizing=' + cs.boxSizing);
+          linhas.push('width=' + cs.width);
+          linhas.push('height=' + cs.height);
+          var r = card.getBoundingClientRect();
+          linhas.push('rect w=' + r.width + ' h=' + r.height);
+          if (card.scrollWidth > card.clientWidth) {
+            linhas.push('OVERFLOW H! scroll=' + card.scrollWidth + ' client=' + card.clientWidth);
+          }
+          if (card.scrollHeight > card.clientHeight) {
+            linhas.push('OVERFLOW V! scroll=' + card.scrollHeight + ' client=' + card.clientHeight);
+          }
+          // Filhos
+          var idEl = card.querySelector('.id');
+          var badgeEl = card.querySelector('.badge');
+          var clienteEl = card.querySelector('.cliente');
+          var tipoEl = card.querySelector('.tipo');
+          var horaEl = card.querySelector('.hora');
+          var totalEl = card.querySelector('.card-total');
+          if (idEl) {
+            var ir = idEl.getBoundingClientRect();
+            var ics = getComputedStyle(idEl);
+            linhas.push('.id: w=' + ir.width + ' text="' + idEl.textContent + '" flexShrink=' + ics.flexShrink + ' maxW=' + ics.maxWidth);
+          }
+          if (badgeEl) {
+            var br = badgeEl.getBoundingClientRect();
+            var bcs = getComputedStyle(badgeEl);
+            linhas.push('.badge: w=' + br.width + ' text="' + badgeEl.textContent + '" flexShrink=' + bcs.flexShrink);
+          }
+          if (clienteEl) {
+            var cr = clienteEl.getBoundingClientRect();
+            linhas.push('.cliente: w=' + cr.width + ' h=' + cr.height + ' text="' + clienteEl.textContent.substring(0,40) + '"');
+            linhas.push('  overflow=' + getComputedStyle(clienteEl).overflow + ' whiteSpace=' + getComputedStyle(clienteEl).whiteSpace);
+          }
+          if (tipoEl) {
+            var tr = tipoEl.getBoundingClientRect();
+            linhas.push('.tipo: w=' + tr.width + ' text="' + tipoEl.textContent.substring(0,40) + '"');
+          }
+          if (horaEl) linhas.push('.hora: w=' + horaEl.getBoundingClientRect().width + ' text="' + horaEl.textContent + '"');
+          if (totalEl) linhas.push('.card-total: w=' + totalEl.getBoundingClientRect().width + ' text="' + totalEl.textContent + '"');
+          // Footer
+          var footer = card.querySelector('.card-footer');
+          if (footer) {
+            var fr = footer.getBoundingClientRect();
+            var fcs = getComputedStyle(footer);
+            linhas.push('.card-footer: w=' + fr.width + ' overflow=' + fcs.overflow + ' display=' + fcs.display);
+          }
+          // Header
+          var header = card.querySelector('.header');
+          if (header) {
+            var hr = header.getBoundingClientRect();
+            var hcs = getComputedStyle(header);
+            linhas.push('.header: w=' + hr.width + ' overflow=' + hcs.overflow + ' minWidth=' + hcs.minWidth);
+          }
+          linhas.push('innerHTML: ' + card.innerHTML.substring(0, 300));
+        }
+        el.textContent = linhas.join('\n');
+      }, 1500);
     }
 
     function render(){
