@@ -125,7 +125,7 @@ def kds_page_html() -> str:
 <body>
   <div id="app">
     <!-- Diagnostico: so aparece dentro do APK (WebView com AndroidPrint) -->
-    <div id="diag-overlay" style="position:fixed;top:0;left:0;right:0;z-index:999;background:#1a1a1a;color:#0f0;font-family:monospace;font-size:11px;padding:8px;max-height:50vh;overflow:auto;display:none;white-space:pre-wrap"></div>
+    <div id="diag-overlay" style="position:fixed;top:0;left:0;width:50%;z-index:999;background:rgba(26,26,26,0.92);color:#0f0;font-family:monospace;font-size:10px;padding:6px;max-height:45vh;overflow:auto;display:none;white-space:pre-wrap;pointer-events:none"></div>
     <div class="topbar">
       <button class="logout" id="btn-logout" type="button">Sair</button>
       <h1>Cozinha</h1>
