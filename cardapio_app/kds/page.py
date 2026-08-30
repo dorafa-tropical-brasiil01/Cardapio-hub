@@ -24,7 +24,7 @@ def kds_page_html() -> str:
     .topbar .logout{float:right;background:rgba(255,255,255,0.15);border:0;color:#fff;padding:8px 12px;border-radius:10px;font-weight:900;cursor:pointer}
     .tabs{display:flex;overflow-x:auto;padding:14px 0}
     .tabs > * + *{margin-left:6px}
-    .tab{flex:1;min-width:90px;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:#1f3322}
+    .tab{flex:0 0 auto;min-width:90px;background:#ffffff;border:2px solid rgba(10,92,47,0.18);border-radius:14px;padding:10px 8px;text-align:center;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;color:#1f3322}
     .tab.active{background:#0a5c2f;border-color:#0a5c2f;color:#fff}
     .tab .count{display:block;font-size:11px;font-weight:400;opacity:.85;margin-top:2px}
     .stats{display:flex;margin-bottom:14px}
